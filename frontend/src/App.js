@@ -15,7 +15,7 @@ import Hosts from './pages/Hosts';
 import PreRegistered from './pages/PreRegistered';
 import Settings from './pages/Settings';
 import KioskWelcome from './pages/KioskWelcome';
-import KioskSignIn from './pages/KioskSignIn';
+//import KioskSignIn from './pages/KioskSignIn';
 import KioskSignOut from './pages/KioskSignOut';
 import KioskConfirmation from './pages/KioskConfirmation';
 import QRCheckIn from './pages/QRCheckIn';
@@ -37,7 +37,7 @@ function App() {
         <Route index element={<KioskWelcome />} />
         <Route path="sign-in" element={<KioskSignIn />} />
         <Route path="sign-out" element={<KioskSignOut />} />
-        <Route path="confirmation" element={<KioskConfirmation />} />
+        //<Route path="confirmation" element={<KioskConfirmation />} />
       </Route>
 
       {/* QR Contactless Sign-In */}
