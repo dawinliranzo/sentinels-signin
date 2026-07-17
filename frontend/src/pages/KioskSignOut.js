@@ -13,7 +13,7 @@ export default function KioskSignOut() {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
+      const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
       const res = await api.get(`/visits/active?org_id=${orgId}&search=${search}`);
       setVisitors(res.data);
     } catch (err) {
