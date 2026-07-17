@@ -1,15 +1,9 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const db = require("../utils/db");
-const { authenticate } = require("../middleware/auth");
+const db = require('../utils/db');
+const { authenticate } = require('../middleware/auth');
 
-router.get("/", authenticate, async (req, res) => {
-  const result = await db.query("SELECT * FROM visitor_types WHERE org_id = $1 AND is_active = true ORDER BY sort_order", [req.user.org_id]);
-  res.json(result.rows);
-});
-
-
-// Public endpoint for kiosk - no auth required
+// PUBLIC ENDPOINTS (must come BEFORE authenticated routes with params)
 router.get('/public/:orgId', async (req, res) => {
   try {
     const result = await db.query(
@@ -19,6 +13,19 @@ router.get('/public/:orgId', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Public visitor types error:', err);
+    res.status(500).json({ error: 'Failed to fetch visitor types' });
+  }
+});
+
+// AUTHENTICATED ENDPOINTS
+router.get('/', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT * FROM visitor_types WHERE org_id = $1 AND is_active = true ORDER BY sort_order',
+      [req.user.org_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
     res.status(500).json({ error: 'Failed to fetch visitor types' });
   }
 });

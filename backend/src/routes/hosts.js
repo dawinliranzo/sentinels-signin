@@ -3,6 +3,21 @@ const router = express.Router();
 const db = require('../utils/db');
 const { authenticate } = require('../middleware/auth');
 
+// PUBLIC ENDPOINTS (must come BEFORE authenticated routes with params)
+router.get('/public/:orgId', async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, first_name, last_name, email, phone, department, job_title FROM hosts WHERE org_id = $1 AND is_active = true ORDER BY last_name, first_name',
+      [req.params.orgId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Public hosts error:', err);
+    res.status(500).json({ error: 'Failed to fetch hosts' });
+  }
+});
+
+// AUTHENTICATED ENDPOINTS
 router.get('/', authenticate, async (req, res) => {
   try {
     const result = await db.query(
@@ -53,20 +68,4 @@ router.delete('/:id', authenticate, async (req, res) => {
   }
 });
 
-
-// Public endpoint for kiosk - no auth required
-router.get('/public/:orgId', async (req, res) => {
-  try {
-    const result = await db.query(
-      'SELECT id, first_name, last_name, email, phone, department, job_title FROM hosts WHERE org_id = $1 AND is_active = true ORDER BY last_name, first_name',
-      [req.params.orgId]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error('Public hosts error:', err);
-    res.status(500).json({ error: 'Failed to fetch hosts' });
-  }
-});
-
 module.exports = router;
-
