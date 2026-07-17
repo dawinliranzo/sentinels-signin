@@ -2,8 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Building, User, Mail, Phone, Car, FileText } from 'lucide-react';
 import api from '../utils/api';
+import { useSearchParams } from 'react-router-dom';
 
 export default function KioskSignIn() {
+  // In the component:
+  const [searchParams] = useSearchParams();
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
