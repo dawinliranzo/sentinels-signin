@@ -17,40 +17,36 @@ export default function KioskSignIn() {
   const [visitResult, setVisitResult] = useState(null);
 
   React.useEffect(() => {
-    // Default visitor types so the kiosk always works, even if the API is down
-    setVisitorTypes([
-      { id: '1', name: 'Guest', badge_color: '#0D7377' },
-      { id: '2', name: 'Contractor', badge_color: '#FF6B35' },
-      { id: '3', name: 'Delivery', badge_color: '#2ECC71' },
-      { id: '4', name: 'Interview', badge_color: '#9B59B6' },
-    ]);
-    // Demo hosts so the host list is never empty while the API is unreachable
-    setHosts([
-      { id: '1', first_name: 'Alice', last_name: 'Johnson', department: 'HR' },
-      { id: '2', first_name: 'Bob', last_name: 'Smith', department: 'Engineering' },
-      { id: '3', first_name: 'Carol', last_name: 'Williams', department: 'Sales' },
-    ]);
-
-    // Try to load real data from the API; keep defaults on error
+    // Fetch hosts and visitor types for dropdowns
+    // In production, this would use the org_id from the kiosk config
     const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
 
+    // Always set default visitor types immediately so UI never shows empty
+    setVisitorTypes([
+      { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
+      { id: '10000000-0000-0000-0000-000000000002', name: 'Contractor', badge_color: '#FF6B35' },
+      { id: '10000000-0000-0000-0000-000000000003', name: 'Delivery', badge_color: '#2ECC71' },
+      { id: '10000000-0000-0000-0000-000000000004', name: 'Interview', badge_color: '#9B59B6' },
+    ]);
+
+    // Try to load from API, but fallback to defaults on error
     api.get(`/hosts?org_id=${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
     }).catch(() => {
-      // Keep demo hosts
+      // Keep defaults
     });
 
     api.get(`/visitor-types?org_id=${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setVisitorTypes(r.data);
     }).catch(() => {
-      // Keep default visitor types
+      // Keep defaults already set above
     });
   }, []);
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
+      const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         ...formData,
