@@ -16,7 +16,7 @@ export default function KioskSignOut() {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/visits/active?org_id=${orgId}&search=${search}`);
+      const res = await api.get(`/visits/active/public/${orgId}?search=${search}`);
       setVisitors(res.data);
     } catch (err) {
       setVisitors([]);

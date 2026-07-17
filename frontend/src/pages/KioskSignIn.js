@@ -38,13 +38,14 @@ export default function KioskSignIn() {
     ]);
 
     // Try to load from API, but fallback to defaults on error
-    api.get(`/hosts?org_id=${orgId}`).then(r => {
+    // Use public endpoints (no auth required for kiosk)
+    api.get(`/hosts/public/${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
     }).catch(() => {
       // Keep defaults
     });
 
-    api.get(`/visitor-types?org_id=${orgId}`).then(r => {
+    api.get(`/visitor-types/public/${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setVisitorTypes(r.data);
     }).catch(() => {
       // Keep defaults already set above
