@@ -37,7 +37,6 @@ function App() {
         <Route index element={<KioskWelcome />} />
         <Route path="sign-in" element={<KioskSignIn />} />
         <Route path="sign-out" element={<KioskSignOut />} />
-        //<Route path="confirmation" element={<KioskConfirmation />} />
       </Route>
 
       {/* QR Contactless Sign-In */}
