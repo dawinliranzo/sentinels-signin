@@ -15,9 +15,9 @@ import Hosts from './pages/Hosts';
 import PreRegistered from './pages/PreRegistered';
 import Settings from './pages/Settings';
 import KioskWelcome from './pages/KioskWelcome';
-//import KioskSignIn from './pages/KioskSignIn';
+import KioskSignIn from './pages/KioskSignIn';
 import KioskSignOut from './pages/KioskSignOut';
-import KioskConfirmation from './pages/KioskConfirmation';
+//import KioskConfirmation from './pages/KioskConfirmation';
 import QRCheckIn from './pages/QRCheckIn';
 
 function ProtectedRoute({ children }) {
