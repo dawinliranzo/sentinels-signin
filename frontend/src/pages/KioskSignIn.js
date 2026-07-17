@@ -17,49 +17,33 @@ export default function KioskSignIn() {
   const [visitResult, setVisitResult] = useState(null);
 
   React.useEffect(() => {
-    // Always set default visitor types immediately so UI never shows empty
+    // Default visitor types so the kiosk always works, even if the API is down
     setVisitorTypes([
       { id: '1', name: 'Guest', badge_color: '#0D7377' },
       { id: '2', name: 'Contractor', badge_color: '#FF6B35' },
       { id: '3', name: 'Delivery', badge_color: '#2ECC71' },
       { id: '4', name: 'Interview', badge_color: '#9B59B6' },
     ]);
-    
-    // Try to load from API, but fallback to defaults on error
+    // Demo hosts so the host list is never empty while the API is unreachable
+    setHosts([
+      { id: '1', first_name: 'Alice', last_name: 'Johnson', department: 'HR' },
+      { id: '2', first_name: 'Bob', last_name: 'Smith', department: 'Engineering' },
+      { id: '3', first_name: 'Carol', last_name: 'Williams', department: 'Sales' },
+    ]);
+
+    // Try to load real data from the API; keep defaults on error
     const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
-    
+
     api.get(`/hosts?org_id=${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
     }).catch(() => {
-      // Keep defaults
+      // Keep demo hosts
     });
-    
+
     api.get(`/visitor-types?org_id=${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setVisitorTypes(r.data);
     }).catch(() => {
-      // Keep defaults already set above
-    });
-  }, []);
-  
-    // In production, this would use the org_id from the kiosk config
-    const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
-
-    api.get(`/hosts?org_id=${orgId}`).then(r => setHosts(r.data)).catch(() => {
-      // Demo data
-      setHosts([
-        { id: '1', first_name: 'Alice', last_name: 'Johnson', department: 'HR' },
-        { id: '2', first_name: 'Bob', last_name: 'Smith', department: 'Engineering' },
-        { id: '3', first_name: 'Carol', last_name: 'Williams', department: 'Sales' },
-      ]);
-    });
-
-    api.get(`/visitor-types?org_id=${orgId}`).then(r => setVisitorTypes(r.data)).catch(() => {
-      setVisitorTypes([
-        { id: '1', name: 'Guest', badge_color: '#0D7377' },
-        { id: '2', name: 'Contractor', badge_color: '#FF6B35' },
-        { id: '3', name: 'Delivery', badge_color: '#2ECC71' },
-        { id: '4', name: 'Interview', badge_color: '#9B59B6' },
-      ]);
+      // Keep default visitor types
     });
   }, []);
 
