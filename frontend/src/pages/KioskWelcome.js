@@ -1,9 +1,18 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, LogIn, LogOut, QrCode } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 
 export default function KioskWelcome() {
   const navigate = useNavigate();
+  //And in the component:
+  const [searchParams] = useSearchParams();
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
+
+// Store for later pages
+if (orgId) {
+  localStorage.setItem('kiosk_org_id', orgId);
+}
 
   return (
     <div style={{
