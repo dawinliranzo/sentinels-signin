@@ -210,4 +210,34 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+
+// Public endpoint for kiosk sign-out - no auth required
+router.get('/active/public/:orgId', async (req, res) => {
+  try {
+    const { search } = req.query;
+    let query = `
+      SELECT v.*, 
+        h.first_name as host_first_name, h.last_name as host_last_name
+      FROM visits v
+      LEFT JOIN hosts h ON v.host_id = h.id
+      WHERE v.org_id = $1 AND v.status = 'checked_in'
+    `;
+    const params = [req.params.orgId];
+
+    if (search) {
+      query += ` AND (v.visitor_first_name ILIKE $2 OR v.visitor_last_name ILIKE $2 OR v.badge_number ILIKE $2)`;
+      params.push(`%${search}%`);
+    }
+
+    query += ` ORDER BY v.checked_in_at DESC`;
+
+    const result = await db.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Public active visits error:', err);
+    res.status(500).json({ error: 'Failed to fetch active visits' });
+  }
+});
+
 module.exports = router;
+
