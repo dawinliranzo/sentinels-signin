@@ -12,8 +12,8 @@ router.post('/register', async (req, res) => {
     // Create organization
     const orgSlug = org_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     const orgResult = await db.query(
-      'INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING *',
-      [org_name, orgSlug]
+      'INSERT INTO organizations (name, slug, plan, trial_ends_at) VALUES ($1, $2, $3, $4) RETURNING *',
+      [org_name, orgSlug, 'free', new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)]
     );
     const org = orgResult.rows[0];
 

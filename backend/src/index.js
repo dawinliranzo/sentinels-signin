@@ -14,17 +14,16 @@ const evacuationRoutes = require('./routes/evacuations');
 const dashboardRoutes = require('./routes/dashboard');
 const eventRoutes = require('./routes/events');
 const documentRoutes = require('./routes/documents');
+const superAdminRoutes = require('./routes/superAdmin');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Allow multiple origins (Vercel preview + production + custom domain)
+// Security middleware
+app.use(helmet());
+// Allow multiple origins (Vercel preview + production + custom domain + localhost)
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://sentinelskiosk.com',           // ← ADD THIS
-  'https://www.sentinelskiosk.com',       // ← ADD THIS (www variant)
-  'https://sentinels-kiosk.com',          // ← ADD THIS
-  'https://www.sentinels-kiosk.com',      // ← ADD THIS (www variant)
   'https://sentinels-signin.vercel.app',
   'https://sentinels-signin-90myhqvsl-sentinels-it.vercel.app',
   'https://sentinels-signin-fjsex8f73-sentinels-it.vercel.app',
@@ -70,6 +69,7 @@ app.use('/api/evacuations', evacuationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
