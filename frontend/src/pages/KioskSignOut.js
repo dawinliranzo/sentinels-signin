@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Search, CheckCircle } from 'lucide-react';
 import api from '../utils/api';
 
@@ -13,8 +13,8 @@ export default function KioskSignOut() {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      //const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
-      const orgId = localStorage.getItem('kiosk_org_id') || '11f39a06-908a-4f74-85dd-e846a006651b';
+      const [searchParams] = useSearchParams();
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
       const res = await api.get(`/visits/active?org_id=${orgId}&search=${search}`);
       setVisitors(res.data);
     } catch (err) {

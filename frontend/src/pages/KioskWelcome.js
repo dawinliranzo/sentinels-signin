@@ -1,18 +1,20 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, LogIn, LogOut, QrCode } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowRight, LogIn, LogOut } from 'lucide-react';
 
 export default function KioskWelcome() {
   const navigate = useNavigate();
-  //And in the component:
   const [searchParams] = useSearchParams();
+
+  // Get org ID from URL param or localStorage
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
-// Store for later pages
-if (orgId) {
-  localStorage.setItem('kiosk_org_id', orgId);
-}
+  // Store org ID for subsequent pages
+  React.useEffect(() => {
+    if (orgId) {
+      localStorage.setItem('kiosk_org_id', orgId);
+    }
+  }, [orgId]);
 
   return (
     <div style={{
@@ -47,7 +49,7 @@ if (orgId) {
       {/* Action Buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: 400 }}>
         <button
-          onClick={() => navigate('/kiosk/sign-in')}
+          onClick={() => navigate('/kiosk/sign-in' + (orgId ? `?org=${orgId}` : ''))}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '28px 40px', borderRadius: 20,
@@ -72,7 +74,7 @@ if (orgId) {
         </button>
 
         <button
-          onClick={() => navigate('/kiosk/sign-out')}
+          onClick={() => navigate('/kiosk/sign-out' + (orgId ? `?org=${orgId}` : ''))}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '28px 40px', borderRadius: 20,

@@ -1,13 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Building, User, Mail, Phone, Car, FileText } from 'lucide-react';
 import api from '../utils/api';
-import { useSearchParams } from 'react-router-dom';
 
 export default function KioskSignIn() {
-  // In the component:
-  const [searchParams] = useSearchParams();
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -23,9 +19,15 @@ export default function KioskSignIn() {
   React.useEffect(() => {
     // Fetch hosts and visitor types for dropdowns
     // In production, this would use the org_id from the kiosk config
-    //const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
-    const orgId = localStorage.getItem('kiosk_org_id') || '11f39a06-908a-4f74-85dd-e846a006651b';
-    
+    const [searchParams] = useSearchParams();
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+
+  React.useEffect(() => {
+    if (orgId) {
+      localStorage.setItem('kiosk_org_id', orgId);
+    }
+  }, [orgId]);
+
     // Always set default visitor types immediately so UI never shows empty
     setVisitorTypes([
       { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
@@ -51,7 +53,14 @@ export default function KioskSignIn() {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+      const [searchParams] = useSearchParams();
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+
+  React.useEffect(() => {
+    if (orgId) {
+      localStorage.setItem('kiosk_org_id', orgId);
+    }
+  }, [orgId]);
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         ...formData,

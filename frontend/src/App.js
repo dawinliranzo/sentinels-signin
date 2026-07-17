@@ -14,10 +14,10 @@ import Visits from './pages/Visits';
 import Hosts from './pages/Hosts';
 import PreRegistered from './pages/PreRegistered';
 import Settings from './pages/Settings';
+import SuperAdmin from './pages/SuperAdmin';
 import KioskWelcome from './pages/KioskWelcome';
 import KioskSignIn from './pages/KioskSignIn';
 import KioskSignOut from './pages/KioskSignOut';
-//import KioskConfirmation from './pages/KioskConfirmation';
 import QRCheckIn from './pages/QRCheckIn';
 
 function ProtectedRoute({ children }) {
@@ -37,7 +37,7 @@ function App() {
         <Route index element={<KioskWelcome />} />
         <Route path="sign-in" element={<KioskSignIn />} />
         <Route path="sign-out" element={<KioskSignOut />} />
-      </Route>
+              </Route>
 
       {/* QR Contactless Sign-In */}
       <Route path="/check-in/:token" element={<QRCheckIn />} />
@@ -49,6 +49,7 @@ function App() {
         <Route path="hosts" element={<Hosts />} />
         <Route path="pre-registered" element={<PreRegistered />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="super-admin" element={<SuperAdmin />} />
       </Route>
     </Routes>
   );
