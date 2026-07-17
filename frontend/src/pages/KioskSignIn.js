@@ -125,7 +125,7 @@ export default function KioskSignIn() {
           </svg>
         </div>
         <h2 style={{ fontSize: 42, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-          You\'re Checked In!
+          You're Checked In!
         </h2>
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginBottom: 40 }}>
           {formData.host_id && `Notifying your host...`}
@@ -299,7 +299,7 @@ export default function KioskSignIn() {
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
-            <label style={labelStyle}>I\'m here to see...</label>
+            <label style={labelStyle}>I'm here to see...</label>
 
             {/* Searchable Host Dropdown */}
             <div ref={hostDropdownRef} style={{ position: 'relative' }}>
