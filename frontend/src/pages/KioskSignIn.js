@@ -17,7 +17,30 @@ export default function KioskSignIn() {
   const [visitResult, setVisitResult] = useState(null);
 
   React.useEffect(() => {
-    // Fetch hosts and visitor types for dropdowns
+    // Always set default visitor types immediately so UI never shows empty
+    setVisitorTypes([
+      { id: '1', name: 'Guest', badge_color: '#0D7377' },
+      { id: '2', name: 'Contractor', badge_color: '#FF6B35' },
+      { id: '3', name: 'Delivery', badge_color: '#2ECC71' },
+      { id: '4', name: 'Interview', badge_color: '#9B59B6' },
+    ]);
+    
+    // Try to load from API, but fallback to defaults on error
+    const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
+    
+    api.get(`/hosts?org_id=${orgId}`).then(r => {
+      if (r.data && r.data.length > 0) setHosts(r.data);
+    }).catch(() => {
+      // Keep defaults
+    });
+    
+    api.get(`/visitor-types?org_id=${orgId}`).then(r => {
+      if (r.data && r.data.length > 0) setVisitorTypes(r.data);
+    }).catch(() => {
+      // Keep defaults already set above
+    });
+  }, []);
+  
     // In production, this would use the org_id from the kiosk config
     const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
 
