@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 
 // Email transporter
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.sendgrid.net',
   port: parseInt(process.env.SMTP_PORT) || 587,
   auth: {
