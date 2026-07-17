@@ -5,23 +5,21 @@ import api from '../utils/api';
 
 export default function KioskSignOut() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [visitors, setVisitors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const [searchParams] = useSearchParams();
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
       const res = await api.get(`/visits/active?org_id=${orgId}&search=${search}`);
       setVisitors(res.data);
     } catch (err) {
-      // Demo data
-      setVisitors([
-        { id: '30000000-0000-0000-0000-000000000001', visitor_first_name: 'John', visitor_last_name: 'Doe', visitor_company: 'Acme Inc.', badge_number: '0427', checked_in_at: new Date().toISOString() },
-      ]);
+      setVisitors([]);
     } finally {
       setLoading(false);
     }

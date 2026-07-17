@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Camera, Building, User, Mail, Phone, Car, FileText } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText } from 'lucide-react';
 import api from '../utils/api';
 
 export default function KioskSignIn() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState([]);
@@ -16,18 +17,18 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
 
-  React.useEffect(() => {
-    // Fetch hosts and visitor types for dropdowns
-    // In production, this would use the org_id from the kiosk config
-    const [searchParams] = useSearchParams();
+  // Get org ID from URL or localStorage
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
 
+  // Store org ID in localStorage when it changes
   React.useEffect(() => {
     if (orgId) {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
 
+  // Load visitor types and hosts
+  React.useEffect(() => {
     // Always set default visitor types immediately so UI never shows empty
     setVisitorTypes([
       { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
@@ -48,19 +49,11 @@ export default function KioskSignIn() {
     }).catch(() => {
       // Keep defaults already set above
     });
-  }, []);
+  }, [orgId]);
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const [searchParams] = useSearchParams();
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
-
-  React.useEffect(() => {
-    if (orgId) {
-      localStorage.setItem('kiosk_org_id', orgId);
-    }
-  }, [orgId]);
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         ...formData,
@@ -69,7 +62,7 @@ export default function KioskSignIn() {
       setVisitResult(res.data);
       setStep(3);
     } catch (err) {
-      alert('Sign-in failed. Please try again.');
+      alert('Sign-in failed: ' + (err.response?.data?.error || 'Unknown error'));
     } finally {
       setLoading(false);
     }
