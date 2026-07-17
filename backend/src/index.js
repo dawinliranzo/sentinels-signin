@@ -21,6 +21,10 @@ const PORT = process.env.PORT || 3001;
 // Allow multiple origins (Vercel preview + production + custom domain)
 const allowedOrigins = [
   'http://localhost:3000',
+  'https://sentinelskiosk.com',           // ← ADD THIS
+  'https://www.sentinelskiosk.com',       // ← ADD THIS (www variant)
+  'https://sentinels-kiosk.com',          // ← ADD THIS
+  'https://www.sentinels-kiosk.com',      // ← ADD THIS (www variant)
   'https://sentinels-signin.vercel.app',
   'https://sentinels-signin-90myhqvsl-sentinels-it.vercel.app',
   'https://sentinels-signin-fjsex8f73-sentinels-it.vercel.app',
