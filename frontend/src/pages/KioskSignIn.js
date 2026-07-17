@@ -32,7 +32,7 @@ export default function KioskSignIn() {
     ]);
 
     // Try to load real data from the API; keep defaults on error
-    const orgId = localStorage.getItem('kiosk_org_id') || 'demo-org';
+    const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
 
     api.get(`/hosts?org_id=${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
