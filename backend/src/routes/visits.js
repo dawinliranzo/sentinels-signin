@@ -106,35 +106,47 @@ router.post('/check-in', async (req, res) => {
 
     const visit = result.rows[0];
 
-    // Notify host
+    // Notify host (wrap in try/catch so notification failure doesn't break check-in)
     if (host_id) {
-      const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [host_id]);
-      if (hostResult.rows.length > 0) {
-        const host = hostResult.rows[0];
+      try {
+        const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [host_id]);
+        if (hostResult.rows.length > 0) {
+          const host = hostResult.rows[0];
 
-        if (host.notify_email && host.email) {
-          await sendEmail({
-            to: host.email,
-            subject: `Visitor Arrived: ${first_name} ${last_name}`,
-            html: `
-              <h2>Your visitor has arrived</h2>
-              <p><strong>Name:</strong> ${first_name} ${last_name}</p>
-              <p><strong>Company:</strong> ${company || 'N/A'}</p>
-              <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
-              <p><strong>Badge #:</strong> ${badgeNum}</p>
-              <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-            `
-          });
+          if (host.notify_email && host.email) {
+            try {
+              await sendEmail({
+                to: host.email,
+                subject: `Visitor Arrived: ${first_name} ${last_name}`,
+                html: `
+                  <h2>Your visitor has arrived</h2>
+                  <p><strong>Name:</strong> ${first_name} ${last_name}</p>
+                  <p><strong>Company:</strong> ${company || 'N/A'}</p>
+                  <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
+                  <p><strong>Badge #:</strong> ${badgeNum}</p>
+                  <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+                `
+              });
+            } catch (emailErr) {
+              console.log('Email notification failed (no SMTP configured):', emailErr.message);
+            }
+          }
+
+          if (host.notify_sms && host.phone) {
+            try {
+              await sendSMS({
+                to: host.phone,
+                body: `Visitor arrived: ${first_name} ${last_name} from ${company || 'N/A'}. Badge: ${badgeNum}`
+              });
+            } catch (smsErr) {
+              console.log('SMS notification failed (no Twilio configured):', smsErr.message);
+            }
+          }
+
+          await db.query('UPDATE visits SET host_notified_at = NOW() WHERE id = $1', [visit.id]);
         }
-
-        if (host.notify_sms && host.phone) {
-          await sendSMS({
-            to: host.phone,
-            body: `Visitor arrived: ${first_name} ${last_name} from ${company || 'N/A'}. Badge: ${badgeNum}`
-          });
-        }
-
-        await db.query('UPDATE visits SET host_notified_at = NOW() WHERE id = $1', [visit.id]);
+      } catch (notifyErr) {
+        console.log('Host notification failed:', notifyErr.message);
       }
     }
 
@@ -145,8 +157,9 @@ router.post('/check-in', async (req, res) => {
       message: 'Check-in successful'
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Check-in failed' });
+    console.error('Check-in error:', err.message);
+    console.error('Stack:', err.stack);
+    res.status(500).json({ error: 'Check-in failed', details: err.message });
   }
 });
 
