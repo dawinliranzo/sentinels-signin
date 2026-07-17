@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X } from 'lucide-react';
 import api from '../utils/api';
 
 export default function KioskSignIn() {
@@ -17,19 +17,21 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
 
-  // Get org ID from URL or localStorage
+  // Host dropdown state
+  const [hostSearch, setHostSearch] = useState('');
+  const [showHostDropdown, setShowHostDropdown] = useState(false);
+  const [selectedHost, setSelectedHost] = useState(null);
+  const hostDropdownRef = useRef(null);
+
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
 
-  // Store org ID in localStorage when it changes
   React.useEffect(() => {
     if (orgId) {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
 
-  // Load visitor types and hosts
   React.useEffect(() => {
-    // Always set default visitor types immediately so UI never shows empty
     setVisitorTypes([
       { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
       { id: '10000000-0000-0000-0000-000000000002', name: 'Contractor', badge_color: '#FF6B35' },
@@ -37,20 +39,25 @@ export default function KioskSignIn() {
       { id: '10000000-0000-0000-0000-000000000004', name: 'Interview', badge_color: '#9B59B6' },
     ]);
 
-    // Try to load from API, but fallback to defaults on error
-    // Use public endpoints (no auth required for kiosk)
     api.get(`/hosts/public/${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
-    }).catch(() => {
-      // Keep defaults
-    });
+    }).catch(() => {});
 
     api.get(`/visitor-types/public/${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setVisitorTypes(r.data);
-    }).catch(() => {
-      // Keep defaults already set above
-    });
+    }).catch(() => {});
   }, [orgId]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (hostDropdownRef.current && !hostDropdownRef.current.contains(event.target)) {
+        setShowHostDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -67,6 +74,29 @@ export default function KioskSignIn() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const filteredHosts = hosts.filter(h => {
+    const search = hostSearch.toLowerCase();
+    return (
+      h.first_name.toLowerCase().includes(search) ||
+      h.last_name.toLowerCase().includes(search) ||
+      (h.department && h.department.toLowerCase().includes(search)) ||
+      (h.job_title && h.job_title.toLowerCase().includes(search))
+    );
+  });
+
+  const selectHost = (host) => {
+    setSelectedHost(host);
+    setFormData({ ...formData, host_id: host.id });
+    setHostSearch(`${host.first_name} ${host.last_name}`);
+    setShowHostDropdown(false);
+  };
+
+  const clearHost = () => {
+    setSelectedHost(null);
+    setFormData({ ...formData, host_id: '' });
+    setHostSearch('');
   };
 
   const inputStyle = {
@@ -95,7 +125,7 @@ export default function KioskSignIn() {
           </svg>
         </div>
         <h2 style={{ fontSize: 42, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-          You're Checked In!
+          You\'re Checked In!
         </h2>
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginBottom: 40 }}>
           {formData.host_id && `Notifying your host...`}
@@ -269,34 +299,104 @@ export default function KioskSignIn() {
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
-            <label style={labelStyle}>I'm here to see...</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {hosts.map(host => (
-                <button
-                  key={host.id}
-                  onClick={() => setFormData({ ...formData, host_id: host.id })}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 16,
-                    padding: '18px 20px', borderRadius: 14,
-                    background: formData.host_id === host.id ? 'rgba(13, 115, 119, 0.4)' : 'rgba(255,255,255,0.1)',
-                    border: `2px solid ${formData.host_id === host.id ? '#14FFEC' : 'rgba(255,255,255,0.2)'}`,
-                    color: '#fff', fontSize: 16, cursor: 'pointer', textAlign: 'left'
+            <label style={labelStyle}>I\'m here to see...</label>
+
+            {/* Searchable Host Dropdown */}
+            <div ref={hostDropdownRef} style={{ position: 'relative' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '14px 16px', borderRadius: 14,
+                border: '2px solid rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.1)',
+                cursor: 'pointer'
+              }}>
+                <Search size={20} color="rgba(255,255,255,0.6)" />
+                <input
+                  type="text"
+                  value={hostSearch}
+                  onChange={(e) => {
+                    setHostSearch(e.target.value);
+                    setShowHostDropdown(true);
+                    if (selectedHost) {
+                      setSelectedHost(null);
+                      setFormData({ ...formData, host_id: '' });
+                    }
                   }}
-                >
-                  <div style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: 16
+                  onFocus={() => setShowHostDropdown(true)}
+                  placeholder="Search for a host..."
+                  style={{
+                    flex: 1, background: 'transparent', border: 'none',
+                    color: '#fff', fontSize: 18, outline: 'none'
+                  }}
+                />
+                {selectedHost && (
+                  <button onClick={clearHost} style={{
+                    background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)',
+                    cursor: 'pointer', padding: 4
                   }}>
-                    {host.first_name[0]}{host.last_name[0]}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{host.first_name} {host.last_name}</div>
-                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{host.department}</div>
-                  </div>
-                </button>
-              ))}
+                    <X size={18} />
+                  </button>
+                )}
+                <ChevronDown size={20} color="rgba(255,255,255,0.6)" />
+              </div>
+
+              {/* Dropdown */}
+              {showHostDropdown && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0,
+                  marginTop: 8, maxHeight: 320, overflowY: 'auto',
+                  background: 'rgba(15, 23, 42, 0.95)', borderRadius: 14,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  backdropFilter: 'blur(20px)', zIndex: 100,
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+                }}>
+                  {filteredHosts.length === 0 ? (
+                    <div style={{ padding: 20, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                      No hosts found
+                    </div>
+                  ) : (
+                    filteredHosts.map(host => (
+                      <button
+                        key={host.id}
+                        onClick={() => selectHost(host)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                          padding: '14px 16px', border: 'none',
+                          background: formData.host_id === host.id ? 'rgba(13, 115, 119, 0.3)' : 'transparent',
+                          color: '#fff', cursor: 'pointer', textAlign: 'left',
+                          borderBottom: '1px solid rgba(255,255,255,0.05)'
+                        }}
+                      >
+                        <div style={{
+                          width: 40, height: 40, borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0
+                        }}>
+                          {host.first_name[0]}{host.last_name[0]}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 15 }}>{host.first_name} {host.last_name}</div>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                            {host.department} {host.job_title && `• ${host.job_title}`}
+                          </div>
+                        </div>
+                        {formData.host_id === host.id && (
+                          <div style={{
+                            width: 20, height: 20, borderRadius: '50%',
+                            background: '#14FFEC', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0F172A" strokeWidth="4">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          </div>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
