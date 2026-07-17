@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Calendar, Mail, QrCode, Copy, Check } from 'lucide-react';
+import { Plus, Calendar, Mail, QrCode, Copy, Check, AlertCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../utils/api';
 
@@ -12,6 +12,8 @@ export default function PreRegistered() {
     host_id: '', visitor_type_id: '', purpose: '', expected_date: '',
     expected_time_start: '', expected_time_end: ''
   });
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const { data: preRegs, refetch } = useQuery('pre-registered', () =>
     api.get('/pre-registered').then(r => r.data)
@@ -25,21 +27,71 @@ export default function PreRegistered() {
     api.get('/visitor-types').then(r => r.data)
   );
 
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!form.first_name?.trim()) newErrors.first_name = 'First name is required';
+    if (!form.last_name?.trim()) newErrors.last_name = 'Last name is required';
+    if (!form.email?.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      newErrors.email = 'Please enter a valid email';
+    }
+    if (!form.host_id) newErrors.host_id = 'Please select a host';
+    if (!form.visitor_type_id) newErrors.visitor_type_id = 'Please select a visitor type';
+    if (!form.expected_date) newErrors.expected_date = 'Expected date is required';
+    if (!form.expected_time_start) newErrors.expected_time_start = 'Start time is required';
+    if (!form.expected_time_end) newErrors.expected_time_end = 'End time is required';
+
+    // Check if end time is after start time
+    if (form.expected_time_start && form.expected_time_end) {
+      if (form.expected_time_end <= form.expected_time_start) {
+        newErrors.expected_time_end = 'End time must be after start time';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return; // Stop if validation fails
+    }
+
+    setSubmitting(true);
     try {
       await api.post('/pre-registered', form);
       setShowModal(false);
       setForm({ first_name: '', last_name: '', email: '', phone: '', company: '', host_id: '', visitor_type_id: '', purpose: '', expected_date: '', expected_time_start: '', expected_time_end: '' });
+      setErrors({});
       refetch();
     } catch (err) {
-      alert('Failed to create pre-registration');
+      const serverError = err.response?.data?.error || err.response?.data?.details || 'Failed to create pre-registration';
+      alert(serverError);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const inputStyle = {
+  const handleChange = (field, value) => {
+    setForm({ ...form, [field]: value });
+    // Clear error when user types
+    if (errors[field]) {
+      setErrors({ ...errors, [field]: null });
+    }
+  };
+
+  const inputStyle = (field) => ({
     width: '100%', padding: '12px 16px', borderRadius: 10,
-    border: '2px solid #E2E8F0', fontSize: 14, outline: 'none'
+    border: `2px solid ${errors[field] ? '#EF4444' : '#E2E8F0'}`,
+    fontSize: 14, outline: 'none', background: '#fff'
+  });
+
+  const errorStyle = {
+    color: '#EF4444', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4
   };
 
   return (
@@ -50,7 +102,7 @@ export default function PreRegistered() {
           <p style={{ color: '#64748B', marginTop: 4 }}>Invite visitors ahead of time with QR codes</p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => { setShowModal(true); setErrors({}); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '12px 24px', borderRadius: 12,
@@ -129,46 +181,146 @@ export default function PreRegistered() {
             background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 500,
             maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)'
           }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Pre-Register Visitor</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Pre-Register Visitor</h2>
+            <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>
+              Fields marked with <span style={{ color: '#EF4444' }}>*</span> are required
+            </p>
+
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Name Row */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <input type="text" placeholder="First Name" required value={form.first_name}
-                  onChange={(e) => setForm({...form, first_name: e.target.value})} style={inputStyle} />
-                <input type="text" placeholder="Last Name" required value={form.last_name}
-                  onChange={(e) => setForm({...form, last_name: e.target.value})} style={inputStyle} />
+                <div>
+                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                    First Name <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <input type="text" placeholder="First Name" 
+                    value={form.first_name} onChange={(e) => handleChange('first_name', e.target.value)}
+                    style={inputStyle('first_name')} />
+                  {errors.first_name && <span style={errorStyle}><AlertCircle size={12} /> {errors.first_name}</span>}
+                </div>
+                <div>
+                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                    Last Name <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <input type="text" placeholder="Last Name"
+                    value={form.last_name} onChange={(e) => handleChange('last_name', e.target.value)}
+                    style={inputStyle('last_name')} />
+                  {errors.last_name && <span style={errorStyle}><AlertCircle size={12} /> {errors.last_name}</span>}
+                </div>
               </div>
-              <input type="email" placeholder="Email" required value={form.email}
-                onChange={(e) => setForm({...form, email: e.target.value})} style={inputStyle} />
-              <input type="tel" placeholder="Phone" value={form.phone}
-                onChange={(e) => setForm({...form, phone: e.target.value})} style={inputStyle} />
-              <input type="text" placeholder="Company" value={form.company}
-                onChange={(e) => setForm({...form, company: e.target.value})} style={inputStyle} />
-              <select value={form.host_id} onChange={(e) => setForm({...form, host_id: e.target.value})} style={inputStyle}>
-                <option value="">Select Host</option>
-                {hosts?.map(h => <option key={h.id} value={h.id}>{h.first_name} {h.last_name}</option>)}
-              </select>
-              <select value={form.visitor_type_id} onChange={(e) => setForm({...form, visitor_type_id: e.target.value})} style={inputStyle}>
-                <option value="">Select Visitor Type</option>
-                {visitorTypes?.map(vt => <option key={vt.id} value={vt.id}>{vt.name}</option>)}
-              </select>
-              <input type="text" placeholder="Purpose" value={form.purpose}
-                onChange={(e) => setForm({...form, purpose: e.target.value})} style={inputStyle} />
-              <input type="date" value={form.expected_date}
-                onChange={(e) => setForm({...form, expected_date: e.target.value})} style={inputStyle} />
+
+              {/* Email */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Email <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <input type="email" placeholder="Email"
+                  value={form.email} onChange={(e) => handleChange('email', e.target.value)}
+                  style={inputStyle('email')} />
+                {errors.email && <span style={errorStyle}><AlertCircle size={12} /> {errors.email}</span>}
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Phone
+                </label>
+                <input type="tel" placeholder="Phone"
+                  value={form.phone} onChange={(e) => handleChange('phone', e.target.value)}
+                  style={inputStyle('phone')} />
+              </div>
+
+              {/* Company */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Company
+                </label>
+                <input type="text" placeholder="Company"
+                  value={form.company} onChange={(e) => handleChange('company', e.target.value)}
+                  style={inputStyle('company')} />
+              </div>
+
+              {/* Host */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Host <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <select
+                  value={form.host_id} onChange={(e) => handleChange('host_id', e.target.value)}
+                  style={inputStyle('host_id')}
+                >
+                  <option value="">Select a host</option>
+                  {hosts?.map(h => <option key={h.id} value={h.id}>{h.first_name} {h.last_name}</option>)}
+                </select>
+                {errors.host_id && <span style={errorStyle}><AlertCircle size={12} /> {errors.host_id}</span>}
+              </div>
+
+              {/* Visitor Type */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Visitor Type <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <select
+                  value={form.visitor_type_id} onChange={(e) => handleChange('visitor_type_id', e.target.value)}
+                  style={inputStyle('visitor_type_id')}
+                >
+                  <option value="">Select visitor type</option>
+                  {visitorTypes?.map(vt => <option key={vt.id} value={vt.id}>{vt.name}</option>)}
+                </select>
+                {errors.visitor_type_id && <span style={errorStyle}><AlertCircle size={12} /> {errors.visitor_type_id}</span>}
+              </div>
+
+              {/* Purpose */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Purpose
+                </label>
+                <input type="text" placeholder="Purpose of visit"
+                  value={form.purpose} onChange={(e) => handleChange('purpose', e.target.value)}
+                  style={inputStyle('purpose')} />
+              </div>
+
+              {/* Date */}
+              <div>
+                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                  Expected Date <span style={{ color: '#EF4444' }}>*</span>
+                </label>
+                <input type="date"
+                  value={form.expected_date} onChange={(e) => handleChange('expected_date', e.target.value)}
+                  style={inputStyle('expected_date')} />
+                {errors.expected_date && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_date}</span>}
+              </div>
+
+              {/* Time Row */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <input type="time" value={form.expected_time_start}
-                  onChange={(e) => setForm({...form, expected_time_start: e.target.value})} style={inputStyle} />
-                <input type="time" value={form.expected_time_end}
-                  onChange={(e) => setForm({...form, expected_time_end: e.target.value})} style={inputStyle} />
+                <div>
+                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                    Start Time <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <input type="time"
+                    value={form.expected_time_start} onChange={(e) => handleChange('expected_time_start', e.target.value)}
+                    style={inputStyle('expected_time_start')} />
+                  {errors.expected_time_start && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_time_start}</span>}
+                </div>
+                <div>
+                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>
+                    End Time <span style={{ color: '#EF4444' }}>*</span>
+                  </label>
+                  <input type="time"
+                    value={form.expected_time_end} onChange={(e) => handleChange('expected_time_end', e.target.value)}
+                    style={inputStyle('expected_time_end')} />
+                  {errors.expected_time_end && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_time_end}</span>}
+                </div>
               </div>
+
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                <button type="button" onClick={() => setShowModal(false)}
+                <button type="button" onClick={() => { setShowModal(false); setErrors({}); }}
                   style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
                   Cancel
                 </button>
-                <button type="submit"
-                  style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
-                  Send Invitation
+                <button type="submit" disabled={submitting}
+                  style={{ flex: 1, padding: '14px', borderRadius: 10, background: submitting ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                  {submitting ? 'Sending...' : 'Send Invitation'}
                 </button>
               </div>
             </form>
