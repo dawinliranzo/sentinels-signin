@@ -19,8 +19,9 @@ export default function KioskSignIn() {
   React.useEffect(() => {
     // Fetch hosts and visitor types for dropdowns
     // In production, this would use the org_id from the kiosk config
-    const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
-
+    //const orgId = localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+    const orgId = localStorage.getItem('kiosk_org_id') || '11f39a06-908a-4f74-85dd-e846a006651b';
+    
     // Always set default visitor types immediately so UI never shows empty
     setVisitorTypes([
       { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
