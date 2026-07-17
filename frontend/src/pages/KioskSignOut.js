@@ -19,7 +19,7 @@ export default function KioskSignOut() {
     } catch (err) {
       // Demo data
       setVisitors([
-        { id: '1', visitor_first_name: 'John', visitor_last_name: 'Doe', visitor_company: 'Acme Inc.', badge_number: '0427', checked_in_at: new Date().toISOString() },
+        { id: '30000000-0000-0000-0000-000000000001', visitor_first_name: 'John', visitor_last_name: 'Doe', visitor_company: 'Acme Inc.', badge_number: '0427', checked_in_at: new Date().toISOString() },
       ]);
     } finally {
       setLoading(false);
