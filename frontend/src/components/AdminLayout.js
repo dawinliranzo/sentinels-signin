@@ -9,6 +9,13 @@ import {
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
+
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const logout = useStore((s) => s.logout);
   const user = useStore((s) => s.user);
   const org = useStore((s) => s.organization);
@@ -33,15 +40,16 @@ export default function AdminLayout() {
       {/* Desktop Sidebar */}
       <aside
         style={{
-          width: sidebarOpen ? 260 : 80,
+          width: isMobile ? 260 : (sidebarOpen ? 260 : 80),
           background: '#0F172A',
           color: '#fff',
-          transition: 'width 0.3s ease',
+          transition: 'transform 0.3s ease, width 0.3s ease',
           position: 'fixed',
           top: 0, left: 0, bottom: 0,
           zIndex: 50,
           display: 'flex',
           flexDirection: 'column',
+          transform: isMobile && !mobileOpen ? 'translateX(-100%)' : 'translateX(0)',
         }}
       >
         {/* Logo */}
@@ -56,14 +64,14 @@ export default function AdminLayout() {
           </div>
           {sidebarOpen && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Sentinels</div>
-              <div style={{ fontSize: 11, color: '#94A3B8' }}>Sign-In</div>
+              <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2, whiteSpace: 'nowrap' }}>Sentinels Sign-In</div>
+              <div style={{ fontSize: 11, color: '#94A3B8' }}>Visitor Management</div>
             </div>
           )}
         </div>
 
         {/* Toggle */}
-        <button
+        {!isMobile && (<button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           style={{
             position: 'absolute', right: -12, top: 28,
@@ -74,14 +82,15 @@ export default function AdminLayout() {
           }}
         >
           {sidebarOpen ? '<' : '>'}
-        </button>
+        </button>)}
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '16px 12px' }}>
-          {navItems.map((item) => (
+          {navItems.filter(i => !i.requireRole || user?.role === i.requireRole).map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => isMobile && setMobileOpen(false)}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '12px 16px', borderRadius: 10,
@@ -94,7 +103,7 @@ export default function AdminLayout() {
               })}
             >
               <item.icon size={20} />
-              {sidebarOpen && <span>{item.label}</span>}
+              {(!isMobile ? sidebarOpen : true) && <span>{item.label}</span>}
             </NavLink>
           ))}
         </nav>
@@ -131,11 +140,35 @@ export default function AdminLayout() {
         </div>
       </aside>
 
+      {/* Mobile hamburger */}
+      {isMobile && (
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          style={{
+            position: 'fixed', top: 12, left: 12, zIndex: 60,
+            width: 44, height: 44, borderRadius: 12,
+            background: '#0F172A', border: 'none', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+          }}
+        >
+          {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+      )}
+
+      {/* Mobile overlay */}
+      {isMobile && mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }}
+        />
+      )}
+
       {/* Main Content */}
       <main style={{
-        marginLeft: sidebarOpen ? 260 : 80,
+        marginLeft: isMobile ? 0 : (sidebarOpen ? 260 : 80),
         flex: 1, transition: 'margin-left 0.3s ease',
-        padding: 32, minHeight: '100vh'
+        padding: isMobile ? '64px 16px 16px' : 32, minHeight: '100vh'
       }}>
         <Outlet />
       </main>
