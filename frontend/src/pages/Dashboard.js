@@ -16,10 +16,10 @@ export default function Dashboard() {
   );
 
   const statCards = [
-    { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: '#0D7377', trend: '+12%' },
-    { title: "Today's Visits", value: stats?.today_visits || 0, icon: LogIn, color: '#FF6B35', trend: '+8%' },
-    { title: 'Weekly Visits', value: stats?.weekly_visits || 0, icon: Calendar, color: '#9B59B6', trend: '+23%' },
-    { title: 'Active Hosts', value: stats?.active_hosts || 0, icon: Building2, color: '#2ECC71', trend: '0%' },
+    { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: '#0D7377' },
+    { title: "Today's Visits", value: stats?.today_visits || 0, icon: LogIn, color: '#FF6B35' },
+    { title: 'Weekly Visits', value: stats?.weekly_visits || 0, icon: Calendar, color: '#9B59B6' },
+    { title: 'Active Hosts', value: stats?.active_hosts || 0, icon: Building2, color: '#2ECC71' },
   ];
 
   return (
@@ -75,13 +75,6 @@ export default function Dashboard() {
               }}>
                 <card.icon size={24} color={card.color} />
               </div>
-              <span style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                fontSize: 13, fontWeight: 600, color: card.trend.startsWith('+') ? '#2ECC71' : '#64748B'
-              }}>
-                {card.trend.startsWith('+') ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                {card.trend}
-              </span>
             </div>
             <div style={{ fontSize: 36, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>
               {isLoading ? '...' : card.value}
