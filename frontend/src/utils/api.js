@@ -17,7 +17,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const path = window.location.pathname;
+    const isPublicPage = path.startsWith('/kiosk') || path.startsWith('/check-in');
+    if (error.response?.status === 401 && !isPublicPage) {
       useStore.getState().logout();
       window.location.href = '/login';
     }
