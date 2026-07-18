@@ -14,14 +14,14 @@ const transporter = nodemailer.createTransport({
 // Twilio client
 const twilioClient = process.env.TWILIO_SID ? twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN) : null;
 
-const sendEmail = async ({ to, subject, html, from = 'noreply@sentinels-signin.com' }) => {
+const sendEmail = async ({ to, subject, html, attachments, from = 'noreply@sentinelskiosk.com' }) => {
   try {
     if (!process.env.SMTP_PASS && !process.env.SENDGRID_API_KEY) {
       console.log('Email would be sent (no SMTP configured):', { to, subject });
       return { success: true, simulated: true };
     }
 
-    await transporter.sendMail({ from, to, subject, html });
+    await transporter.sendMail({ from, to, subject, html, attachments });
     return { success: true };
   } catch (err) {
     console.error('Email send failed:', err);
