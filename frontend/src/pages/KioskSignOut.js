@@ -99,7 +99,7 @@ export default function KioskSignOut() {
     <div style={{ width: '100%', maxWidth: 600, zIndex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
-          onClick={() => navigate('/kiosk')}
+          onClick={() => navigate(`/kiosk?org=${orgId}`)}
           style={{
             width: 48, height: 48, borderRadius: 14,
             background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
