@@ -92,13 +92,16 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
 
+    // Empty strings break Postgres uuid/date/time columns — convert to null
+    const clean = (v) => (v === '' || v === undefined ? null : v);
+
     const result = await db.query(
       `UPDATE pre_registered_visitors 
        SET first_name = $1, last_name = $2, email = $3, phone = $4, company = $5, 
            host_id = $6, visitor_type_id = $7, purpose = $8, expected_date = $9, 
-           expected_time_start = $10, expected_time_end = $11, updated_at = NOW()
+           expected_time_start = $10, expected_time_end = $11
        WHERE id = $12 AND org_id = $13 RETURNING *`,
-      [first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end, req.params.id, req.user.org_id]
+      [first_name, last_name, email, clean(phone), clean(company), clean(host_id), clean(visitor_type_id), clean(purpose), clean(expected_date), clean(expected_time_start), clean(expected_time_end), req.params.id, req.user.org_id]
     );
 
     if (result.rows.length === 0) {
@@ -108,7 +111,7 @@ router.put('/:id', authenticate, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to update pre-registration' });
+    res.status(500).json({ error: 'Failed to update pre-registration', details: err.message });
   }
 });
 
