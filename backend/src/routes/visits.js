@@ -32,6 +32,32 @@ router.get('/active/public/:orgId', async (req, res) => {
   }
 });
 
+// PUBLIC kiosk check-out (no auth — verifies the visit belongs to the given org instead)
+router.post('/public/check-out', async (req, res) => {
+  try {
+    const { visit_id, org_id } = req.body;
+    if (!visit_id || !org_id) {
+      return res.status(400).json({ error: 'visit_id and org_id are required' });
+    }
+
+    const result = await db.query(`
+      UPDATE visits 
+      SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = $3
+      WHERE id = $1 AND org_id = $2 AND status = 'checked_in'
+      RETURNING *
+    `, [visit_id, org_id, 'Kiosk self check-out']);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Visit not found or already checked out' });
+    }
+
+    res.json({ success: true, visit: result.rows[0] });
+  } catch (err) {
+    console.error('Public check-out error:', err);
+    res.status(500).json({ error: 'Check-out failed' });
+  }
+});
+
 // AUTHENTICATED ENDPOINTS
 router.get('/active', authenticate, async (req, res) => {
   try {
@@ -166,41 +192,6 @@ router.post('/check-in', async (req, res) => {
                   <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 `
               });
-            } catch (emailErr) {
-              console.log('Email notification failed (no SMTP configured):', emailErr.message);
-            }
-          }
-
-          if (host.notify_sms && host.phone) {
-            try {
-              await sendSMS({
-                to: host.phone,
-                body: `Visitor arrived: ${first_name} ${last_name} from ${company || 'N/A'}. Badge: ${badgeNum}`
-              });
-            } catch (smsErr) {
-              console.log('SMS notification failed (no Twilio configured):', smsErr.message);
-            }
-          }
-
-          await db.query('UPDATE visits SET host_notified_at = NOW() WHERE id = $1', [visit.id]);
-        }
-      } catch (notifyErr) {
-        console.log('Host notification failed:', notifyErr.message);
-      }
-    }
-
-    res.status(201).json({
-      success: true,
-      visit: visit,
-      badge_number: badgeNum,
-      message: 'Check-in successful'
-    });
-  } catch (err) {
-    console.error('Check-in error:', err.message);
-    console.error('Stack:', err.stack);
-    res.status(500).json({ error: 'Check-in failed', details: err.message });
-  }
-});
             } catch (emailErr) {
               console.log('Email notification failed (no SMTP configured):', emailErr.message);
             }
