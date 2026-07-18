@@ -15,6 +15,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const eventRoutes = require('./routes/events');
 const documentRoutes = require('./routes/documents');
 const superAdminRoutes = require('./routes/superAdmin');
+const userRoutes = require('./routes/users');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -70,6 +71,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/users', userRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
