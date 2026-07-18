@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../utils/db');
-const { JWT_SECRET } = require('../middleware/auth');
+const { authenticate, JWT_SECRET } = require('../middleware/auth');
 
 router.post('/register', async (req, res) => {
   try {
@@ -65,6 +65,38 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// GET /api/auth/me — current user profile (includes offline-alert preference)
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT id, email, first_name, last_name, role, is_active, notify_offline, org_id FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// PATCH /api/auth/me/preferences — self-service preference updates
+router.patch('/me/preferences', authenticate, async (req, res) => {
+  try {
+    const { notify_offline } = req.body;
+    if (typeof notify_offline !== 'boolean') {
+      return res.status(400).json({ error: 'notify_offline must be true or false' });
+    }
+    await db.query('UPDATE users SET notify_offline = $1 WHERE id = $2', [notify_offline, req.user.id]);
+    res.json({ success: true, notify_offline });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save preference', details: err.message });
   }
 });
 
