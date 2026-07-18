@@ -65,7 +65,7 @@ export default function Hosts() {
       </div>
 
       <div style={{
-        background: '#fff', borderRadius: 20, overflow: 'hidden',
+        background: '#fff', borderRadius: 20, overflow: 'auto',
         boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
       }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
