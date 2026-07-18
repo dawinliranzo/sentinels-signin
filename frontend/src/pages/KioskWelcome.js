@@ -6,8 +6,8 @@ export default function KioskWelcome() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Get org ID from URL param or localStorage
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
+  // Get org ID from URL param — REQUIRED, no fallback
+  const orgId = searchParams.get('org');
 
   // Store org ID for subsequent pages
   React.useEffect(() => {
@@ -15,6 +15,55 @@ export default function KioskWelcome() {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
+
+  // GUARD: No org ID = show error screen
+  if (!orgId) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        textAlign: 'center', zIndex: 1, maxWidth: 600,
+        padding: 40
+      }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: 20,
+          background: 'rgba(255,107,53,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 24
+        }}>
+          <span style={{ fontSize: 40 }}>⚠️</span>
+        </div>
+        <h1 style={{
+          fontSize: 32, fontWeight: 700, color: '#fff',
+          marginBottom: 12
+        }}>
+          Kiosk Not Configured
+        </h1>
+        <p style={{
+          fontSize: 18, color: 'rgba(255,255,255,0.7)',
+          marginBottom: 32, lineHeight: 1.5
+        }}>
+          This kiosk needs an organization ID to work.<br />
+          Please use the URL provided by your administrator.
+        </p>
+        <div style={{
+          background: 'rgba(255,255,255,0.1)', borderRadius: 16,
+          padding: '20px 24px', border: '1px solid rgba(255,255,255,0.2)',
+          maxWidth: 400
+        }}>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
+            Example URL format:
+          </p>
+          <code style={{
+            fontSize: 12, color: '#14FFEC', fontFamily: 'monospace',
+            wordBreak: 'break-all'
+          }}>
+            https://yoursite.com/kiosk?org=your-org-id
+          </code>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -49,7 +98,7 @@ export default function KioskWelcome() {
       {/* Action Buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: 400 }}>
         <button
-          onClick={() => navigate('/kiosk/sign-in' + (orgId ? `?org=${orgId}` : ''))}
+          onClick={() => navigate(`/kiosk/sign-in?org=${orgId}`)}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '28px 40px', borderRadius: 20,
@@ -74,7 +123,7 @@ export default function KioskWelcome() {
         </button>
 
         <button
-          onClick={() => navigate('/kiosk/sign-out' + (orgId ? `?org=${orgId}` : ''))}
+          onClick={() => navigate(`/kiosk/sign-out?org=${orgId}`)}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '28px 40px', borderRadius: 20,
