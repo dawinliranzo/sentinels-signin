@@ -13,9 +13,21 @@ export default function Settings() {
   const [teamMsg, setTeamMsg] = useState(null);
   const [tempPw, setTempPw] = useState(null);
   const [savingUser, setSavingUser] = useState(false);
+  const [notifyOffline, setNotifyOffline] = useState(false);
+
+  const toggleOfflineAlerts = async (value) => {
+    setNotifyOffline(value);
+    try {
+      await api.patch('/auth/me/preferences', { notify_offline: value });
+    } catch (err) {
+      setNotifyOffline(!value); // revert on failure
+      alert(err.response?.data?.error || 'Failed to save preference — the database may need the offline-alerts migration');
+    }
+  };
 
   useEffect(() => {
     if (canManage) loadTeam();
+    api.get('/auth/me').then(r => setNotifyOffline(!!r.data.notify_offline)).catch(() => {});
   }, []);
 
   const loadTeam = async () => {
@@ -226,6 +238,15 @@ export default function Settings() {
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>SMS Notifications</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Send SMS to hosts when visitors arrive</div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', paddingTop: 12, borderTop: '1px solid #F1F5F9' }}>
+            <input type="checkbox" checked={notifyOffline}
+              onChange={(e) => toggleOfflineAlerts(e.target.checked)}
+              style={{ width: 22, height: 22 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#0F172A' }}>Kiosk Offline Alerts</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>Email me if the kiosk stops responding (10+ min), and when it comes back online</div>
             </div>
           </label>
         </div>
