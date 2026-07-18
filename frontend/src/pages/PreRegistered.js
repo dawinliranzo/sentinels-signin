@@ -17,7 +17,8 @@ export default function PreRegistered() {
   const [submitting, setSubmitting] = useState(false);
 
   const { data: preRegs, refetch } = useQuery('pre-registered', () =>
-    api.get('/pre-registered').then(r => r.data)
+    api.get('/pre-registered').then(r => r.data),
+    { refetchInterval: 30000 }
   );
 
   const { data: hosts } = useQuery('hosts-list', () =>
@@ -125,7 +126,12 @@ export default function PreRegistered() {
   const errorStyle = { color: '#EF4444', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 };
 
   const statusColors = {
-    pending: '#F59E0B', sent: '#0D7377', opened: '#3B82F6', used: '#10B981'
+    pending: '#F59E0B', sent: '#0D7377', opened: '#3B82F6', used: '#10B981',
+    checked_in: '#10B981', checked_out: '#64748B'
+  };
+  const statusLabels = {
+    pending: 'pending', sent: 'sent', opened: 'opened', used: 'used',
+    checked_in: 'in building', checked_out: 'checked out'
   };
 
   return (
@@ -169,7 +175,7 @@ export default function PreRegistered() {
                     background: `${statusColors[pr.invitation_status] || '#64748B'}15`,
                     color: statusColors[pr.invitation_status] || '#64748B'
                   }}>
-                    {pr.invitation_status}
+                    {statusLabels[pr.invitation_status] || pr.invitation_status}
                   </span>
                 </td>
                 <td style={{ padding: '16px 20px' }}>
