@@ -51,7 +51,15 @@ router.post('/public/check-out', async (req, res) => {
       return res.status(404).json({ error: 'Visit not found or already checked out' });
     }
 
-    res.json({ success: true, visit: result.rows[0] });
+    const checkedOutVisit = result.rows[0];
+    if (checkedOutVisit.pre_reg_id) {
+      try {
+        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'checked_out' WHERE id = $1", [checkedOutVisit.pre_reg_id]);
+      } catch (preErr) {
+        console.error('Failed to update pre-registration status:', preErr);
+      }
+    }
+    res.json({ success: true, visit: checkedOutVisit });
   } catch (err) {
     console.error('Public check-out error:', err);
     res.status(500).json({ error: 'Check-out failed' });
@@ -157,6 +165,29 @@ router.post('/check-in', async (req, res) => {
     }
     // ─── END ORG VALIDATION ───
 
+    // ─── DUPLICATE GUARD: one active visit per visitor per org ───
+    try {
+      let dupQuery, dupParams;
+      if (pre_reg_id) {
+        dupQuery = `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND pre_reg_id = $2 ORDER BY checked_in_at DESC LIMIT 1`;
+        dupParams = [org_id, pre_reg_id];
+      } else if (email) {
+        dupQuery = `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND LOWER(visitor_email) = LOWER($2) ORDER BY checked_in_at DESC LIMIT 1`;
+        dupParams = [org_id, email];
+      } else {
+        dupQuery = `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3) ORDER BY checked_in_at DESC LIMIT 1`;
+        dupParams = [org_id, first_name, last_name];
+      }
+      const dup = await db.query(dupQuery, dupParams);
+      if (dup.rows.length > 0) {
+        const existing = dup.rows[0];
+        return res.json({ ...existing, already_checked_in: true, message: `Already checked in — badge ${existing.badge_number}` });
+      }
+    } catch (dupErr) {
+      console.error('Duplicate check failed (continuing):', dupErr);
+    }
+    // ─── END DUPLICATE GUARD ───
+
     const date = new Date();
     const badgeNum = `${date.getFullYear().toString().substr(2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -170,6 +201,15 @@ router.post('/check-in', async (req, res) => {
     `, [org_id, pre_reg_id || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method]);
 
     const visit = result.rows[0];
+
+    // Mark the pre-registration as arrived
+    if (pre_reg_id) {
+      try {
+        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'checked_in' WHERE id = $1", [pre_reg_id]);
+      } catch (preErr) {
+        console.error('Failed to update pre-registration status:', preErr);
+      }
+    }
 
     // Notify host (wrap in try/catch so notification failure doesn't break check-in)
     if (host_id) {
@@ -244,7 +284,15 @@ router.post('/:id/check-out', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Visit not found or already checked out' });
     }
 
-    res.json({ success: true, visit: result.rows[0] });
+    const checkedOutVisit = result.rows[0];
+    if (checkedOutVisit.pre_reg_id) {
+      try {
+        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'checked_out' WHERE id = $1", [checkedOutVisit.pre_reg_id]);
+      } catch (preErr) {
+        console.error('Failed to update pre-registration status:', preErr);
+      }
+    }
+    res.json({ success: true, visit: checkedOutVisit });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Check-out failed' });
