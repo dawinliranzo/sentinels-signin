@@ -43,7 +43,7 @@ export default function KioskSignOut() {
 
   const handleCheckOut = async (visitId) => {
     try {
-      await api.post(`/visits/${visitId}/check-out`);
+      await api.post('/visits/public/check-out', { visit_id: visitId, org_id: orgId });
       setDone(true);
       setTimeout(() => {
         setDone(false);
