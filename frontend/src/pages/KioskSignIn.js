@@ -23,7 +23,8 @@ export default function KioskSignIn() {
   const [selectedHost, setSelectedHost] = useState(null);
   const hostDropdownRef = useRef(null);
 
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+  // CRITICAL FIX: No fallback to demo org. Must have org ID.
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
   React.useEffect(() => {
     if (orgId) {
@@ -38,6 +39,8 @@ export default function KioskSignIn() {
       { id: '10000000-0000-0000-0000-000000000003', name: 'Delivery', badge_color: '#2ECC71' },
       { id: '10000000-0000-0000-0000-000000000004', name: 'Interview', badge_color: '#9B59B6' },
     ]);
+
+    if (!orgId) return;
 
     api.get(`/hosts/public/${orgId}`).then(r => {
       if (r.data && r.data.length > 0) setHosts(r.data);
@@ -58,6 +61,30 @@ export default function KioskSignIn() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // GUARD: Must have org ID
+  if (!orgId) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100vh', textAlign: 'center',
+        color: '#fff', padding: 40, zIndex: 1
+      }}>
+        <h2 style={{ fontSize: 28, marginBottom: 16 }}>Kiosk Error</h2>
+        <p style={{ fontSize: 16, opacity: 0.7, marginBottom: 24 }}>
+          Organization not configured. Please return to the welcome screen.
+        </p>
+        <button onClick={() => navigate('/kiosk')}
+          style={{
+            padding: '14px 32px', borderRadius: 12, background: '#FF6B35',
+            border: 'none', color: '#fff', fontSize: 16, fontWeight: 600,
+            cursor: 'pointer'
+          }}>
+          Back to Welcome
+        </button>
+      </div>
+    );
+  }
 
   const handleSubmit = async () => {
     setLoading(true);
