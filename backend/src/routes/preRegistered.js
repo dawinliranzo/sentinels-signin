@@ -1,4 +1,5 @@
 const express = require('express');
+const QRCode = require('qrcode');
 const router = express.Router();
 const db = require('../utils/db');
 const { authenticate } = require('../middleware/auth');
@@ -31,6 +32,19 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+
+// Build a QR PNG attachment for invitation emails
+const buildQrAttachment = async (token) => {
+  const url = `${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${token}`;
+  const dataUrl = await QRCode.toDataURL(url, { width: 400, margin: 1 });
+  return {
+    filename: 'visit-qr.png',
+    content: dataUrl.split(';base64,').pop(),
+    encoding: 'base64',
+    cid: 'visitqr'
+  };
+};
+
 router.post('/', authenticate, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
@@ -54,9 +68,11 @@ router.post('/', authenticate, async (req, res) => {
         const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [host_id]);
         const hostName = hostResult.rows[0] ? `${hostResult.rows[0].first_name} ${hostResult.rows[0].last_name}` : 'your host';
 
+        const qrAttachment = await buildQrAttachment(qrToken);
         await sendEmail({
           to: email,
           subject: `You're invited to visit ${req.user.org_name || 'our office'}`,
+          attachments: [qrAttachment],
           html: `
             <h2>Hello ${first_name},</h2>
             <p>You have been pre-registered for a visit.</p>
@@ -64,11 +80,13 @@ router.post('/', authenticate, async (req, res) => {
             <p><strong>Time:</strong> ${expected_time_start} - ${expected_time_end}</p>
             <p><strong>Host:</strong> ${hostName}</p>
             <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
-            <p>When you arrive, please scan this QR code or visit:</p>
-            <p><a href="${process.env.FRONTEND_URL || 'https://sentinelskiosk.com'}/check-in/${qrToken}">
-              ${process.env.FRONTEND_URL || 'https://sentinelskiosk.com'}/check-in/${qrToken}
+            <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly — no typing needed:</p>
+            <p><img src="cid:visitqr" alt="Your visit QR code" width="200" style="display:block"/></p>
+            <p>You can also tap this link on your phone instead:</p>
+            <p><a href="${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${qrToken}">
+              ${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${qrToken}
             </a></p>
-            <p>This link is valid until ${qrExpires.toLocaleDateString()}.</p>
+            <p>This QR code is valid until ${qrExpires.toLocaleDateString()}.</p>
           `
         });
 
@@ -164,18 +182,22 @@ router.post('/:id/resend', authenticate, async (req, res) => {
         const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [preReg.host_id]);
         const hostName = hostResult.rows[0] ? `${hostResult.rows[0].first_name} ${hostResult.rows[0].last_name}` : 'your host';
 
+        const qrAttachment = await buildQrAttachment(newQrToken);
         await sendEmail({
           to: preReg.email,
           subject: `Reminder: Your visit invitation`,
+          attachments: [qrAttachment],
           html: `
             <h2>Hello ${preReg.first_name},</h2>
             <p>This is a reminder about your upcoming visit.</p>
             <p><strong>Date:</strong> ${preReg.expected_date}</p>
             <p><strong>Time:</strong> ${preReg.expected_time_start} - ${preReg.expected_time_end}</p>
             <p><strong>Host:</strong> ${hostName}</p>
-            <p>Please scan this QR code or visit:</p>
-            <p><a href="${process.env.FRONTEND_URL || 'https://sentinelskiosk.com'}/check-in/${newQrToken}">
-              ${process.env.FRONTEND_URL || 'https://sentinelskiosk.com'}/check-in/${newQrToken}
+            <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly:</p>
+            <p><img src="cid:visitqr" alt="Your visit QR code" width="200" style="display:block"/></p>
+            <p>You can also tap this link on your phone instead:</p>
+            <p><a href="${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${newQrToken}">
+              ${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${newQrToken}
             </a></p>
           `
         });
