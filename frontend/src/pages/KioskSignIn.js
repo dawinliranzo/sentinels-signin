@@ -193,7 +193,7 @@ export default function KioskSignIn() {
         </div>
 
         <button
-          onClick={() => navigate('/kiosk')}
+          onClick={() => navigate(`/kiosk?org=${orgId}`)}
           style={{
             padding: '18px 60px', borderRadius: 16,
             background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.3)',
@@ -211,7 +211,7 @@ export default function KioskSignIn() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
-          onClick={() => step > 1 ? setStep(step - 1) : navigate('/kiosk')}
+          onClick={() => step > 1 ? setStep(step - 1) : navigate(`/kiosk?org=${orgId}`)}
           style={{
             width: 48, height: 48, borderRadius: 14,
             background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
