@@ -1,8 +1,19 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
+import api from '../utils/api';
 
 export default function KioskLayout() {
   const navigate = useNavigate();
+
+  // Heartbeat: tell the backend this kiosk is alive (used for offline alerts)
+  React.useEffect(() => {
+    const orgId = localStorage.getItem('kiosk_org_id');
+    if (!orgId) return;
+    const beat = () => api.post('/kiosk/heartbeat', { org_id: orgId }).catch(() => {});
+    beat();
+    const t = setInterval(beat, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Exit kiosk mode - hidden admin button (tap top-right corner 5 times)
   const [tapCount, setTapCount] = React.useState(0);
