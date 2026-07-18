@@ -6,8 +6,8 @@ export default function KioskWelcome() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Get org ID from URL param — REQUIRED, no fallback
-  const orgId = searchParams.get('org');
+  // Org ID from URL param, or remembered from a previous visit on this device
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
   // Store org ID for subsequent pages
   React.useEffect(() => {
