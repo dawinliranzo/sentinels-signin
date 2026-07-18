@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const db = require('../utils/db');
 const { authenticate, requireRole } = require('../middleware/auth');
 
@@ -62,6 +64,47 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update organization' });
+  }
+});
+
+// GET single organization with its users (super admin only)
+router.get('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const orgResult = await db.query('SELECT * FROM organizations WHERE id = $1', [req.params.id]);
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const usersResult = await db.query(
+      'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
+      [req.params.id]
+    );
+
+    res.json({ organization: orgResult.rows[0], users: usersResult.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch organization details' });
+  }
+});
+
+// POST reset a user's password — generates a temporary password (super admin only)
+router.post('/users/:userId/reset-password', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const userResult = await db.query('SELECT id, email, first_name FROM users WHERE id = $1', [req.params.userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Readable temporary password, shown once to the admin
+    const tempPassword = 'Ksk-' + crypto.randomBytes(4).toString('hex');
+    const hashed = await bcrypt.hash(tempPassword, 10);
+
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashed, req.params.userId]);
+
+    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 
