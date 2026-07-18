@@ -12,11 +12,15 @@ export default function KioskSignOut() {
   const [done, setDone] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
 
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id') || '00000000-0000-0000-0000-000000000001';
+  // CRITICAL FIX: No fallback to demo org. Must have org ID.
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
-  // Load ALL active visitors on page load
+  // Load active visitors for THIS org only
   useEffect(() => {
-    loadVisitors('');
+    if (orgId) {
+      localStorage.setItem('kiosk_org_id', orgId);
+      loadVisitors('');
+    }
   }, [orgId]);
 
   const loadVisitors = async (searchTerm) => {
@@ -49,6 +53,30 @@ export default function KioskSignOut() {
       alert('Check-out failed: ' + (err.response?.data?.error || 'Unknown error'));
     }
   };
+
+  // GUARD: Must have org ID
+  if (!orgId) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100vh', textAlign: 'center',
+        color: '#fff', padding: 40, zIndex: 1
+      }}>
+        <h2 style={{ fontSize: 28, marginBottom: 16 }}>Kiosk Error</h2>
+        <p style={{ fontSize: 16, opacity: 0.7, marginBottom: 24 }}>
+          Organization not configured. Please return to the welcome screen.
+        </p>
+        <button onClick={() => navigate('/kiosk')}
+          style={{
+            padding: '14px 32px', borderRadius: 12, background: '#FF6B35',
+            border: 'none', color: '#fff', fontSize: 16, fontWeight: 600,
+            cursor: 'pointer'
+          }}>
+          Back to Welcome
+        </button>
+      </div>
+    );
+  }
 
   if (done) {
     return (
