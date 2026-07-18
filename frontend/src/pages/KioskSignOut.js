@@ -15,13 +15,24 @@ export default function KioskSignOut() {
   // CRITICAL FIX: No fallback to demo org. Must have org ID.
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
-  // Load active visitors for THIS org only
+  // Store org — but DO NOT list visitors until the visitor types their own name/badge
   useEffect(() => {
     if (orgId) {
       localStorage.setItem('kiosk_org_id', orgId);
-      loadVisitors('');
     }
   }, [orgId]);
+
+  // Debounced search: only fetch when 2+ characters typed (privacy: no full roster)
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) {
+      setVisitors([]);
+      setInitialLoad(true);
+      return;
+    }
+    const t = setTimeout(() => loadVisitors(term), 300);
+    return () => clearTimeout(t);
+  }, [search, orgId]);
 
   const loadVisitors = async (searchTerm) => {
     setLoading(true);
@@ -141,7 +152,33 @@ export default function KioskSignOut() {
           </div>
         )}
 
-        {!loading && visitors.length === 0 && (
+        {!loading && visitors.length === 0 && search.trim().length < 2 && (
+          <div style={{
+            textAlign: 'center', padding: '40px 20px',
+            background: 'rgba(255,255,255,0.05)', borderRadius: 16,
+            border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            <Search size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 16 }} />
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16, margin: 0 }}>
+              Type at least 2 letters of your name or badge number to find your visit
+            </p>
+          </div>
+        )}
+
+        {!loading && visitors.length === 0 && search.trim().length >= 2 && (
+          <div style={{
+            textAlign: 'center', padding: '40px 20px',
+            background: 'rgba(255,255,255,0.05)', borderRadius: 16,
+            border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            <User size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 16 }} />
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16, margin: 0 }}>
+              No active visit matches "{search.trim()}"
+            </p>
+          </div>
+        )}
+
+        {false && !loading && visitors.length === 0 && (
           <div style={{
             textAlign: 'center', padding: '40px 20px',
             background: 'rgba(255,255,255,0.05)', borderRadius: 16,
