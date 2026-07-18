@@ -7,16 +7,30 @@ export default function QRCheckIn() {
   const [visitor, setVisitor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [checkedIn, setCheckedIn] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [already, setAlready] = useState(false);
+  const [error, setError] = useState(null);
+
+  const usedKey = `qr_used_${token}`;
 
   useEffect(() => {
+    // This device already used this link — don't offer the form again
+    if (localStorage.getItem(usedKey) === '1') {
+      setAlready(true);
+      setLoading(false);
+      return;
+    }
     api.get(`/pre-registered/validate-qr/${token}`)
       .then(r => { setVisitor(r.data.visitor); setLoading(false); })
       .catch(() => setLoading(false));
   }, [token]);
 
   const handleCheckIn = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
     try {
-      await api.post('/visits/check-in', {
+      const r = await api.post('/visits/check-in', {
         org_id: visitor.org_id,
         pre_reg_id: visitor.id,
         visitor_type_id: visitor.visitor_type_id,
@@ -29,18 +43,24 @@ export default function QRCheckIn() {
         purpose: visitor.purpose,
         sign_in_method: 'qr_code'
       });
+      // Backend returns already_checked_in when an active visit exists
+      if (r.data?.already_checked_in) setAlready(true);
+      localStorage.setItem(usedKey, '1');
       setCheckedIn(true);
     } catch (err) {
-      alert('Check-in failed');
+      setError(err.response?.data?.error || 'Check-in failed — please try again');
+      setSubmitting(false);
     }
   };
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
-  if (!visitor) return <div style={{ textAlign: 'center', padding: 40 }}><h2>Invalid or expired QR code</h2></div>;
-  if (checkedIn) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0D7377' }}>
+  if (!visitor && !already) return <div style={{ textAlign: 'center', padding: 40 }}><h2>Invalid or expired QR code</h2></div>;
+  if (checkedIn || already) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0D7377', padding: 24, textAlign: 'center' }}>
       <h1 style={{ color: '#fff', fontSize: 48 }}>✓ Checked In!</h1>
-      <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 20 }}>Welcome, {visitor.first_name}</p>
+      <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 20 }}>
+        {already && !checkedIn ? 'This link was already used to check in.' : `Welcome${visitor ? `, ${visitor.first_name}` : ''}`}
+      </p>
     </div>
   );
 
@@ -69,15 +89,18 @@ export default function QRCheckIn() {
           </div>
         </div>
 
+        {error && <p style={{ color: '#EF4444', fontSize: 14, marginBottom: 16, textAlign: 'center' }}>{error}</p>}
+
         <button
           onClick={handleCheckIn}
+          disabled={submitting}
           style={{
             width: '100%', padding: '18px', borderRadius: 14,
-            background: '#0D7377', border: 'none', color: '#fff',
-            fontSize: 18, fontWeight: 700, cursor: 'pointer'
+            background: submitting ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff',
+            fontSize: 18, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer'
           }}
         >
-          Confirm Check-In
+          {submitting ? 'Checking in...' : 'Confirm Check-In'}
         </button>
       </div>
     </div>
