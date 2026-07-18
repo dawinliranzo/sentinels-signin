@@ -25,6 +25,9 @@ export default function SuperAdmin() {
   const [editOrg, setEditOrg] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [copied, setCopied] = useState(false);
+  const [viewOrgUsers, setViewOrgUsers] = useState([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [tempPassword, setTempPassword] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'super_admin') {
@@ -38,38 +41,44 @@ export default function SuperAdmin() {
 
   const fetchData = async () => {
     try {
-      const orgsData = [
-        {
-          id: '11f39a06-908a-4f74-85dd-e846a006651b',
-          name: 'Sentinels', slug: 'sentinels', plan: 'pro', status: 'active',
-          created_at: '2026-07-10', users_count: 3, visits_this_month: 142,
-          billing_email: 'admin@sentinels.com', mrr: 49,
-          address: '123 Tech Street, NY', phone: '(555) 123-4567',
-          max_users: 20, max_visits_per_month: 999999,
-          trial_ends_at: null, primary_color: '#0D7377', accent_color: '#FF6B35'
-        },
-        {
-          id: '00000000-0000-0000-0000-000000000001',
-          name: 'Demo Organization', slug: 'demo-org', plan: 'free', status: 'active',
-          created_at: '2026-07-15', users_count: 1, visits_this_month: 12,
-          billing_email: 'demo@example.com', mrr: 0,
-          address: '456 Demo Ave', phone: '(555) 999-0000',
-          max_users: 5, max_visits_per_month: 100,
-          trial_ends_at: '2026-07-29', primary_color: '#0D7377', accent_color: '#FF6B35'
-        }
-      ];
-      setOrgs(orgsData);
-      setStats({
-        total_orgs: orgsData.length,
-        total_users: orgsData.reduce((a, o) => a + o.users_count, 0),
-        total_visits: orgsData.reduce((a, o) => a + o.visits_this_month, 0),
-        active_visits: 2,
-        revenue: orgsData.reduce((a, o) => a + o.mrr, 0)
-      });
+      const [orgsRes, statsRes] = await Promise.all([
+        api.get('/super-admin/organizations'),
+        api.get('/super-admin/stats')
+      ]);
+      const planMrr = { free: 0, pro: 49, enterprise: 149 };
+      setOrgs(orgsRes.data.map(o => ({ ...o, mrr: planMrr[o.plan] ?? 0 })));
+      setStats(statsRes.data);
     } catch (err) {
       console.error('Failed to fetch super admin data:', err);
+      alert('Failed to load organizations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openView = async (org) => {
+    setViewOrg(org);
+    setTempPassword(null);
+    setViewOrgUsers([]);
+    setLoadingDetail(true);
+    try {
+      const res = await api.get(`/super-admin/organizations/${org.id}`);
+      setViewOrg(res.data.organization);
+      setViewOrgUsers(res.data.users);
+    } catch (err) {
+      alert('Failed to load organization details');
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const resetPassword = async (u) => {
+    if (!window.confirm(`Reset password for ${u.first_name} ${u.last_name} (${u.email})?`)) return;
+    try {
+      const res = await api.post(`/super-admin/users/${u.id}/reset-password`);
+      setTempPassword({ email: res.data.user_email, password: res.data.temp_password });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to reset password');
     }
   };
 
@@ -94,20 +103,25 @@ export default function SuperAdmin() {
     setEditForm({ ...org });
   };
 
-  const saveEdit = () => {
-    setOrgs(orgs.map(o => o.id === editOrg.id ? { ...o, ...editForm } : o));
-    setEditOrg(null);
-    // In production: api.patch(`/super-admin/organizations/${editOrg.id}`, editForm)
+  const saveEdit = async () => {
+    try {
+      await api.patch(`/super-admin/organizations/${editOrg.id}`, editForm);
+      setEditOrg(null);
+      fetchData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to update organization');
+    }
   };
 
-  const suspendOrg = (orgId) => {
-    if (!window.confirm('Suspend this organization? They will lose access.')) return;
-    setOrgs(orgs.map(o => o.id === orgId ? { ...o, status: 'suspended' } : o));
-  };
-
-  const deleteOrg = (orgId) => {
-    if (!window.confirm('DELETE this organization? This cannot be undone!')) return;
-    setOrgs(orgs.filter(o => o.id !== orgId));
+  const toggleOrgStatus = async (org) => {
+    const newStatus = org.status === 'suspended' ? 'active' : 'suspended';
+    if (!window.confirm(`${newStatus === 'suspended' ? 'Suspend' : 'Reactivate'} ${org.name}?`)) return;
+    try {
+      await api.patch(`/super-admin/organizations/${org.id}`, { status: newStatus });
+      fetchData();
+    } catch (err) {
+      alert('Failed to update organization status');
+    }
   };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
@@ -130,7 +144,7 @@ export default function SuperAdmin() {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 20, marginBottom: 32 }}>
         {[
           { title: 'Organizations', value: stats.total_orgs, icon: Building2, color: '#0D7377', trend: '+2' },
           { title: 'Total Users', value: stats.total_users, icon: Users, color: '#FF6B35', trend: '+5' },
@@ -183,7 +197,7 @@ export default function SuperAdmin() {
 
       {/* Organizations Table */}
       <div style={{
-        background: '#fff', borderRadius: 20, overflow: 'hidden',
+        background: '#fff', borderRadius: 20, overflowX: 'auto',
         boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
       }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -228,17 +242,14 @@ export default function SuperAdmin() {
                 </td>
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => setViewOrg(org)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="View Details">
+                    <button onClick={() => openView(org)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="View Details">
                       <Eye size={16} color="#64748B" />
                     </button>
                     <button onClick={() => openEdit(org)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="Edit">
                       <Edit size={16} color="#64748B" />
                     </button>
-                    <button onClick={() => suspendOrg(org.id)} style={{ padding: 8, borderRadius: 8, background: '#FEF3C7', border: 'none', cursor: 'pointer' }} title="Suspend">
-                      <ExternalLink size={16} color="#92400E" />
-                    </button>
-                    <button onClick={() => deleteOrg(org.id)} style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }} title="Delete">
-                      <Trash2 size={16} color="#EF4444" />
+                    <button onClick={() => toggleOrgStatus(org)} style={{ padding: '8px 12px', borderRadius: 8, background: org.status === 'suspended' ? '#DCFCE7' : '#FEF3C7', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: org.status === 'suspended' ? '#166534' : '#92400E' }} title={org.status === 'suspended' ? 'Reactivate' : 'Suspend'}>
+                      {org.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                     </button>
                   </div>
                 </td>
@@ -298,17 +309,17 @@ export default function SuperAdmin() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
               {[
                 { label: 'Organization ID', value: viewOrg.id },
-                { label: 'Slug', value: viewOrg.slug },
+                { label: 'Slug', value: viewOrg.slug || 'N/A' },
                 { label: 'Plan', value: planLabels[viewOrg.plan] },
                 { label: 'Status', value: viewOrg.status },
                 { label: 'Billing Email', value: viewOrg.billing_email },
                 { label: 'Phone', value: viewOrg.phone || 'N/A' },
                 { label: 'Address', value: viewOrg.address || 'N/A' },
-                { label: 'Created', value: viewOrg.created_at },
-                { label: 'Max Users', value: viewOrg.max_users },
-                { label: 'Max Visits/Month', value: viewOrg.max_visits_per_month },
-                { label: 'Trial Ends', value: viewOrg.trial_ends_at || 'N/A' },
-                { label: 'MRR', value: `$${viewOrg.mrr}/mo` },
+                { label: 'Created', value: viewOrg.created_at ? new Date(viewOrg.created_at).toLocaleDateString() : 'N/A' },
+                { label: 'Max Users', value: viewOrg.max_users ?? 'N/A' },
+                { label: 'Max Visits/Month', value: viewOrg.max_visits_per_month ?? 'N/A' },
+                { label: 'Trial Ends', value: viewOrg.trial_ends_at ? new Date(viewOrg.trial_ends_at).toLocaleDateString() : 'N/A' },
+                { label: 'MRR', value: `$${({ free: 0, pro: 49, enterprise: 149 })[viewOrg.plan] ?? 0}/mo` },
               ].map((item, i) => (
                 <div key={i} style={{ padding: '12px 16px', background: '#F8FAFC', borderRadius: 10 }}>
                   <div style={{ fontSize: 12, color: '#64748B', marginBottom: 4 }}>{item.label}</div>
@@ -316,6 +327,41 @@ export default function SuperAdmin() {
                 </div>
               ))}
             </div>
+
+            {/* Users in this organization */}
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 12 }}>Users ({viewOrgUsers.length})</h3>
+            {loadingDetail ? (
+              <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>Loading users...</p>
+            ) : (
+              <div style={{ marginBottom: 24 }}>
+                {viewOrgUsers.map(u => (
+                  <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>
+                        {u.first_name} {u.last_name} <span style={{ fontSize: 11, color: '#64748B', fontWeight: 400 }}>({u.role}{!u.is_active ? ' · inactive' : ''})</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748B' }}>{u.email}</div>
+                    </div>
+                    <button onClick={() => resetPassword(u)} style={{ padding: '8px 14px', borderRadius: 8, background: '#FEF3C7', border: 'none', color: '#92400E', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Reset Password
+                    </button>
+                  </div>
+                ))}
+                {viewOrgUsers.length === 0 && <p style={{ color: '#64748B', fontSize: 14 }}>No users in this organization.</p>}
+              </div>
+            )}
+
+            {/* One-time temporary password display */}
+            {tempPassword && (
+              <div style={{ padding: 16, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, marginBottom: 24 }}>
+                <div style={{ fontWeight: 700, color: '#065F46', marginBottom: 8, fontSize: 14 }}>Temporary password for {tempPassword.email}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <code style={{ fontSize: 18, fontWeight: 700, background: '#fff', padding: '6px 14px', borderRadius: 8, border: '1px solid #A7F3D0' }}>{tempPassword.password}</code>
+                  <button onClick={() => navigator.clipboard.writeText(tempPassword.password)} style={{ padding: '8px 12px', borderRadius: 8, background: '#059669', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
+                </div>
+                <div style={{ fontSize: 12, color: '#047857', marginTop: 8 }}>Shown once — share it with the user and ask them to change it after logging in.</div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 12 }}>
               <button onClick={() => { setViewOrg(null); openEdit(viewOrg); }}
