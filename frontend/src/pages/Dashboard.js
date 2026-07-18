@@ -6,9 +6,11 @@ import {
   ArrowUpRight, ArrowDownRight, Bell, Calendar
 } from 'lucide-react';
 import api from '../utils/api';
+import { useStore } from '../utils/store';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const org = useStore((s) => s.organization);
   const { data: stats, isLoading } = useQuery('dashboard-stats', () =>
     api.get('/dashboard/stats').then(r => r.data)
   );
@@ -45,7 +47,7 @@ export default function Dashboard() {
             <Calendar size={18} /> Pre-Register Visitor
           </button>
           <button
-            onClick={() => window.open('/kiosk', '_blank')}
+            onClick={() => window.open(org?.id ? `/kiosk?org=${org.id}` : '/kiosk', '_blank')}
             style={{
               padding: '12px 24px', borderRadius: 12,
               background: '#FF6B35', border: 'none', color: '#fff',
@@ -59,7 +61,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, marginBottom: 32 }}>
         {statCards.map((card, i) => (
           <div key={i} style={{
             background: '#fff', borderRadius: 20, padding: 24,
@@ -90,7 +92,7 @@ export default function Dashboard() {
       </div>
 
       {/* Two Column Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
         {/* Recent Visits */}
         <div style={{
           background: '#fff', borderRadius: 20, padding: 24,
