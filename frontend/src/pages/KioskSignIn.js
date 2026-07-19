@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera } from 'lucide-react';
 import api from '../utils/api';
 
 export default function KioskSignIn() {
@@ -16,6 +16,56 @@ export default function KioskSignIn() {
     purpose: '', vehicle_plate: '',
   });
   const [visitResult, setVisitResult] = useState(null);
+
+  // Photo capture (org-configurable)
+  const [photoRequired, setPhotoRequired] = useState(false);
+  const [photo, setPhoto] = useState(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/kiosk/config/${orgId}`).then(r => setPhotoRequired(!!r.data.photo_required)).catch(() => {});
+  }, [orgId]);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraOn(false);
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 } });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraOn(true);
+    } catch (e) { /* camera unavailable */ }
+  };
+
+  useEffect(() => {
+    if (step === 1 && photoRequired && !photo) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => stopCamera();
+  }, [step, photoRequired, photo]);
+
+  const takePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, 480 / video.videoWidth);
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    setPhoto(canvas.toDataURL('image/jpeg', 0.7));
+    stopCamera();
+  };
 
   // Host dropdown state
   const [hostSearch, setHostSearch] = useState('');
@@ -92,7 +142,8 @@ export default function KioskSignIn() {
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         ...formData,
-        sign_in_method: 'kiosk'
+        sign_in_method: 'kiosk',
+        photo_data: photo
       });
       setVisitResult(res.data);
       setStep(3);
@@ -157,6 +208,10 @@ export default function KioskSignIn() {
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginBottom: 40 }}>
           {formData.host_id && `Notifying your host...`}
         </p>
+
+        {photo && (
+          <img src={photo} alt="Visitor" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: '50%', border: '3px solid rgba(255,255,255,0.4)', marginBottom: 24 }} />
+        )}
 
         <div style={{
           background: 'rgba(255,255,255,0.1)', borderRadius: 20,
@@ -307,15 +362,40 @@ export default function KioskSignIn() {
             />
           </div>
 
+          {photoRequired && (
+            <div>
+              <label style={labelStyle}><Camera size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Photo</label>
+              {photo ? (
+                <div style={{ textAlign: 'center' }}>
+                  <img src={photo} alt="Visitor" style={{ width: 160, height: 160, objectFit: 'cover', borderRadius: 16, border: '2px solid rgba(255,255,255,0.3)' }} />
+                  <div>
+                    <button onClick={() => setPhoto(null)} style={{ marginTop: 10, padding: '8px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', cursor: 'pointer', fontSize: 14 }}>
+                      Retake
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center' }}>
+                  <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxWidth: 320, borderRadius: 16, background: '#000', border: '2px solid rgba(255,255,255,0.2)' }} />
+                  <div>
+                    <button onClick={takePhoto} disabled={!cameraOn} style={{ marginTop: 10, padding: '12px 24px', borderRadius: 12, background: cameraOn ? '#0D7377' : 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraOn ? 'pointer' : 'not-allowed', fontSize: 15 }}>
+                      {cameraOn ? 'Take Photo' : 'Starting camera...'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             onClick={() => setStep(2)}
-            disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id}
+            disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || !formData.visitor_type_id) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.first_name || !formData.last_name || !formData.visitor_type_id) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.first_name || !formData.last_name || !formData.visitor_type_id) ? 0.5 : 1
+              cursor: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 'not-allowed' : 'pointer',
+              opacity: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 0.5 : 1
             }}
           >
             Continue
