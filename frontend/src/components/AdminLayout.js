@@ -111,9 +111,19 @@ export default function AdminLayout() {
 
         {/* User */}
         <div style={{ padding: '16px', borderTop: '1px solid #1E293B' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <div
+            onClick={() => { navigate('/settings'); setMobileOpen(false); }}
+            title="Open your settings"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+              padding: '8px', margin: '-8px -8px 4px', borderRadius: 10,
+              cursor: 'pointer', transition: 'background 0.15s'
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#1E293B')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
             <div style={{
-              width: 36, height: 36, borderRadius: '50%',
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
               background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 600, fontSize: 14
@@ -121,11 +131,12 @@ export default function AdminLayout() {
               {user?.first_name?.[0]}{user?.last_name?.[0]}
             </div>
             {sidebarOpen && (
-              <div style={{ fontSize: 13 }}>
+              <div style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{user?.first_name} {user?.last_name}</div>
                 <div style={{ color: '#94A3B8', fontSize: 11 }}>{org?.name}</div>
               </div>
             )}
+            {sidebarOpen && <Settings size={15} color="#64748B" style={{ flexShrink: 0 }} />}
           </div>
           <button
             onClick={handleLogout}
