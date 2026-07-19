@@ -1,9 +1,9 @@
 import React from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../utils/store';
 import Toaster from './Toaster';
 import {
-  LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor,
+  LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor, UserPlus,
   QrCode, Package, Shield, Bell, Menu, X
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ export default function AdminLayout() {
   const user = useStore((s) => s.user);
   const org = useStore((s) => s.organization);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -28,6 +29,7 @@ export default function AdminLayout() {
     { path: '/hosts', icon: Users, label: 'Hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered' },
     { path: '/devices', icon: Monitor, label: 'Devices' },
+    { path: '/settings?section=team', icon: UserPlus, label: 'Team' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
@@ -93,16 +95,23 @@ export default function AdminLayout() {
               key={item.path}
               to={item.path}
               onClick={() => isMobile && setMobileOpen(false)}
-              style={({ isActive }) => ({
+              style={({ isActive }) => {
+                // Query-aware: Team is only active on /settings?section=team,
+                // Settings only on plain /settings (no query)
+                const active = item.path.includes('?')
+                  ? (location.pathname + location.search) === item.path
+                  : (item.path === '/settings' ? isActive && !location.search : isActive);
+                return {
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '12px 16px', borderRadius: 10,
-                color: isActive ? '#14FFEC' : '#94A3B8',
-                background: isActive ? 'rgba(13, 115, 119, 0.2)' : 'transparent',
+                color: active ? '#14FFEC' : '#94A3B8',
+                background: active ? 'rgba(13, 115, 119, 0.2)' : 'transparent',
                 textDecoration: 'none',
                 fontSize: 14, fontWeight: 500,
                 transition: 'all 0.2s',
                 marginBottom: 4,
-              })}
+                };
+              }}
             >
               <item.icon size={20} />
               {(!isMobile ? sidebarOpen : true) && <span>{item.label}</span>}
