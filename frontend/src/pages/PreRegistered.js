@@ -1,320 +1,281 @@
-import React, { useState } from 'react';
-import { useQuery } from 'react-query';
-import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import api from '../utils/api';
-import { toast } from '../utils/toast';
+const express = require('express');
+const QRCode = require('qrcode');
+const router = express.Router();
+const db = require('../utils/db');
+const { authenticate } = require('../middleware/auth');
+const { v4: uuidv4 } = require('uuid');
+const { sendEmail } = require('../utils/notifications');
 
-export default function PreRegistered() {
-  const [showModal, setShowModal] = useState(false);
-  const [showQR, setShowQR] = useState(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({
-    first_name: '', last_name: '', email: '', phone: '', company: '',
-    host_id: '', visitor_type_id: '', purpose: '', expected_date: '',
-    expected_time_start: '', expected_time_end: ''
-  });
-  const [errors, setErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
+router.get('/', authenticate, async (req, res) => {
+  try {
+    const { date } = req.query;
+    let query = `
+      SELECT pr.*, h.first_name as host_first_name, h.last_name as host_last_name, vt.name as visitor_type_name,
+        (SELECT v.status FROM visits v WHERE v.pre_reg_id = pr.id ORDER BY v.checked_in_at DESC LIMIT 1) AS live_visit_status
+      FROM pre_registered_visitors pr
+      LEFT JOIN hosts h ON pr.host_id = h.id
+      LEFT JOIN visitor_types vt ON pr.visitor_type_id = vt.id
+      WHERE pr.org_id = $1
+    `;
+    const params = [req.user.org_id];
 
-  const { data: preRegs, refetch } = useQuery('pre-registered', () =>
-    api.get('/pre-registered').then(r => r.data),
-    { refetchInterval: 30000 }
-  );
-
-  const { data: hosts } = useQuery('hosts-list', () =>
-    api.get('/hosts').then(r => r.data)
-  );
-
-  const { data: visitorTypes } = useQuery('visitor-types-list', () =>
-    api.get('/visitor-types').then(r => r.data)
-  );
-
-  const validateForm = () => {
-    const newErrors = {};
-    if (!form.first_name?.trim()) newErrors.first_name = 'First name is required';
-    if (!form.last_name?.trim()) newErrors.last_name = 'Last name is required';
-    if (!form.email?.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      newErrors.email = 'Please enter a valid email';
+    if (date) {
+      query += ` AND pr.expected_date = $2`;
+      params.push(date);
     }
-    if (!form.host_id) newErrors.host_id = 'Please select a host';
-    if (!form.visitor_type_id) newErrors.visitor_type_id = 'Please select a visitor type';
-    if (!form.expected_date) newErrors.expected_date = 'Expected date is required';
-    if (!form.expected_time_start) newErrors.expected_time_start = 'Start time is required';
-    if (!form.expected_time_end) newErrors.expected_time_end = 'End time is required';
-    if (form.expected_time_start && form.expected_time_end && form.expected_time_end <= form.expected_time_start) {
-      newErrors.expected_time_end = 'End time must be after start time';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
+    query += ` ORDER BY pr.expected_date DESC NULLS LAST, pr.expected_time_start DESC NULLS LAST, pr.created_at DESC`;
 
-    setSubmitting(true);
-    try {
-      if (editingId) {
-        await api.put(`/pre-registered/${editingId}`, form);
-      } else {
-        await api.post('/pre-registered', form);
+    const result = await db.query(query, params);
+
+    // Visits are the source of truth: if a linked visit exists, derive the real status from it
+    // (self-heals any status that a missed update or QR re-validation left behind)
+    const rows = result.rows.map((r) => {
+      let real = r.invitation_status;
+      if (r.live_visit_status === 'checked_in') real = 'checked_in';
+      else if (r.live_visit_status === 'checked_out') real = 'checked_out';
+      if (real !== r.invitation_status) {
+        db.query('UPDATE pre_registered_visitors SET invitation_status = $1 WHERE id = $2', [real, r.id])
+          .catch((e) => console.error('Status self-heal failed:', e.message));
       }
-      closeModal();
-      refetch();
-      toast(editingId ? 'Pre-registration updated' : 'Visitor pre-registered — invitation sent');
-    } catch (err) {
-      const serverError = err.response?.data?.details || err.response?.data?.error || 'Failed to save';
-      toast(serverError, 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await api.delete(`/pre-registered/${id}`);
-      setConfirmDeleteId(null);
-      refetch();
-      toast('Pre-registration deleted');
-    } catch (err) {
-      toast(err.response?.data?.error || 'Failed to delete', 'error');
-    }
-  };
-
-  const handleResend = async (id) => {
-    try {
-      await api.post(`/pre-registered/${id}/resend`);
-      toast('Invitation resent');
-      refetch();
-    } catch (err) {
-      toast(err.response?.data?.error || 'Failed to resend', 'error');
-    }
-  };
-
-  const openEdit = (pr) => {
-    setEditingId(pr.id);
-    setForm({
-      first_name: pr.first_name, last_name: pr.last_name, email: pr.email,
-      phone: pr.phone || '', company: pr.company || '', host_id: pr.host_id || '',
-      visitor_type_id: pr.visitor_type_id || '', purpose: pr.purpose || '',
-      expected_date: pr.expected_date ? pr.expected_date.split('T')[0] : '',
-      expected_time_start: pr.expected_time_start || '',
-      expected_time_end: pr.expected_time_end || ''
+      const { live_visit_status, ...rest } = r;
+      return { ...rest, invitation_status: real };
     });
-    setErrors({});
-    setShowModal(true);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch pre-registered visitors' });
+  }
+});
+
+
+// Build a QR PNG attachment for invitation emails
+const buildQrAttachment = async (token) => {
+  const url = `${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${token}`;
+  const dataUrl = await QRCode.toDataURL(url, { width: 400, margin: 1 });
+  return {
+    filename: 'visit-qr.png',
+    content: dataUrl.split(';base64,').pop(),
+    encoding: 'base64',
+    cid: 'visitqr'
   };
+};
 
-  const closeModal = () => {
-    setShowModal(false);
-    setEditingId(null);
-    setForm({ first_name: '', last_name: '', email: '', phone: '', company: '', host_id: '', visitor_type_id: '', purpose: '', expected_date: '', expected_time_start: '', expected_time_end: '' });
-    setErrors({});
-  };
+router.post('/', authenticate, async (req, res) => {
+  try {
+    const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
 
-  const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
-    if (errors[field]) setErrors({ ...errors, [field]: null });
-  };
+    // Empty strings break Postgres uuid/date/time columns — convert to null
+    const clean = (v) => (v === '' || v === undefined ? null : v);
 
-  const inputStyle = (field) => ({
-    width: '100%', padding: '12px 16px', borderRadius: 10,
-    border: `2px solid ${errors[field] ? '#EF4444' : '#E2E8F0'}`,
-    fontSize: 14, outline: 'none', background: '#fff'
-  });
+    // Dates are optional by default; the org can require them via Settings
+    const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const orgSettings = (orgRes.rows[0] && orgRes.rows[0].settings) || {};
+    if (orgSettings.require_prereg_date && !clean(expected_date)) {
+      return res.status(400).json({ error: 'Expected date is required by your organization settings' });
+    }
 
-  const errorStyle = { color: '#EF4444', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 };
+    // Generate QR code token
+    const qrToken = uuidv4();
+    const qrExpires = new Date();
+    qrExpires.setDate(qrExpires.getDate() + 7); // QR valid for 7 days
 
-  const statusColors = {
-    pending: '#F59E0B', sent: '#0D7377', opened: '#3B82F6', used: '#10B981',
-    checked_in: '#10B981', checked_out: '#64748B'
-  };
-  const statusLabels = {
-    pending: 'pending', sent: 'sent', opened: 'opened', used: 'used',
-    checked_in: 'in building', checked_out: 'checked out'
-  };
+    const result = await db.query(
+      `INSERT INTO pre_registered_visitors (org_id, first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end, qr_code, qr_expires_at, invitation_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'sent') RETURNING *`,
+      [req.user.org_id, first_name, last_name, clean(email), clean(phone), clean(company), clean(host_id), clean(visitor_type_id), clean(purpose), clean(expected_date), clean(expected_time_start), clean(expected_time_end), qrToken, qrExpires]
+    );
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Pre-Registered Visitors</h1>
-          <p style={{ color: '#64748B', marginTop: 4 }}>Invite visitors ahead of time with QR codes</p>
-        </div>
-        <button onClick={() => { setEditingId(null); setForm({ first_name: '', last_name: '', email: '', phone: '', company: '', host_id: '', visitor_type_id: '', purpose: '', expected_date: '', expected_time_start: '', expected_time_end: '' }); setErrors({}); setShowModal(true); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
-          <Plus size={18} /> Pre-Register Visitor
-        </button>
-      </div>
+    const preReg = result.rows[0];
 
-      <div style={{ background: '#fff', borderRadius: 20, overflow: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#F8FAFC' }}>
-              {['Visitor', 'Host', 'Date', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '16px 20px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {preRegs?.map(pr => (
-              <tr key={pr.id} style={{ borderTop: '1px solid #E2E8F0' }}>
-                <td style={{ padding: '16px 20px' }}>
-                  <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>{pr.first_name} {pr.last_name}</div>
-                  <div style={{ fontSize: 12, color: '#64748B' }}>{pr.email}</div>
-                </td>
-                <td style={{ padding: '16px 20px', fontSize: 14, color: '#334155' }}>
-                  {pr.host_first_name} {pr.host_last_name}
-                </td>
-                <td style={{ padding: '16px 20px', fontSize: 13, color: '#64748B' }}>
-                  {pr.expected_date ? new Date(pr.expected_date).toLocaleDateString() : '-'} {pr.expected_time_start || ''}
-                </td>
-                <td style={{ padding: '16px 20px' }}>
-                  <span style={{
-                    fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20,
-                    background: `${statusColors[pr.invitation_status] || '#64748B'}15`,
-                    color: statusColors[pr.invitation_status] || '#64748B'
-                  }}>
-                    {statusLabels[pr.invitation_status] || pr.invitation_status}
-                  </span>
-                </td>
-                <td style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setShowQR(pr)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="View QR">
-                      <QrCode size={16} color="#64748B" />
-                    </button>
-                    <button onClick={() => openEdit(pr)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="Edit">
-                      <Pencil size={16} color="#64748B" />
-                    </button>
-                    <button onClick={() => handleResend(pr.id)} style={{ padding: 8, borderRadius: 8, background: '#DBEAFE', border: 'none', cursor: 'pointer' }} title="Resend Invitation">
-                      <RefreshCw size={16} color="#1E40AF" />
-                    </button>
-                    {confirmDeleteId === pr.id ? (
-                      <span style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => handleDelete(pr.id)} style={{ padding: '8px 10px', borderRadius: 8, background: '#EF4444', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                          Confirm
-                        </button>
-                        <button onClick={() => setConfirmDeleteId(null)} style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
-                      <button onClick={() => setConfirmDeleteId(pr.id)} style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }} title="Delete">
-                        <Trash2 size={16} color="#EF4444" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    // Try to send invitation email
+    if (email) {
+      try {
+        const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [host_id]);
+        const hostName = hostResult.rows[0] ? `${hostResult.rows[0].first_name} ${hostResult.rows[0].last_name}` : 'your host';
 
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{editingId ? 'Edit' : 'Pre-Register'} Visitor</h2>
-            <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>Fields marked with <span style={{ color: '#EF4444' }}>*</span> are required</p>
+        const qrAttachment = await buildQrAttachment(qrToken);
+        await sendEmail({
+          to: email,
+          subject: `You're invited to visit ${req.user.org_name || 'our office'}`,
+          attachments: [qrAttachment],
+          html: `
+            <h2>Hello ${first_name},</h2>
+            <p>You have been pre-registered for a visit.</p>
+            <p><strong>Date:</strong> ${expected_date || 'Flexible — any day'}</p>
+            ${expected_time_start ? `<p><strong>Time:</strong> ${expected_time_start}${expected_time_end ? ' - ' + expected_time_end : ''}</p>` : ''}
+            <p><strong>Host:</strong> ${hostName}</p>
+            <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
+            <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly — no typing needed:</p>
+            <p><img src="cid:visitqr" alt="Your visit QR code" width="200" style="display:block"/></p>
+            <p>You can also tap this link on your phone instead:</p>
+            <p><a href="${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${qrToken}">
+              ${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${qrToken}
+            </a></p>
+            <p>This QR code is valid until ${qrExpires.toLocaleDateString()}.</p>
+          `
+        });
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>First Name <span style={{ color: '#EF4444' }}>*</span></label>
-                  <input type="text" value={form.first_name} onChange={(e) => handleChange('first_name', e.target.value)} style={inputStyle('first_name')} />
-                  {errors.first_name && <span style={errorStyle}><AlertCircle size={12} /> {errors.first_name}</span>}
-                </div>
-                <div>
-                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Last Name <span style={{ color: '#EF4444' }}>*</span></label>
-                  <input type="text" value={form.last_name} onChange={(e) => handleChange('last_name', e.target.value)} style={inputStyle('last_name')} />
-                  {errors.last_name && <span style={errorStyle}><AlertCircle size={12} /> {errors.last_name}</span>}
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Email <span style={{ color: '#EF4444' }}>*</span></label>
-                <input type="email" value={form.email} onChange={(e) => handleChange('email', e.target.value)} style={inputStyle('email')} />
-                {errors.email && <span style={errorStyle}><AlertCircle size={12} /> {errors.email}</span>}
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Phone</label>
-                <input type="tel" value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} style={inputStyle('phone')} />
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Company</label>
-                <input type="text" value={form.company} onChange={(e) => handleChange('company', e.target.value)} style={inputStyle('company')} />
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Host <span style={{ color: '#EF4444' }}>*</span></label>
-                <select value={form.host_id} onChange={(e) => handleChange('host_id', e.target.value)} style={inputStyle('host_id')}>
-                  <option value="">Select a host</option>
-                  {hosts?.map(h => <option key={h.id} value={h.id}>{h.first_name} {h.last_name}</option>)}
-                </select>
-                {errors.host_id && <span style={errorStyle}><AlertCircle size={12} /> {errors.host_id}</span>}
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Visitor Type <span style={{ color: '#EF4444' }}>*</span></label>
-                <select value={form.visitor_type_id} onChange={(e) => handleChange('visitor_type_id', e.target.value)} style={inputStyle('visitor_type_id')}>
-                  <option value="">Select visitor type</option>
-                  {visitorTypes?.map(vt => <option key={vt.id} value={vt.id}>{vt.name}</option>)}
-                </select>
-                {errors.visitor_type_id && <span style={errorStyle}><AlertCircle size={12} /> {errors.visitor_type_id}</span>}
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Purpose</label>
-                <input type="text" value={form.purpose} onChange={(e) => handleChange('purpose', e.target.value)} style={inputStyle('purpose')} />
-              </div>
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Expected Date <span style={{ color: '#EF4444' }}>*</span></label>
-                <input type="date" value={form.expected_date} onChange={(e) => handleChange('expected_date', e.target.value)} style={inputStyle('expected_date')} />
-                {errors.expected_date && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_date}</span>}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
-                  <input type="time" value={form.expected_time_start} onChange={(e) => handleChange('expected_time_start', e.target.value)} style={inputStyle('expected_time_start')} />
-                  {errors.expected_time_start && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_time_start}</span>}
-                </div>
-                <div>
-                  <label style={{ fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 6, display: 'block' }}>End Time <span style={{ color: '#EF4444' }}>*</span></label>
-                  <input type="time" value={form.expected_time_end} onChange={(e) => handleChange('expected_time_end', e.target.value)} style={inputStyle('expected_time_end')} />
-                  {errors.expected_time_end && <span style={errorStyle}><AlertCircle size={12} /> {errors.expected_time_end}</span>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                <button type="button" onClick={closeModal} style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', borderRadius: 10, background: submitting ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer' }}>
-                  {submitting ? 'Saving...' : (editingId ? 'Update' : 'Send Invitation')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        await db.query('UPDATE pre_registered_visitors SET invitation_sent_at = NOW() WHERE id = $1', [preReg.id]);
+      } catch (emailErr) {
+        console.log('Email send failed (no SMTP):', emailErr.message);
+        // Still create the pre-registration, just mark as pending
+        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'pending' WHERE id = $1", [preReg.id]);
+      }
+    }
 
-      {/* QR Modal */}
-      {showQR && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: '#fff', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}>
-            <h3 style={{ marginBottom: 16 }}>QR Code for {showQR.first_name} {showQR.last_name}</h3>
-            <div style={{ padding: 20, background: '#F8FAFC', borderRadius: 16, marginBottom: 16 }}>
-              <QRCodeSVG value={`${window.location.origin}/check-in/${showQR.qr_code}`} size={200} level="H" includeMargin={true} />
-            </div>
-            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Scan this QR code or share the link below</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', padding: '12px 16px', borderRadius: 10, marginBottom: 16 }}>
-              <input type="text" readOnly value={`${window.location.origin}/check-in/${showQR.qr_code}`} style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none' }} />
-              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/check-in/${showQR.qr_code}`); toast('Link copied'); }} style={{ padding: '6px 12px', borderRadius: 6, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
-                <Copy size={14} /> Copy
-              </button>
-            </div>
-            <button onClick={() => setShowQR(null)} style={{ padding: '12px 32px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+    res.status(201).json(preReg);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create pre-registration' });
+  }
+});
+
+// UPDATE pre-registration
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
+
+    // Empty strings break Postgres uuid/date/time columns — convert to null
+    const clean = (v) => (v === '' || v === undefined ? null : v);
+
+    // Dates are optional by default; the org can require them via Settings
+    const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const orgSettings = (orgRes.rows[0] && orgRes.rows[0].settings) || {};
+    if (orgSettings.require_prereg_date && !clean(expected_date)) {
+      return res.status(400).json({ error: 'Expected date is required by your organization settings' });
+    }
+
+    const result = await db.query(
+      `UPDATE pre_registered_visitors 
+       SET first_name = $1, last_name = $2, email = $3, phone = $4, company = $5, 
+           host_id = $6, visitor_type_id = $7, purpose = $8, expected_date = $9, 
+           expected_time_start = $10, expected_time_end = $11
+       WHERE id = $12 AND org_id = $13 RETURNING *`,
+      [first_name, last_name, email, clean(phone), clean(company), clean(host_id), clean(visitor_type_id), clean(purpose), clean(expected_date), clean(expected_time_start), clean(expected_time_end), req.params.id, req.user.org_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pre-registration not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update pre-registration', details: err.message });
+  }
+});
+
+// DELETE pre-registration
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(
+      'DELETE FROM pre_registered_visitors WHERE id = $1 AND org_id = $2 RETURNING id',
+      [req.params.id, req.user.org_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pre-registration not found' });
+    }
+
+    res.json({ success: true, message: 'Pre-registration deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete pre-registration' });
+  }
+});
+
+// RESEND invitation
+router.post('/:id/resend', authenticate, async (req, res) => {
+  try {
+    const result = await db.query(
+      'SELECT * FROM pre_registered_visitors WHERE id = $1 AND org_id = $2',
+      [req.params.id, req.user.org_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pre-registration not found' });
+    }
+
+    const preReg = result.rows[0];
+
+    // Generate new QR code
+    const newQrToken = uuidv4();
+    const newQrExpires = new Date();
+    newQrExpires.setDate(newQrExpires.getDate() + 7);
+
+    const resendStatus = ['checked_in', 'checked_out'].includes(preReg.invitation_status) ? preReg.invitation_status : 'sent';
+    await db.query(
+      'UPDATE pre_registered_visitors SET qr_code = $1, qr_expires_at = $2, invitation_status = $3 WHERE id = $4',
+      [newQrToken, newQrExpires, resendStatus, preReg.id]
+    );
+
+    // Try to send email
+    if (preReg.email) {
+      try {
+        const hostResult = await db.query('SELECT * FROM hosts WHERE id = $1', [preReg.host_id]);
+        const hostName = hostResult.rows[0] ? `${hostResult.rows[0].first_name} ${hostResult.rows[0].last_name}` : 'your host';
+
+        const qrAttachment = await buildQrAttachment(newQrToken);
+        await sendEmail({
+          to: preReg.email,
+          subject: `Reminder: Your visit invitation`,
+          attachments: [qrAttachment],
+          html: `
+            <h2>Hello ${preReg.first_name},</h2>
+            <p>This is a reminder about your upcoming visit.</p>
+            <p><strong>Date:</strong> ${preReg.expected_date || 'Flexible — any day'}</p>
+            ${preReg.expected_time_start ? `<p><strong>Time:</strong> ${preReg.expected_time_start}${preReg.expected_time_end ? ' - ' + preReg.expected_time_end : ''}</p>` : ''}
+            <p><strong>Host:</strong> ${hostName}</p>
+            <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly:</p>
+            <p><img src="cid:visitqr" alt="Your visit QR code" width="200" style="display:block"/></p>
+            <p>You can also tap this link on your phone instead:</p>
+            <p><a href="${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${newQrToken}">
+              ${process.env.FRONTEND_URL || 'https://www.sentinelskiosk.com'}/check-in/${newQrToken}
+            </a></p>
+          `
+        });
+
+        await db.query('UPDATE pre_registered_visitors SET invitation_sent_at = NOW() WHERE id = $1', [preReg.id]);
+      } catch (emailErr) {
+        console.log('Email resend failed:', emailErr.message);
+      }
+    }
+
+    res.json({ success: true, message: 'Invitation resent', qr_code: newQrToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to resend invitation' });
+  }
+});
+
+// Validate QR code for contactless sign-in
+router.get('/validate-qr/:token', async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT pr.*, h.first_name as host_first_name, h.last_name as host_last_name, vt.name as visitor_type_name
+       FROM pre_registered_visitors pr
+       LEFT JOIN hosts h ON pr.host_id = h.id
+       LEFT JOIN visitor_types vt ON pr.visitor_type_id = vt.id
+       WHERE pr.qr_code = $1 AND pr.qr_expires_at > NOW()`,
+      [req.params.token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired QR code' });
+    }
+
+    const visitor = result.rows[0];
+
+    // Only advance pending/sent -> opened. Never downgrade someone already checked in/out
+    // (the QR gets re-validated on every link refresh — this must not reset their status)
+    if (['pending', 'sent'].includes(visitor.invitation_status)) {
+      await db.query("UPDATE pre_registered_visitors SET invitation_status = 'opened' WHERE id = $1", [visitor.id]);
+    }
+
+    res.json({ valid: true, visitor: visitor });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to validate QR code' });
+  }
+});
+
+module.exports = router;
