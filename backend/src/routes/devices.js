@@ -46,6 +46,9 @@ router.get('/', authenticate, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('Devices list error:', err);
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'Devices table not found — run migration-devices.txt in Render PSQL first' });
+    }
     res.status(500).json({ error: 'Failed to load devices' });
   }
 });
@@ -72,6 +75,9 @@ router.post('/', authenticate, requireRole('admin', 'super_admin'), async (req, 
     res.status(201).json(created);
   } catch (err) {
     console.error('Device create error:', err);
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'Devices table not found — run migration-devices.txt in Render PSQL first' });
+    }
     res.status(500).json({ error: 'Failed to add device' });
   }
 });
