@@ -37,7 +37,7 @@ export default function Settings() {
   };
 
   const enableMfa = async () => {
-    if (!mfaCode) return alert('Enter the 6-digit code from your authenticator app');
+    if (!mfaCode) return toast('Enter the 6-digit code from your authenticator app', 'error');
     setMfaBusy(true);
     try {
       await api.post('/auth/mfa/enable', { code: mfaCode });
@@ -71,7 +71,7 @@ export default function Settings() {
       await api.patch('/auth/me/preferences', { notify_offline: value });
     } catch (err) {
       setNotifyOffline(!value); // revert on failure
-      alert(err.response?.data?.error || 'Failed to save preference — the database may need the offline-alerts migration');
+      toast(err.response?.data?.error || 'Failed to save preference', 'error');
     }
   };
 
@@ -96,7 +96,7 @@ export default function Settings() {
 
   const addUser = async () => {
     if (!newUser.first_name || !newUser.last_name || !newUser.email || !newUser.password) {
-      alert('Fill in all fields for the new user');
+      toast('Fill in all fields for the new user', 'error');
       return;
     }
     setSavingUser(true);
@@ -119,7 +119,7 @@ export default function Settings() {
       const res = await api.post(`/users/${u.id}/reset-password`);
       setTempPw({ email: res.data.user_email, password: res.data.temp_password });
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to reset password');
+      toast(err.response?.data?.error || 'Failed to reset password', 'error');
     }
   };
 
@@ -143,7 +143,7 @@ export default function Settings() {
       await api.patch(`/users/${u.id}/status`, { is_active: !u.is_active });
       loadTeam();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update user');
+      toast(err.response?.data?.error || 'Failed to update user', 'error');
     }
   };
   const [settings, setSettings] = useState({
