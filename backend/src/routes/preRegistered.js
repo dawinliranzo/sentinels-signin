@@ -10,7 +10,8 @@ router.get('/', authenticate, async (req, res) => {
   try {
     const { date } = req.query;
     let query = `
-      SELECT pr.*, h.first_name as host_first_name, h.last_name as host_last_name, vt.name as visitor_type_name
+      SELECT pr.*, h.first_name as host_first_name, h.last_name as host_last_name, vt.name as visitor_type_name,
+        (SELECT v.status FROM visits v WHERE v.pre_reg_id = pr.id ORDER BY v.checked_in_at DESC LIMIT 1) AS live_visit_status
       FROM pre_registered_visitors pr
       LEFT JOIN hosts h ON pr.host_id = h.id
       LEFT JOIN visitor_types vt ON pr.visitor_type_id = vt.id
@@ -23,10 +24,24 @@ router.get('/', authenticate, async (req, res) => {
       params.push(date);
     }
 
-    query += ` ORDER BY pr.expected_date DESC, pr.expected_time_start DESC`;
+    query += ` ORDER BY pr.expected_date DESC NULLS LAST, pr.expected_time_start DESC NULLS LAST, pr.created_at DESC`;
 
     const result = await db.query(query, params);
-    res.json(result.rows);
+
+    // Visits are the source of truth: if a linked visit exists, derive the real status from it
+    // (self-heals any status that a missed update or QR re-validation left behind)
+    const rows = result.rows.map((r) => {
+      let real = r.invitation_status;
+      if (r.live_visit_status === 'checked_in') real = 'checked_in';
+      else if (r.live_visit_status === 'checked_out') real = 'checked_out';
+      if (real !== r.invitation_status) {
+        db.query('UPDATE pre_registered_visitors SET invitation_status = $1 WHERE id = $2', [real, r.id])
+          .catch((e) => console.error('Status self-heal failed:', e.message));
+      }
+      const { live_visit_status, ...rest } = r;
+      return { ...rest, invitation_status: real };
+    });
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch pre-registered visitors' });
   }
@@ -49,6 +64,16 @@ router.post('/', authenticate, async (req, res) => {
   try {
     const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
 
+    // Empty strings break Postgres uuid/date/time columns — convert to null
+    const clean = (v) => (v === '' || v === undefined ? null : v);
+
+    // Dates are optional by default; the org can require them via Settings
+    const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const orgSettings = (orgRes.rows[0] && orgRes.rows[0].settings) || {};
+    if (orgSettings.require_prereg_date && !clean(expected_date)) {
+      return res.status(400).json({ error: 'Expected date is required by your organization settings' });
+    }
+
     // Generate QR code token
     const qrToken = uuidv4();
     const qrExpires = new Date();
@@ -57,7 +82,7 @@ router.post('/', authenticate, async (req, res) => {
     const result = await db.query(
       `INSERT INTO pre_registered_visitors (org_id, first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end, qr_code, qr_expires_at, invitation_status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'sent') RETURNING *`,
-      [req.user.org_id, first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end, qrToken, qrExpires]
+      [req.user.org_id, first_name, last_name, clean(email), clean(phone), clean(company), clean(host_id), clean(visitor_type_id), clean(purpose), clean(expected_date), clean(expected_time_start), clean(expected_time_end), qrToken, qrExpires]
     );
 
     const preReg = result.rows[0];
@@ -76,8 +101,8 @@ router.post('/', authenticate, async (req, res) => {
           html: `
             <h2>Hello ${first_name},</h2>
             <p>You have been pre-registered for a visit.</p>
-            <p><strong>Date:</strong> ${expected_date}</p>
-            <p><strong>Time:</strong> ${expected_time_start} - ${expected_time_end}</p>
+            <p><strong>Date:</strong> ${expected_date || 'Flexible — any day'}</p>
+            ${expected_time_start ? `<p><strong>Time:</strong> ${expected_time_start}${expected_time_end ? ' - ' + expected_time_end : ''}</p>` : ''}
             <p><strong>Host:</strong> ${hostName}</p>
             <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
             <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly — no typing needed:</p>
@@ -112,6 +137,13 @@ router.put('/:id', authenticate, async (req, res) => {
 
     // Empty strings break Postgres uuid/date/time columns — convert to null
     const clean = (v) => (v === '' || v === undefined ? null : v);
+
+    // Dates are optional by default; the org can require them via Settings
+    const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const orgSettings = (orgRes.rows[0] && orgRes.rows[0].settings) || {};
+    if (orgSettings.require_prereg_date && !clean(expected_date)) {
+      return res.status(400).json({ error: 'Expected date is required by your organization settings' });
+    }
 
     const result = await db.query(
       `UPDATE pre_registered_visitors 
@@ -171,9 +203,10 @@ router.post('/:id/resend', authenticate, async (req, res) => {
     const newQrExpires = new Date();
     newQrExpires.setDate(newQrExpires.getDate() + 7);
 
+    const resendStatus = ['checked_in', 'checked_out'].includes(preReg.invitation_status) ? preReg.invitation_status : 'sent';
     await db.query(
       'UPDATE pre_registered_visitors SET qr_code = $1, qr_expires_at = $2, invitation_status = $3 WHERE id = $4',
-      [newQrToken, newQrExpires, 'sent', preReg.id]
+      [newQrToken, newQrExpires, resendStatus, preReg.id]
     );
 
     // Try to send email
@@ -190,8 +223,8 @@ router.post('/:id/resend', authenticate, async (req, res) => {
           html: `
             <h2>Hello ${preReg.first_name},</h2>
             <p>This is a reminder about your upcoming visit.</p>
-            <p><strong>Date:</strong> ${preReg.expected_date}</p>
-            <p><strong>Time:</strong> ${preReg.expected_time_start} - ${preReg.expected_time_end}</p>
+            <p><strong>Date:</strong> ${preReg.expected_date || 'Flexible — any day'}</p>
+            ${preReg.expected_time_start ? `<p><strong>Time:</strong> ${preReg.expected_time_start}${preReg.expected_time_end ? ' - ' + preReg.expected_time_end : ''}</p>` : ''}
             <p><strong>Host:</strong> ${hostName}</p>
             <p><strong>When you arrive:</strong> show this QR code at the kiosk to check in instantly:</p>
             <p><img src="cid:visitqr" alt="Your visit QR code" width="200" style="display:block"/></p>
@@ -233,8 +266,9 @@ router.get('/validate-qr/:token', async (req, res) => {
 
     const visitor = result.rows[0];
 
-    // Update status to opened if it's pending or sent
-    if (visitor.invitation_status !== 'used') {
+    // Only advance pending/sent -> opened. Never downgrade someone already checked in/out
+    // (the QR gets re-validated on every link refresh — this must not reset their status)
+    if (['pending', 'sent'].includes(visitor.invitation_status)) {
       await db.query("UPDATE pre_registered_visitors SET invitation_status = 'opened' WHERE id = $1", [visitor.id]);
     }
 
