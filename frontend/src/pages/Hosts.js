@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -13,6 +13,39 @@ export default function Hosts() {
   const [printHost, setPrintHost] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const org = useStore((s) => s.organization);
+
+  // Resize an uploaded/taken photo to a small JPEG data URL (keeps DB + payloads light)
+  const processPhoto = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 320;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const handlePhotoPick = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await processPhoto(file);
+      setForm((f) => ({ ...f, photo_data: dataUrl }));
+    } catch {
+      toast('Could not read that image', 'error');
+    }
+    e.target.value = '';
+  };
 
   const handlePrint = (host) => {
     const canvas = document.getElementById(`badge-qr-${host.id}`);
@@ -27,7 +60,9 @@ export default function Hosts() {
           <div style="font-size:12px;margin-top:4px;opacity:0.7">EMPLOYEE BADGE</div>
         </div>
         <div style="padding:28px 24px">
-          <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#0D7377,#14FFEC);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:700">${host.first_name[0]}${host.last_name[0]}</div>
+          ${host.photo_data
+            ? `<img src="${host.photo_data}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin:0 auto 14px" />`
+            : `<div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#0D7377,#14FFEC);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:700">${host.first_name[0]}${host.last_name[0]}</div>`}
           <div style="font-size:22px;font-weight:700;color:#0F172A">${host.first_name} ${host.last_name}</div>
           <div style="font-size:13px;color:#64748B;margin:4px 0 20px">${host.job_title || ''}${host.department ? ' · ' + host.department : ''}</div>
           <img src="${qrUrl}" style="width:200px;height:200px" />
@@ -53,7 +88,7 @@ export default function Hosts() {
       }
       setShowModal(false);
       setEditing(null);
-      setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
+      setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null });
       refetch();
       toast(editing ? 'Host updated' : 'Host added');
     } catch (err) {
@@ -85,7 +120,7 @@ export default function Hosts() {
           <p style={{ color: '#64748B', marginTop: 4 }}>Manage employees who receive visitors</p>
         </div>
         <button
-          onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false }); setShowModal(true); }}
+          onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null }); setShowModal(true); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '12px 24px', borderRadius: 12,
@@ -116,14 +151,18 @@ export default function Hosts() {
               <tr key={h.id} style={{ borderTop: '1px solid #E2E8F0' }}>
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{
-                      width: 40, height: 40, borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, fontSize: 14, color: '#fff'
-                    }}>
-                      {h.first_name[0]}{h.last_name[0]}
-                    </div>
+                    {h.photo_data ? (
+                      <img src={h.photo_data} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 700, fontSize: 14, color: '#fff'
+                      }}>
+                        {h.first_name[0]}{h.last_name[0]}
+                      </div>
+                    )}
                     <div>
                       <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>{h.first_name} {h.last_name}</div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>{h.job_title || 'No title'}</div>
@@ -192,12 +231,44 @@ export default function Hosts() {
         }}>
           <div style={{
             background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 500,
-            boxShadow: '0 25px 80px rgba(0,0,0,0.3)'
+            boxShadow: '0 25px 80px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto'
           }}>
             <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>
               {editing ? 'Edit Host' : 'Add New Host'}
             </h2>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Photo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {form.photo_data ? (
+                  <img src={form.photo_data} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '2px solid #E2E8F0' }} />
+                ) : (
+                  <div style={{
+                    width: 72, height: 72, borderRadius: '50%', flexShrink: 0,
+                    background: '#F1F5F9', border: '2px dashed #CBD5E1',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <Camera size={24} color="#94A3B8" />
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
+                    padding: '9px 16px', borderRadius: 10, background: '#F1F5F9',
+                    fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer'
+                  }}>
+                    <Camera size={15} /> {form.photo_data ? 'Change photo' : 'Add / take photo'}
+                    <input type="file" accept="image/*" onChange={handlePhotoPick} style={{ display: 'none' }} />
+                  </label>
+                  {form.photo_data && (
+                    <button type="button" onClick={() => setForm({ ...form, photo_data: null })}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                      <X size={13} /> Remove photo
+                    </button>
+                  )}
+                  <span style={{ fontSize: 11, color: '#94A3B8' }}>Shown on the host list, kiosk, and printed ID badge</span>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <input type="text" placeholder="First Name" required value={form.first_name}
                   onChange={(e) => setForm({...form, first_name: e.target.value})} style={inputStyle} />
@@ -262,14 +333,18 @@ export default function Hosts() {
                 <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>EMPLOYEE BADGE</div>
               </div>
               <div style={{ padding: '20px 16px' }}>
-                <div style={{
-                  width: 56, height: 56, borderRadius: '50%', margin: '0 auto 10px',
-                  background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: 20, fontWeight: 700
-                }}>
-                  {printHost.first_name[0]}{printHost.last_name[0]}
-                </div>
+                {printHost.photo_data ? (
+                  <img src={printHost.photo_data} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', margin: '0 auto 10px' }} />
+                ) : (
+                  <div style={{
+                    width: 56, height: 56, borderRadius: '50%', margin: '0 auto 10px',
+                    background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 20, fontWeight: 700
+                  }}>
+                    {printHost.first_name[0]}{printHost.last_name[0]}
+                  </div>
+                )}
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{printHost.first_name} {printHost.last_name}</div>
                 <div style={{ fontSize: 12, color: '#64748B', margin: '2px 0 14px' }}>
                   {printHost.job_title || ''}{printHost.department ? ` · ${printHost.department}` : ''}
