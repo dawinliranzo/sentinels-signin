@@ -18,6 +18,7 @@ const superAdminRoutes = require('./routes/superAdmin');
 const userRoutes = require('./routes/users');
 const kioskRoutes = require('./routes/kiosk');
 const settingsRoutes = require('./routes/settings');
+const accessRequestRoutes = require('./routes/accessRequests');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -30,6 +31,10 @@ const allowedOrigins = [
   'https://sentinels-signin.vercel.app',
   'https://sentinels-signin-90myhqvsl-sentinels-it.vercel.app',
   'https://sentinels-signin-fjsex8f73-sentinels-it.vercel.app',
+  'https://sentinelskiosk.com',
+  'https://www.sentinelskiosk.com',
+  'https://sentinels-kiosk.com',
+  'https://www.sentinels-kiosk.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -76,6 +81,7 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/kiosk', kioskRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/access-requests', accessRequestRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
