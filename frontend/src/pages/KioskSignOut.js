@@ -10,6 +10,7 @@ export default function KioskSignOut() {
   const [visitors, setVisitors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [initialLoad, setInitialLoad] = useState(true);
 
   // CRITICAL FIX: No fallback to demo org. Must have org ID.
@@ -61,7 +62,8 @@ export default function KioskSignOut() {
         setVisitors(prev => prev.filter(v => v.id !== visitId));
       }, 3000);
     } catch (err) {
-      alert('Check-out failed: ' + (err.response?.data?.error || 'Unknown error'));
+      setErrorMsg('Check-out failed: ' + (err.response?.data?.error || 'Please try again'));
+      setTimeout(() => setErrorMsg(''), 5000);
     }
   };
 
@@ -146,6 +148,16 @@ export default function KioskSignOut() {
 
       {/* Active Visitors List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {errorMsg && (
+          <div style={{
+            marginBottom: 16, padding: '14px 18px', borderRadius: 12,
+            background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+            color: '#FCA5A5', fontSize: 15, fontWeight: 500, textAlign: 'center'
+          }}>
+            {errorMsg}
+          </div>
+        )}
+
         {loading && initialLoad && (
           <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.6)' }}>
             Loading visitors...
