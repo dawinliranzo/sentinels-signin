@@ -3,10 +3,12 @@ import { useQuery } from 'react-query';
 import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
 
 export default function PreRegistered() {
   const [showModal, setShowModal] = useState(false);
   const [showQR, setShowQR] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone: '', company: '',
@@ -63,31 +65,33 @@ export default function PreRegistered() {
       }
       closeModal();
       refetch();
+      toast(editingId ? 'Pre-registration updated' : 'Visitor pre-registered — invitation sent');
     } catch (err) {
-      const serverError = err.response?.data?.error || 'Failed to save';
-      alert(serverError);
+      const serverError = err.response?.data?.details || err.response?.data?.error || 'Failed to save';
+      toast(serverError, 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this pre-registration?')) return;
     try {
       await api.delete(`/pre-registered/${id}`);
+      setConfirmDeleteId(null);
       refetch();
+      toast('Pre-registration deleted');
     } catch (err) {
-      alert('Failed to delete');
+      toast(err.response?.data?.error || 'Failed to delete', 'error');
     }
   };
 
   const handleResend = async (id) => {
     try {
       await api.post(`/pre-registered/${id}/resend`);
-      alert('Invitation resent successfully!');
+      toast('Invitation resent');
       refetch();
     } catch (err) {
-      alert('Failed to resend');
+      toast(err.response?.data?.error || 'Failed to resend', 'error');
     }
   };
 
@@ -189,9 +193,20 @@ export default function PreRegistered() {
                     <button onClick={() => handleResend(pr.id)} style={{ padding: 8, borderRadius: 8, background: '#DBEAFE', border: 'none', cursor: 'pointer' }} title="Resend Invitation">
                       <RefreshCw size={16} color="#1E40AF" />
                     </button>
-                    <button onClick={() => handleDelete(pr.id)} style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }} title="Delete">
-                      <Trash2 size={16} color="#EF4444" />
-                    </button>
+                    {confirmDeleteId === pr.id ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => handleDelete(pr.id)} style={{ padding: '8px 10px', borderRadius: 8, background: '#EF4444', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                          Confirm
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteId(pr.id)} style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }} title="Delete">
+                        <Trash2 size={16} color="#EF4444" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -292,7 +307,7 @@ export default function PreRegistered() {
             <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Scan this QR code or share the link below</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', padding: '12px 16px', borderRadius: 10, marginBottom: 16 }}>
               <input type="text" readOnly value={`${window.location.origin}/check-in/${showQR.qr_code}`} style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none' }} />
-              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/check-in/${showQR.qr_code}`); alert('Copied!'); }} style={{ padding: '6px 12px', borderRadius: 6, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/check-in/${showQR.qr_code}`); toast('Link copied'); }} style={{ padding: '6px 12px', borderRadius: 6, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
                 <Copy size={14} /> Copy
               </button>
             </div>
