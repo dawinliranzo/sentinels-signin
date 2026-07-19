@@ -18,6 +18,7 @@ const superAdminRoutes = require('./routes/superAdmin');
 const userRoutes = require('./routes/users');
 const kioskRoutes = require('./routes/kiosk');
 const settingsRoutes = require('./routes/settings');
+const deviceRoutes = require('./routes/devices');
 const accessRequestRoutes = require('./routes/accessRequests');
 
 const app = express();
@@ -81,6 +82,7 @@ app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/kiosk', kioskRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/devices', deviceRoutes);
 app.use('/api/access-requests', accessRequestRoutes);
 
 // Error handling
