@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -46,6 +46,64 @@ export default function Hosts() {
     }
     e.target.value = '';
   };
+
+  // ─── Take photo with device camera ───
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraShot, setCameraShot] = useState(null); // captured frame pending accept
+  const [cameraReady, setCameraReady] = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraReady(false);
+  };
+
+  const openCamera = async () => {
+    setCameraShot(null);
+    setCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640 } });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraReady(true);
+    } catch {
+      setCameraOpen(false);
+      toast('Camera not available — check browser permissions, or upload a photo instead', 'error');
+    }
+  };
+
+  const closeCamera = () => { stopCamera(); setCameraOpen(false); setCameraShot(null); };
+
+  const captureShot = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const MAX = 320;
+    const scale = Math.min(1, MAX / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    setCameraShot(canvas.toDataURL('image/jpeg', 0.75));
+  };
+
+  const acceptShot = () => {
+    setForm((f) => ({ ...f, photo_data: cameraShot }));
+    closeCamera();
+  };
+
+  // Stop the camera if the whole modal unmounts
+  useEffect(() => () => stopCamera(), []);
+
+  // Attach stream whenever the video element (re)renders (modal open / retake)
+  useEffect(() => {
+    if (cameraOpen && !cameraShot && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraOpen, cameraShot, cameraReady]);
 
   const handlePrint = (host) => {
     const canvas = document.getElementById(`badge-qr-${host.id}`);
@@ -251,14 +309,23 @@ export default function Hosts() {
                   </div>
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start',
-                    padding: '9px 16px', borderRadius: 10, background: '#F1F5F9',
-                    fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer'
-                  }}>
-                    <Camera size={15} /> {form.photo_data ? 'Change photo' : 'Add / take photo'}
-                    <input type="file" accept="image/*" onChange={handlePhotoPick} style={{ display: 'none' }} />
-                  </label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <label style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '9px 16px', borderRadius: 10, background: '#F1F5F9',
+                      fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer'
+                    }}>
+                      <Upload size={15} /> {form.photo_data ? 'Upload new' : 'Upload photo'}
+                      <input type="file" accept="image/*" onChange={handlePhotoPick} style={{ display: 'none' }} />
+                    </label>
+                    <button type="button" onClick={openCamera} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '9px 16px', borderRadius: 10, background: '#0D7377',
+                      border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer'
+                    }}>
+                      <Camera size={15} /> Take photo
+                    </button>
+                  </div>
                   {form.photo_data && (
                     <button type="button" onClick={() => setForm({ ...form, photo_data: null })}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', background: 'none', border: 'none', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
@@ -365,6 +432,54 @@ export default function Hosts() {
                 style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <Printer size={16} /> Print
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Modal */}
+      {cameraOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 480,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.35)', textAlign: 'center'
+          }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Take Photo</h2>
+            <div style={{
+              borderRadius: 16, overflow: 'hidden', background: '#0F172A', marginBottom: 16,
+              aspectRatio: '4/3', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              {cameraShot ? (
+                <img src={cameraShot} alt="Captured" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={closeCamera}
+                style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              {cameraShot ? (
+                <>
+                  <button type="button" onClick={() => setCameraShot(null)}
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#FEF3C7', border: 'none', color: '#92400E', fontWeight: 600, cursor: 'pointer' }}>
+                    Retake
+                  </button>
+                  <button type="button" onClick={acceptShot}
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                    Use Photo
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={captureShot} disabled={!cameraReady}
+                  style={{ flex: 2, padding: '13px', borderRadius: 10, background: cameraReady ? '#0D7377' : '#94A3B8', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraReady ? 'pointer' : 'not-allowed' }}>
+                  {cameraReady ? 'Capture' : 'Starting camera…'}
+                </button>
+              )}
             </div>
           </div>
         </div>
