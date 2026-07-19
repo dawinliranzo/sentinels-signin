@@ -13,7 +13,7 @@ const CHECK_EVERY_MS = 5 * 60 * 1000;    // scan every 5 min
 // POST /api/kiosk/heartbeat — public, org-scoped (called by the kiosk UI every 60s)
 router.post('/heartbeat', async (req, res) => {
   try {
-    const { org_id } = req.body;
+    const { org_id, device_id } = req.body;
     if (!org_id) {
       return res.status(400).json({ error: 'org_id is required' });
     }
@@ -27,6 +27,12 @@ router.post('/heartbeat', async (req, res) => {
     const wasOffline = entry && entry.alertSent;
 
     kioskStatus.set(org_id, { lastSeen: Date.now(), alertSent: false });
+
+    // If the kiosk is a paired device, stamp its last_seen (drives the online status in Devices)
+    if (device_id) {
+      db.query('UPDATE devices SET last_seen_at = NOW() WHERE id = $1 AND org_id = $2 AND is_active = true', [device_id, org_id])
+        .catch((e) => console.error('Device last_seen update failed:', e.message));
+    }
 
     // Recovery: notify admins the kiosk is back
     if (wasOffline) {
