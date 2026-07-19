@@ -9,7 +9,10 @@ export default function KioskLayout() {
   React.useEffect(() => {
     const orgId = localStorage.getItem('kiosk_org_id');
     if (!orgId) return;
-    const beat = () => api.post('/kiosk/heartbeat', { org_id: orgId }).catch(() => {});
+    const beat = () => api.post('/kiosk/heartbeat', {
+      org_id: orgId,
+      device_id: localStorage.getItem('kiosk_device_id') || undefined
+    }).catch(() => {});
     beat();
     const t = setInterval(beat, 60000);
     return () => clearInterval(t);
