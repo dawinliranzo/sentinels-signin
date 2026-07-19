@@ -19,14 +19,46 @@ export default function KioskWelcome() {
   const [pairBusy, setPairBusy] = useState(false);
   const [pairError, setPairError] = useState('');
   const [result, setResult] = useState(null);
+  // pairFlow: null | 'pairing' | 'paired' | 'error'
+  const [pairFlow, setPairFlow] = useState(null);
+  const [pairFlowMsg, setPairFlowMsg] = useState('');
   const scannerRef = useRef(null);
   const processingRef = useRef(false);
+  const pairAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (orgId) {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
+
+  // ─── MAGIC-LINK PAIRING: /kiosk?pair=ABC123 pairs this device automatically ───
+  useEffect(() => {
+    const code = searchParams.get('pair');
+    if (!code || pairAttemptedRef.current) return;
+    pairAttemptedRef.current = true;
+
+    const doPair = async () => {
+      setPairFlow('pairing');
+      try {
+        const r = await api.post('/devices/pair', { code: code.trim().toUpperCase() });
+        localStorage.setItem('kiosk_device_id', r.data.device_id);
+        localStorage.setItem('kiosk_device_name', r.data.device_name);
+        if (r.data.org_id) localStorage.setItem('kiosk_org_id', r.data.org_id);
+        setPairedName(r.data.device_name);
+        setPairFlowMsg(r.data.device_name);
+        setPairFlow('paired');
+      } catch (err) {
+        setPairFlowMsg(err.response?.data?.error || 'Pairing failed — check the link or code');
+        setPairFlow('error');
+      }
+      // Clean the code out of the URL, keep org context
+      const cleanOrg = localStorage.getItem('kiosk_org_id');
+      window.history.replaceState({}, '', cleanOrg ? `/kiosk?org=${cleanOrg}` : '/kiosk');
+      setTimeout(() => setPairFlow(null), 5000);
+    };
+    doPair();
+  }, [searchParams]);
 
   // Camera lifecycle for scan mode
   useEffect(() => {
@@ -107,7 +139,7 @@ export default function KioskWelcome() {
   }, [mode, orgId]);
 
   // GUARD: No org ID = show error screen
-  if (!orgId) {
+  if (!orgId && !pairFlow) {
     return (
       <div style={{
         display: 'flex', flexDirection: 'column',
@@ -147,6 +179,43 @@ export default function KioskWelcome() {
   }
 
   // ─── SCAN MODE ───
+  // ─── PAIRING IN PROGRESS / RESULT ───
+  if (pairFlow) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0F172A 0%, #0D7377 100%)', color: '#fff', padding: 24, textAlign: 'center'
+      }}>
+        {pairFlow === 'pairing' && (
+          <>
+            <div style={{
+              width: 64, height: 64, border: '5px solid rgba(255,255,255,0.2)', borderTopColor: '#14FFEC',
+              borderRadius: '50%', animation: 'spin 0.9s linear infinite', marginBottom: 28
+            }} />
+            <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
+            <h1 style={{ fontSize: 28, fontWeight: 800 }}>Pairing this kiosk…</h1>
+          </>
+        )}
+        {pairFlow === 'paired' && (
+          <>
+            <CheckCircle size={72} color="#14FFEC" style={{ marginBottom: 24 }} />
+            <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>Kiosk Paired!</h1>
+            <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }}>This device is now <strong>{pairFlowMsg}</strong></p>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 12 }}>Bookmark or add this page to the home screen — you're all set.</p>
+          </>
+        )}
+        {pairFlow === 'error' && (
+          <>
+            <XCircle size={72} color="#FCA5A5" style={{ marginBottom: 24 }} />
+            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Pairing Failed</h1>
+            <p style={{ fontSize: 16, color: '#FCA5A5' }}>{pairFlowMsg}</p>
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 12 }}>Ask your admin for a new pairing link or QR code.</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
   if (mode === 'scan') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, maxWidth: 600, textAlign: 'center' }}>
