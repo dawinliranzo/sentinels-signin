@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff } from 'lucide-react';
+import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
@@ -18,6 +19,15 @@ export default function Devices() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [addError, setAddError] = useState('');
+  const [pairDevice, setPairDevice] = useState(null); // device shown in the Pair/QR modal
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const pairUrl = (d) => `${window.location.origin}/kiosk?pair=${d.pair_code}`;
+  const copyPairLink = (d) => {
+    navigator.clipboard.writeText(pairUrl(d));
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
 
   const { data: devices, refetch } = useQuery('devices', () =>
     api.get('/devices').then(r => r.data),
@@ -137,16 +147,22 @@ export default function Devices() {
           background: 'linear-gradient(135deg, #0F172A, #123B4F)', borderRadius: 16, padding: 28,
           marginBottom: 20, color: '#fff', textAlign: 'center'
         }}>
-          <div style={{ fontSize: 15, opacity: 0.85, marginBottom: 6 }}>Pairing code for <strong>{freshDevice.name}</strong></div>
-          <div style={{
-            fontSize: 40, fontWeight: 800, letterSpacing: 10, fontFamily: 'monospace',
-            color: '#14FFEC', margin: '12px 0'
-          }}>
-            {freshDevice.pair_code}
+          <div style={{ fontSize: 15, opacity: 0.85, marginBottom: 12 }}>Pairing code for <strong>{freshDevice.name}</strong></div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: 12 }}>
+              <QRCodeCanvas value={pairUrl(freshDevice)} size={130} includeMargin={false} />
+            </div>
+            <div style={{
+              fontSize: 40, fontWeight: 800, letterSpacing: 10, fontFamily: 'monospace',
+              color: '#14FFEC'
+            }}>
+              {freshDevice.pair_code}
+            </div>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.7, maxWidth: 480, margin: '0 auto 16px' }}>
-            On the kiosk screen, tap <strong>"Pair this kiosk"</strong> at the bottom and enter this code.
-            The device will appear as online within a minute.
+          <div style={{ fontSize: 13, opacity: 0.7, maxWidth: 520, margin: '0 auto 16px' }}>
+            <strong>Scan the QR with the kiosk tablet's camera</strong> and open the link — it pairs itself, no typing.
+            Or tap <strong>"Pair this kiosk"</strong> at the bottom of the kiosk screen and enter the code.
+            The device shows as online within a minute.
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button onClick={() => copyCode(freshDevice)}
@@ -209,6 +225,11 @@ export default function Devices() {
               {d.is_online ? '● ONLINE' : '○ OFFLINE'}
             </span>
 
+            <button onClick={() => setPairDevice(d)} title="Show pairing QR code"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>
+              <QrCode size={14} /> Pair
+            </button>
+
             <button onClick={() => copyCode(d)} title="Copy pairing code"
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#334155', cursor: 'pointer', letterSpacing: 2 }}>
               {copiedId === d.id ? <Check size={14} color="#166534" /> : <Copy size={14} />} {d.pair_code}
@@ -240,6 +261,50 @@ export default function Devices() {
       <p style={{ fontSize: 13, color: '#94A3B8', marginTop: 16, textAlign: 'center' }}>
         A kiosk counts as online while its screen is open and heartbeating (checked every 15s here). Offline kiosks also trigger your email alerts if enabled in Settings.
       </p>
+
+      {/* Pair / QR modal */}
+      {pairDevice && (
+        <div onClick={() => setPairDevice(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 420,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.35)', textAlign: 'center',
+            maxHeight: '90vh', overflowY: 'auto'
+          }}>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#0F172A', marginBottom: 4 }}>Pair "{pairDevice.name}"</h2>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 20 }}>
+              Easiest: point the kiosk tablet's camera at this QR code and open the link — it pairs itself. No typing.
+            </p>
+            <div style={{ background: '#fff', border: '2px solid #E2E8F0', borderRadius: 16, padding: 16, display: 'inline-block', marginBottom: 16 }}>
+              <QRCodeCanvas value={pairUrl(pairDevice)} size={200} includeMargin={false} />
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, background: '#F8FAFC',
+              border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', marginBottom: 12
+            }}>
+              <span style={{ flex: 1, fontSize: 12, color: '#475569', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                {pairUrl(pairDevice)}
+              </span>
+              <button onClick={() => copyPairLink(pairDevice)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: linkCopied ? '#DCFCE7' : '#0D7377', border: 'none', color: linkCopied ? '#166534' : '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                {linkCopied ? <Check size={13} /> : <Copy size={13} />} {linkCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 6 }}>
+              On the tablet already showing the kiosk? Tap <strong>"Pair this kiosk"</strong> at the bottom of its screen and type:
+            </p>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 8, fontFamily: 'monospace', color: '#0D7377', marginBottom: 18 }}>
+              {pairDevice.pair_code}
+            </div>
+            <button onClick={() => setPairDevice(null)}
+              style={{ width: '100%', padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
