@@ -8,6 +8,7 @@ export default function Register() {
   const setAuth = useStore((s) => s.setAuth);
   const [form, setForm] = useState({ org_name: '', first_name: '', last_name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,7 +18,7 @@ export default function Register() {
       setAuth(res.data.token, res.data.user, res.data.organization);
       navigate('/');
     } catch (err) {
-      alert('Registration failed: ' + (err.response?.data?.error || 'Unknown error'));
+      setErrorMsg(err.response?.data?.error || 'Registration failed — please try again');
     } finally {
       setLoading(false);
     }
@@ -70,6 +71,15 @@ export default function Register() {
           <input type="password" placeholder="Password" required minLength={8}
             value={form.password} onChange={(e) => setForm({...form, password: e.target.value})}
             style={inputStyle} />
+
+          {errorMsg && (
+            <div style={{
+              padding: '12px 16px', borderRadius: 10, background: '#FEF2F2',
+              border: '1px solid #FECACA', color: '#B91C1C', fontSize: 14, fontWeight: 500, textAlign: 'center'
+            }}>
+              {errorMsg}
+            </div>
+          )}
 
           <button type="submit" disabled={loading}
             style={{
