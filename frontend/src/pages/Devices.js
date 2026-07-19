@@ -26,7 +26,10 @@ export default function Devices() {
 
   const addDevice = async (e) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      setAddError('Give your kiosk a name first — e.g. "Front Desk iPad" or "Warehouse Kiosk"');
+      return;
+    }
     setAdding(true);
     setAddError('');
     try {
@@ -112,8 +115,8 @@ export default function Devices() {
             placeholder="Name this kiosk — e.g. Front Desk, Warehouse iPad"
             style={{ flex: 1, minWidth: 240, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }}
           />
-          <button type="submit" disabled={adding || !newName.trim()}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: adding ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+          <button type="submit" disabled={adding}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: adding ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: adding ? 'wait' : 'pointer', fontSize: 14 }}>
             <Plus size={16} /> {adding ? 'Adding…' : 'Add Kiosk'}
           </button>
           {addError && (
