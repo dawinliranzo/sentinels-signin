@@ -9,16 +9,41 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // MFA second step
+  const [mfaToken, setMfaToken] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       const res = await api.post('/auth/login', { email, password });
+      if (res.data.mfa_required) {
+        setMfaToken(res.data.mfa_token);
+      } else {
+        setAuth(res.data.token, res.data.user, res.data.organization);
+        navigate(res.data.mfa_setup_required ? '/settings' : '/');
+      }
+    } catch (err) {
+      setError('Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post('/auth/mfa/login', { mfa_token: mfaToken, code: mfaCode });
       setAuth(res.data.token, res.data.user, res.data.organization);
       navigate('/');
     } catch (err) {
-      alert('Invalid credentials');
+      setError(err.response?.data?.error || 'Invalid code');
     } finally {
       setLoading(false);
     }
@@ -45,65 +70,71 @@ export default function Login() {
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>
             Sentinels Sign-In
           </h1>
-          <p style={{ color: '#64748B', fontSize: 15 }}>Sign in to your admin dashboard</p>
+          <p style={{ color: '#64748B', fontSize: 15 }}>
+            {mfaToken ? 'Enter your authentication code' : 'Sign in to your admin dashboard'}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>
-              Email Address
-            </label>
-            <input
-              type="email" required value={email}
-              onChange={(e) => setEmail(e.target.value)}
+        {!mfaToken ? (
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Email</label>
+              <input
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                style={{ width: '100%', padding: '14px 16px', borderRadius: 12, border: '2px solid #E2E8F0', fontSize: 15, outline: 'none' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Password</label>
+              <input
+                type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
+                style={{ width: '100%', padding: '14px 16px', borderRadius: 12, border: '2px solid #E2E8F0', fontSize: 15, outline: 'none' }}
+              />
+            </div>
+            {error && <p style={{ color: '#DC2626', fontSize: 14, margin: 0, textAlign: 'center' }}>{error}</p>}
+            <button
+              type="submit" disabled={loading}
               style={{
-                width: '100%', padding: '14px 16px', borderRadius: 12,
-                border: '2px solid #E2E8F0', fontSize: 15, outline: 'none',
-                transition: 'border-color 0.2s'
+                padding: '16px', borderRadius: 12, border: 'none',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0D7377, #14919B)',
+                color: '#fff', fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer'
               }}
-              onFocus={(e) => e.target.style.borderColor = '#0D7377'}
-              onBlur={(e) => e.target.style.borderColor = '#E2E8F0'}
-              placeholder="admin@company.com"
-            />
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>
-              Password
-            </label>
-            <input
-              type="password" required value={password}
-              onChange={(e) => setPassword(e.target.value)}
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleMfaSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#334155', marginBottom: 8 }}>
+                6-digit code from your authenticator app
+              </label>
+              <input
+                type="text" inputMode="numeric" autoComplete="one-time-code"
+                value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} required autoFocus
+                placeholder="123456"
+                style={{ width: '100%', padding: '14px 16px', borderRadius: 12, border: '2px solid #E2E8F0', fontSize: 22, letterSpacing: 8, textAlign: 'center', outline: 'none' }}
+              />
+            </div>
+            {error && <p style={{ color: '#DC2626', fontSize: 14, margin: 0, textAlign: 'center' }}>{error}</p>}
+            <button
+              type="submit" disabled={loading}
               style={{
-                width: '100%', padding: '14px 16px', borderRadius: 12,
-                border: '2px solid #E2E8F0', fontSize: 15, outline: 'none'
+                padding: '16px', borderRadius: 12, border: 'none',
+                background: loading ? '#94A3B8' : 'linear-gradient(135deg, #0D7377, #14919B)',
+                color: '#fff', fontSize: 16, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer'
               }}
-              onFocus={(e) => e.target.style.borderColor = '#0D7377'}
-              onBlur={(e) => e.target.style.borderColor = '#E2E8F0'}
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%', padding: '16px', borderRadius: 12,
-              background: loading ? '#94A3B8' : '#0D7377', border: 'none',
-              color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
-              marginTop: 8, transition: 'background 0.2s'
-            }}
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: '#64748B' }}>
-          Don't have an account?{' '}
-          <a href="/register" style={{ color: '#0D7377', fontWeight: 600, textDecoration: 'none' }}>
-            Create one
-          </a>
-        </p>
+            >
+              {loading ? 'Verifying...' : 'Verify'}
+            </button>
+            <button
+              type="button" onClick={() => { setMfaToken(null); setMfaCode(''); setError(null); }}
+              style={{ background: 'none', border: 'none', color: '#64748B', fontSize: 14, cursor: 'pointer' }}
+            >
+              Back to login
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
