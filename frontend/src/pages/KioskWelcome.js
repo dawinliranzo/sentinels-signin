@@ -13,6 +13,11 @@ export default function KioskWelcome() {
 
   // mode: welcome | scan | done | already | error
   const [mode, setMode] = useState('welcome');
+  const [pairedName, setPairedName] = useState(() => localStorage.getItem('kiosk_device_name') || '');
+  const [showPair, setShowPair] = useState(false);
+  const [pairCode, setPairCode] = useState('');
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairError, setPairError] = useState('');
   const [result, setResult] = useState(null);
   const scannerRef = useRef(null);
   const processingRef = useRef(false);
@@ -197,6 +202,32 @@ export default function KioskWelcome() {
     );
   }
 
+  // ─── DEVICE PAIRING (state declared at top of component) ───
+  const submitPair = async () => {
+    if (!pairCode.trim()) return;
+    setPairBusy(true);
+    setPairError('');
+    try {
+      const r = await api.post('/devices/pair', { code: pairCode.trim().toUpperCase() });
+      localStorage.setItem('kiosk_device_id', r.data.device_id);
+      localStorage.setItem('kiosk_device_name', r.data.device_name);
+      if (r.data.org_id) localStorage.setItem('kiosk_org_id', r.data.org_id);
+      setPairedName(r.data.device_name);
+      setShowPair(false);
+      setPairCode('');
+    } catch (err) {
+      setPairError(err.response?.data?.error || 'Pairing failed — check the code');
+    } finally {
+      setPairBusy(false);
+    }
+  };
+
+  const unpair = () => {
+    localStorage.removeItem('kiosk_device_id');
+    localStorage.removeItem('kiosk_device_name');
+    setPairedName('');
+  };
+
   // ─── WELCOME MODE ───
   return (
     <div style={{
@@ -283,6 +314,56 @@ export default function KioskWelcome() {
       }}>
         Powered by Sentinels Sign-In
       </p>
+
+      {/* Device pairing */}
+      <div style={{ marginTop: 14, minHeight: 40 }}>
+        {!showPair && !pairedName && (
+          <button onClick={() => setShowPair(true)}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+            Pair this kiosk
+          </button>
+        )}
+        {!showPair && pairedName && (
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>
+            ● {pairedName}{' '}
+            <button onClick={unpair} title="Unpair this device"
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', marginLeft: 6 }}>
+              unpair
+            </button>
+          </div>
+        )}
+        {showPair && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 16, padding: 18, backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)' }}>Enter the pairing code from Dashboard → Devices:</div>
+            <input
+              type="text" value={pairCode} autoFocus
+              onChange={(e) => setPairCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitPair(); }}
+              placeholder="ABC123"
+              style={{
+                width: 200, padding: '12px', borderRadius: 12, border: '2px solid rgba(20,255,236,0.4)',
+                background: 'rgba(0,0,0,0.3)', color: '#14FFEC', fontSize: 24, fontWeight: 800,
+                textAlign: 'center', letterSpacing: 8, fontFamily: 'monospace', outline: 'none'
+              }}
+            />
+            {pairError && <div style={{ fontSize: 13, color: '#FCA5A5' }}>{pairError}</div>}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setShowPair(false); setPairCode(''); setPairError(''); }}
+                style={{ padding: '10px 20px', borderRadius: 10, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={submitPair} disabled={pairBusy || pairCode.length < 6}
+                style={{ padding: '10px 24px', borderRadius: 10, background: pairCode.length < 6 ? 'rgba(13,115,119,0.4)' : '#0D7377', border: 'none', color: '#fff', fontSize: 14, fontWeight: 700, cursor: pairCode.length < 6 ? 'not-allowed' : 'pointer' }}>
+                {pairBusy ? 'Pairing…' : 'Pair'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
