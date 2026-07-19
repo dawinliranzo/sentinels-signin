@@ -12,7 +12,7 @@ router.use(authenticate, requireRole('admin', 'super_admin'));
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
+      'SELECT id, email, first_name, last_name, role, is_active, mfa_enabled FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
       [req.user.org_id]
     );
     res.json(result.rows);
@@ -74,6 +74,36 @@ router.post('/:id/reset-password', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Reset a team member's MFA (e.g. they lost their authenticator).
+// Clears their secret; on next login they sign in with password only and can re-enable MFA from Settings.
+router.post('/:id/reset-mfa', async (req, res) => {
+  try {
+    const userResult = await db.query(
+      'SELECT id, email, role, mfa_enabled FROM users WHERE id = $1 AND org_id = $2',
+      [req.params.id, req.user.org_id]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const target = userResult.rows[0];
+
+    // Only a super admin can reset another super admin's MFA
+    if (target.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super admin can reset a super admin\'s MFA' });
+    }
+
+    if (!target.mfa_enabled) {
+      return res.json({ success: true, already_disabled: true, user_email: target.email });
+    }
+
+    await db.query('UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1', [req.params.id]);
+    res.json({ success: true, already_disabled: false, user_email: target.email });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to reset MFA' });
   }
 });
 
