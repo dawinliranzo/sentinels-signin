@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../utils/store';
 import Toaster from './Toaster';
 import {
-  LayoutDashboard, Users, Calendar, Settings, LogOut,
+  LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor,
   QrCode, Package, Shield, Bell, Menu, X
 } from 'lucide-react';
 
@@ -27,6 +27,7 @@ export default function AdminLayout() {
     { path: '/visits', icon: Users, label: 'Visits' },
     { path: '/hosts', icon: Users, label: 'Hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered' },
+    { path: '/devices', icon: Monitor, label: 'Devices' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
