@@ -17,6 +17,7 @@ const documentRoutes = require('./routes/documents');
 const superAdminRoutes = require('./routes/superAdmin');
 const userRoutes = require('./routes/users');
 const kioskRoutes = require('./routes/kiosk');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -74,6 +75,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/kiosk', kioskRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
