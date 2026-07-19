@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../utils/store';
 import { Upload, Palette, Bell, Shield, Save, Users, UserPlus } from 'lucide-react';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
 
 export default function Settings() {
   const org = useStore((s) => s.organization);
@@ -28,6 +29,11 @@ export default function Settings() {
   useEffect(() => {
     if (canManage) loadTeam();
     api.get('/auth/me').then(r => setNotifyOffline(!!r.data.notify_offline)).catch(() => {});
+    api.get('/settings').then(r => {
+      if (r.data && Object.keys(r.data).length > 0) {
+        setSettings(prev => ({ ...prev, ...r.data }));
+      }
+    }).catch(() => {});
   }, []);
 
   const loadTeam = async () => {
@@ -88,8 +94,17 @@ export default function Settings() {
     require_nda: false,
   });
 
-  const handleSave = () => {
-    alert('Settings saved! (In production, this would update the database)');
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.patch('/settings', settings);
+      toast('Settings saved');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to save settings', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const sectionStyle = {
@@ -281,14 +296,15 @@ export default function Settings() {
 
       <button
         onClick={handleSave}
+        disabled={saving}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '14px 32px', borderRadius: 12,
-          background: '#0D7377', border: 'none', color: '#fff',
-          fontWeight: 600, cursor: 'pointer', fontSize: 16
+          background: saving ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff',
+          fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 16
         }}
       >
-        <Save size={18} /> Save Settings
+        <Save size={18} /> {saving ? 'Saving...' : 'Save Settings'}
       </button>
     </div>
   );
