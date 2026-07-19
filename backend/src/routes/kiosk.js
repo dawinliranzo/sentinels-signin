@@ -92,4 +92,19 @@ setInterval(async () => {
   }
 }, CHECK_EVERY_MS);
 
+// GET /api/kiosk/config/:orgId — public, minimal kiosk configuration
+router.get('/config/:orgId', async (req, res) => {
+  try {
+    const r = await db.query('SELECT name, settings FROM organizations WHERE id = $1', [req.params.orgId]);
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid organization' });
+    }
+    const s = r.rows[0].settings || {};
+    res.json({ org_name: r.rows[0].name, photo_required: !!(s.require_photo || s.photo_required) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to load kiosk config' });
+  }
+});
+
 module.exports = router;
