@@ -17,6 +17,7 @@ export default function Devices() {
   const [renameValue, setRenameValue] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [addError, setAddError] = useState('');
 
   const { data: devices, refetch } = useQuery('devices', () =>
     api.get('/devices').then(r => r.data),
@@ -27,6 +28,7 @@ export default function Devices() {
     e.preventDefault();
     if (!newName.trim()) return;
     setAdding(true);
+    setAddError('');
     try {
       const res = await api.post('/devices', { name: newName.trim() });
       setFreshDevice(res.data);
@@ -34,7 +36,10 @@ export default function Devices() {
       refetch();
       toast(`Kiosk "${res.data.name}" registered`);
     } catch (err) {
-      toast(err.response?.data?.error || 'Failed to add device', 'error');
+      const msg = err.response?.data?.error
+        || (err.response?.status === 404 ? 'Devices route not found on the server — deploy the backend files first' : 'Failed to add device');
+      setAddError(msg);
+      toast(msg, 'error');
     } finally {
       setAdding(false);
     }
@@ -111,6 +116,15 @@ export default function Devices() {
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: adding ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
             <Plus size={16} /> {adding ? 'Adding…' : 'Add Kiosk'}
           </button>
+          {addError && (
+            <div style={{
+              width: '100%', padding: '12px 16px', borderRadius: 10,
+              background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
+              fontSize: 13, fontWeight: 500
+            }}>
+              {addError}
+            </div>
+          )}
         </form>
       )}
 
