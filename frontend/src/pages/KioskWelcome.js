@@ -42,6 +42,20 @@ export default function KioskWelcome() {
         token = token.split('/check-in/')[1].split(/[?#/&]/)[0];
       }
 
+      // Staff badge QR (printed employee ID cards)
+      if (token.startsWith('STAFF:')) {
+        try {
+          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
+          setResult({ name: r.data.name, badge: r.data.badge });
+          setMode(r.data.action === 'checked_in' ? 'done' : 'bye');
+          setTimeout(() => setMode('welcome'), 6000);
+        } catch (err) {
+          setResult({ message: err.response?.data?.error || 'Badge not recognized for this kiosk' });
+          setMode('error');
+        }
+        return;
+      }
+
       try {
         const v = await api.get(`/pre-registered/validate-qr/${token}`);
         const visitor = v.data.visitor;
@@ -157,10 +171,11 @@ export default function KioskWelcome() {
   }
 
   // ─── SUCCESS / ALREADY / ERROR SCREENS ───
-  if (mode === 'done' || mode === 'already' || mode === 'error') {
+  if (mode === 'done' || mode === 'already' || mode === 'error' || mode === 'bye') {
     const conf = {
       done:    { icon: <CheckCircle size={90} color="#2ECC71" />, title: `Welcome, ${result?.name || 'visitor'}!`, sub: result?.badge ? `Your badge: ${result.badge}` : "You're checked in" },
       already: { icon: <CheckCircle size={90} color="#14FFEC" />, title: 'Already checked in', sub: result?.badge ? `Active badge: ${result.badge}` : 'Your visit is already active' },
+      bye:     { icon: <LogOut size={90} color="#14FFEC" />, title: `Goodbye, ${result?.name || ''}!`, sub: "You're checked out. Have a great day!" },
       error:   { icon: <XCircle size={90} color="#FF6B35" />, title: 'Cannot check in', sub: result?.message || 'Invalid QR code for this kiosk' },
     }[mode];
     return (
