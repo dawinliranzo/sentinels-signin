@@ -6,6 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, Bell, Calendar
 } from 'lucide-react';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
 
 export default function Dashboard() {
@@ -21,7 +22,7 @@ export default function Dashboard() {
       setEvacList(res.data);
       setShowEvac(true);
     } catch (err) {
-      alert('Failed to load evacuation list');
+      toast('Failed to load evacuation list', 'error');
     }
   };
 
@@ -46,7 +47,7 @@ export default function Dashboard() {
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (err) {
-      alert('Failed to export');
+      toast('Failed to export visits', 'error');
     } finally {
       setExporting(false);
     }
