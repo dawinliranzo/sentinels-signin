@@ -95,16 +95,21 @@ export default function Settings() {
   };
 
   const addUser = async () => {
-    if (!newUser.first_name || !newUser.last_name || !newUser.email || !newUser.password) {
-      toast('Fill in all fields for the new user', 'error');
+    if (!newUser.first_name || !newUser.last_name || !newUser.email) {
+      toast('Fill in name and email for the new user', 'error');
       return;
     }
     setSavingUser(true);
     setTeamMsg(null);
+    setTempPw(null);
     try {
-      await api.post('/users', newUser);
+      const res = await api.post('/users', newUser);
       setNewUser({ first_name: '', last_name: '', email: '', password: '', role: 'receptionist' });
-      setTeamMsg({ ok: true, text: 'User created' });
+      setTempPw({
+        email: res.data.email,
+        password: res.data.temp_password,
+        emailed: res.data.invite_sent
+      });
       loadTeam();
     } catch (err) {
       setTeamMsg({ ok: false, text: err.response?.data?.error || 'Failed to create user' });
@@ -117,7 +122,7 @@ export default function Settings() {
     if (!window.confirm(`Reset password for ${u.first_name} ${u.last_name}?`)) return;
     try {
       const res = await api.post(`/users/${u.id}/reset-password`);
-      setTempPw({ email: res.data.user_email, password: res.data.temp_password });
+      setTempPw({ email: res.data.user_email, password: res.data.temp_password, emailed: res.data.invite_sent });
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to reset password', 'error');
     }
@@ -277,6 +282,11 @@ export default function Settings() {
           {tempPw && (
             <div style={{ padding: 16, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, marginTop: 12, marginBottom: 12 }}>
               <div style={{ fontWeight: 700, color: '#065F46', marginBottom: 8, fontSize: 14 }}>Temporary password for {tempPw.email}</div>
+              <div style={{ fontSize: 12, color: '#047857', marginBottom: 8 }}>
+                {tempPw.emailed
+                  ? '✓ Also sent to them by email — they\'ll be asked to set a new password on first sign-in'
+                  : '⚠ Email not sent (check SENDGRID_API_KEY on Render) — share this password with them manually'}
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <code style={{ fontSize: 18, fontWeight: 700, background: '#fff', padding: '6px 14px', borderRadius: 8, border: '1px solid #A7F3D0' }}>{tempPw.password}</code>
                 <button onClick={() => navigator.clipboard.writeText(tempPw.password)} style={{ padding: '8px 12px', borderRadius: 8, background: '#059669', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Copy</button>
@@ -293,7 +303,9 @@ export default function Settings() {
               <input type="text" placeholder="First name" value={newUser.first_name} onChange={(e) => setNewUser({...newUser, first_name: e.target.value})} style={inputStyle} />
               <input type="text" placeholder="Last name" value={newUser.last_name} onChange={(e) => setNewUser({...newUser, last_name: e.target.value})} style={inputStyle} />
               <input type="email" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} style={inputStyle} />
-              <input type="text" placeholder="Temporary password (min 8 chars)" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} style={inputStyle} />
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: '#64748B', padding: '0 4px' }}>
+                📧 They'll receive an email with an 8-character temporary password and be asked to set their own on first sign-in
+              </div>
               <select value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value})} style={{ ...inputStyle, background: '#fff' }}>
                 <option value="receptionist">Receptionist</option>
                 <option value="admin">Admin</option>
