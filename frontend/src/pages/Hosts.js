@@ -1,12 +1,43 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
+import { useStore } from '../utils/store';
 
 export default function Hosts() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
+  const [printHost, setPrintHost] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const org = useStore((s) => s.organization);
+
+  const handlePrint = (host) => {
+    const canvas = document.getElementById(`badge-qr-${host.id}`);
+    const qrUrl = canvas ? canvas.toDataURL('image/png') : '';
+    const orgName = org?.name || 'Organization';
+    const win = window.open('', '_blank', 'width=420,height=640');
+    win.document.write(`<!doctype html><html><head><title>ID Badge - ${host.first_name} ${host.last_name}</title></head>
+      <body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial,sans-serif;background:#f1f5f9">
+      <div style="width:340px;border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2);background:#fff;text-align:center">
+        <div style="background:linear-gradient(135deg,#0D7377,#14919B);padding:24px;color:#fff">
+          <div style="font-size:13px;letter-spacing:2px;opacity:0.8">${orgName.toUpperCase()}</div>
+          <div style="font-size:12px;margin-top:4px;opacity:0.7">EMPLOYEE BADGE</div>
+        </div>
+        <div style="padding:28px 24px">
+          <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#0D7377,#14FFEC);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:700">${host.first_name[0]}${host.last_name[0]}</div>
+          <div style="font-size:22px;font-weight:700;color:#0F172A">${host.first_name} ${host.last_name}</div>
+          <div style="font-size:13px;color:#64748B;margin:4px 0 20px">${host.job_title || ''}${host.department ? ' · ' + host.department : ''}</div>
+          <img src="${qrUrl}" style="width:200px;height:200px" />
+          <div style="font-size:12px;color:#64748B;margin-top:14px">Scan at the kiosk to check in / out</div>
+        </div>
+        <div style="background:#F8FAFC;padding:12px;font-size:11px;color:#94A3B8">Sentinels Sign-In</div>
+      </div>
+      <script>window.onload=function(){window.print()}<\/script></body></html>`);
+    win.document.close();
+  };
 
   const { data: hosts, refetch } = useQuery('hosts', () =>
     api.get('/hosts').then(r => r.data)
@@ -24,18 +55,20 @@ export default function Hosts() {
       setEditing(null);
       setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
       refetch();
+      toast(editing ? 'Host updated' : 'Host added');
     } catch (err) {
-      alert('Failed to save host');
+      toast(err.response?.data?.error || 'Failed to save host', 'error');
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this host?')) return;
     try {
       await api.delete(`/hosts/${id}`);
+      setConfirmDeleteId(null);
       refetch();
+      toast('Host deleted');
     } catch (err) {
-      alert('Failed to delete');
+      toast(err.response?.data?.error || 'Failed to delete host', 'error');
     }
   };
 
@@ -117,15 +150,32 @@ export default function Hosts() {
                   </div>
                 </td>
                 <td style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setEditing(h.id); setForm(h); setShowModal(true); }}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button onClick={() => setPrintHost(h)} title="Print ID badge"
+                      style={{ padding: 8, borderRadius: 8, background: '#ECFEFF', border: 'none', cursor: 'pointer' }}>
+                      <Printer size={16} color="#0D7377" />
+                    </button>
+                    <button onClick={() => { setEditing(h.id); setForm(h); setShowModal(true); }} title="Edit"
                       style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                       <Pencil size={16} color="#64748B" />
                     </button>
-                    <button onClick={() => handleDelete(h.id)}
-                      style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }}>
-                      <Trash2 size={16} color="#EF4444" />
-                    </button>
+                    {confirmDeleteId === h.id ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => handleDelete(h.id)}
+                          style={{ padding: '8px 10px', borderRadius: 8, background: '#EF4444', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                          Confirm
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)}
+                          style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setConfirmDeleteId(h.id)} title="Delete"
+                        style={{ padding: 8, borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }}>
+                        <Trash2 size={16} color="#EF4444" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -189,6 +239,58 @@ export default function Hosts() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Print ID Badge Modal */}
+      {printHost && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.3)', textAlign: 'center'
+          }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Employee ID Badge</h2>
+
+            {/* Badge preview */}
+            <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0', marginBottom: 20 }}>
+              <div style={{ background: 'linear-gradient(135deg, #0D7377, #14919B)', padding: '14px', color: '#fff' }}>
+                <div style={{ fontSize: 11, letterSpacing: 2, opacity: 0.85 }}>{(org?.name || 'Organization').toUpperCase()}</div>
+                <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>EMPLOYEE BADGE</div>
+              </div>
+              <div style={{ padding: '20px 16px' }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: '50%', margin: '0 auto 10px',
+                  background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: 20, fontWeight: 700
+                }}>
+                  {printHost.first_name[0]}{printHost.last_name[0]}
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{printHost.first_name} {printHost.last_name}</div>
+                <div style={{ fontSize: 12, color: '#64748B', margin: '2px 0 14px' }}>
+                  {printHost.job_title || ''}{printHost.department ? ` · ${printHost.department}` : ''}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <QRCodeCanvas id={`badge-qr-${printHost.id}`} value={`STAFF:${printHost.id}`} size={150} level="M" includeMargin />
+                </div>
+                <div style={{ fontSize: 11, color: '#64748B', marginTop: 12 }}>Scan at the kiosk to check in / out</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => setPrintHost(null)}
+                style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                Close
+              </button>
+              <button onClick={() => handlePrint(printHost)}
+                style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Printer size={16} /> Print
+              </button>
+            </div>
           </div>
         </div>
       )}
