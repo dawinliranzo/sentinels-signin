@@ -206,8 +206,8 @@ export default function Dashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
               { label: 'Add New Host', icon: Users, action: () => navigate('/hosts'), color: '#0D7377' },
-              { label: 'View Evacuation List', icon: Bell, action: () => {}, color: '#FF6B35' },
-              { label: 'Export Reports', icon: TrendingUp, action: () => {}, color: '#9B59B6' },
+              { label: 'View Evacuation List', icon: Bell, action: openEvacuation, color: '#FF6B35' },
+              { label: exporting ? 'Exporting…' : 'Export Reports', icon: TrendingUp, action: exportCsv, color: '#9B59B6' },
               { label: 'Kiosk Settings', icon: Clock, action: () => navigate('/settings'), color: '#2ECC71' },
             ].map((action, i) => (
               <button
