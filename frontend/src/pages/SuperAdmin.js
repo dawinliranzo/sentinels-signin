@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../utils/store';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
 import {
   Building2, Users, CreditCard, TrendingUp, DollarSign,
   Shield, Activity, ArrowUpRight, ArrowDownRight, Search,
@@ -50,7 +51,7 @@ export default function SuperAdmin() {
       setStats(statsRes.data);
     } catch (err) {
       console.error('Failed to fetch super admin data:', err);
-      alert('Failed to load organizations');
+      toast('Failed to load organizations', 'error');
     } finally {
       setLoading(false);
     }
@@ -66,7 +67,7 @@ export default function SuperAdmin() {
       setViewOrg(res.data.organization);
       setViewOrgUsers(res.data.users);
     } catch (err) {
-      alert('Failed to load organization details');
+      toast('Failed to load organization details', 'error');
     } finally {
       setLoadingDetail(false);
     }
@@ -78,7 +79,7 @@ export default function SuperAdmin() {
       const res = await api.post(`/super-admin/users/${u.id}/reset-password`);
       setTempPassword({ email: res.data.user_email, password: res.data.temp_password });
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to reset password');
+      toast(err.response?.data?.error || 'Failed to reset password', 'error');
     }
   };
 
@@ -109,7 +110,7 @@ export default function SuperAdmin() {
       setEditOrg(null);
       fetchData();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update organization');
+      toast(err.response?.data?.error || 'Failed to update organization', 'error');
     }
   };
 
@@ -120,7 +121,7 @@ export default function SuperAdmin() {
       await api.patch(`/super-admin/organizations/${org.id}`, { status: newStatus });
       fetchData();
     } catch (err) {
-      alert('Failed to update organization status');
+      toast('Failed to update organization status', 'error');
     }
   };
 
