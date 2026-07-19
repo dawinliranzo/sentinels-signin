@@ -66,6 +66,56 @@ router.post('/public/check-out', async (req, res) => {
   }
 });
 
+// PUBLIC: staff badge scan — toggles an employee's visit in/out
+router.post('/staff-checkin', async (req, res) => {
+  try {
+    const { org_id, host_id } = req.body;
+    if (!org_id || !host_id) {
+      return res.status(400).json({ error: 'org_id and host_id are required' });
+    }
+
+    const hostRes = await db.query(
+      'SELECT * FROM hosts WHERE id = $1 AND org_id = $2 AND is_active = true',
+      [host_id, org_id]
+    );
+    if (hostRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Badge not recognized for this kiosk' });
+    }
+    const host = hostRes.rows[0];
+    const staffEmail = host.email || `host-${host.id}@staff.local`;
+
+    // Active staff visit for this employee?
+    const active = await db.query(
+      `SELECT * FROM visits WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)
+         AND sign_in_method = 'staff_qr' AND status = 'checked_in'
+       ORDER BY checked_in_at DESC LIMIT 1`,
+      [org_id, staffEmail]
+    );
+
+    if (active.rows.length > 0) {
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
+         WHERE id = $1 RETURNING *`,
+        [active.rows[0].id]
+      );
+      return res.json({ action: 'checked_out', name: host.first_name, visit: out.rows[0] });
+    }
+
+    const date = new Date();
+    const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const ins = await db.query(
+      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
+      [org_id, null, null, host.first_name, host.last_name, staffEmail, host.phone || null, host.department || 'Staff', 'Employee check-in', badgeNum]
+    );
+
+    res.json({ action: 'checked_in', name: host.first_name, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
+  } catch (err) {
+    console.error('Staff check-in error:', err);
+    res.status(500).json({ error: 'Staff check-in failed', details: err.message });
+  }
+});
+
 // AUTHENTICATED ENDPOINTS
 router.get('/active', authenticate, async (req, res) => {
   try {
@@ -156,7 +206,7 @@ router.post('/check-in', async (req, res) => {
       return res.status(400).json({ error: 'Organization ID is required' });
     }
 
-    const orgCheck = await db.query('SELECT id, status FROM organizations WHERE id = $1', [org_id]);
+    const orgCheck = await db.query('SELECT id, status, settings FROM organizations WHERE id = $1', [org_id]);
     if (orgCheck.rows.length === 0) {
       return res.status(400).json({ error: 'Invalid organization ID' });
     }
@@ -165,12 +215,35 @@ router.post('/check-in', async (req, res) => {
     }
     // ─── END ORG VALIDATION ───
 
+    const orgSettings = orgCheck.rows[0].settings || {};
+
+    // ─── AUTO-LINK: kiosk check-in without QR -> match a pre-registration ───
+    let linkedPreRegId = pre_reg_id;
+    if (!linkedPreRegId) {
+      try {
+        const prMatch = await db.query(
+          `SELECT id FROM pre_registered_visitors
+           WHERE org_id = $1
+             AND (LOWER(email) = LOWER($2) OR (LOWER(first_name) = LOWER($3) AND LOWER(last_name) = LOWER($4)))
+             AND invitation_status IN ('pending','sent','opened')
+           ORDER BY expected_date DESC LIMIT 1`,
+          [org_id, email || '', first_name, last_name]
+        );
+        if (prMatch.rows.length > 0) {
+          linkedPreRegId = prMatch.rows[0].id;
+        }
+      } catch (mErr) {
+        console.error('Pre-reg auto-match failed (continuing):', mErr);
+      }
+    }
+    // ─── END AUTO-LINK ───
+
     // ─── DUPLICATE GUARD: one active visit per visitor per org ───
     try {
       let dupQuery, dupParams;
-      if (pre_reg_id) {
+      if (linkedPreRegId) {
         dupQuery = `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND pre_reg_id = $2 ORDER BY checked_in_at DESC LIMIT 1`;
-        dupParams = [org_id, pre_reg_id];
+        dupParams = [org_id, linkedPreRegId];
       } else if (email) {
         dupQuery = `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND LOWER(visitor_email) = LOWER($2) ORDER BY checked_in_at DESC LIMIT 1`;
         dupParams = [org_id, email];
@@ -203,9 +276,9 @@ router.post('/check-in', async (req, res) => {
     const visit = result.rows[0];
 
     // Mark the pre-registration as arrived
-    if (pre_reg_id) {
+    if (linkedPreRegId) {
       try {
-        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'checked_in' WHERE id = $1", [pre_reg_id]);
+        await db.query("UPDATE pre_registered_visitors SET invitation_status = 'checked_in' WHERE id = $1", [linkedPreRegId]);
       } catch (preErr) {
         console.error('Failed to update pre-registration status:', preErr);
       }
@@ -218,7 +291,7 @@ router.post('/check-in', async (req, res) => {
         if (hostResult.rows.length > 0) {
           const host = hostResult.rows[0];
 
-          if (host.notify_email && host.email) {
+          if ((orgSettings.notify_email ?? true) && host.notify_email && host.email) {
             try {
               await sendEmail({
                 to: host.email,
@@ -237,7 +310,7 @@ router.post('/check-in', async (req, res) => {
             }
           }
 
-          if (host.notify_sms && host.phone) {
+          if ((orgSettings.notify_sms ?? true) && host.notify_sms && host.phone) {
             try {
               await sendSMS({
                 to: host.phone,
