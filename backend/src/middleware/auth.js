@@ -11,6 +11,10 @@ const authenticate = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
+    // MFA / password-change tickets are not session tokens
+    if (decoded.purpose) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     const result = await db.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.userId]);
 
     if (result.rows.length === 0) {
