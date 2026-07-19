@@ -15,6 +15,7 @@ export default function Settings() {
   const [tempPw, setTempPw] = useState(null);
   const [savingUser, setSavingUser] = useState(false);
   const [notifyOffline, setNotifyOffline] = useState(false);
+  const [confirmMfaId, setConfirmMfaId] = useState(null);
 
   // MFA
   const [mfaEnabled, setMfaEnabled] = useState(false);
@@ -122,6 +123,19 @@ export default function Settings() {
     }
   };
 
+  const resetMfa = async (u) => {
+    try {
+      const res = await api.post(`/users/${u.id}/reset-mfa`);
+      setConfirmMfaId(null);
+      toast(res.data.already_disabled
+        ? `MFA is already off for ${u.email}`
+        : `MFA reset for ${u.email} — they can sign in with password only and set MFA up again`);
+      loadTeam();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to reset MFA', 'error');
+    }
+  };
+
   const toggleActive = async (u) => {
     const action = u.is_active ? 'deactivate' : 'reactivate';
     if (!window.confirm(`${action === 'deactivate' ? 'Deactivate' : 'Reactivate'} ${u.first_name} ${u.last_name}?`)) return;
@@ -140,6 +154,7 @@ export default function Settings() {
     notify_sms: false,
     require_photo: false,
     require_nda: false,
+    require_prereg_date: false,
   });
 
   const [saving, setSaving] = useState(false);
@@ -235,6 +250,21 @@ export default function Settings() {
                 <button onClick={() => resetPw(u)} style={{ padding: '8px 14px', borderRadius: 8, background: '#FEF3C7', border: 'none', color: '#92400E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                   Reset Password
                 </button>
+                {u.mfa_enabled && (confirmMfaId === u.id ? (
+                  <>
+                    <button onClick={() => resetMfa(u)} style={{ padding: '8px 14px', borderRadius: 8, background: '#3730A3', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Confirm MFA reset
+                    </button>
+                    <button onClick={() => setConfirmMfaId(null)} style={{ padding: '8px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirmMfaId(u.id)} title="Use when this person loses access to their authenticator"
+                    style={{ padding: '8px 14px', borderRadius: 8, background: '#E0E7FF', border: 'none', color: '#3730A3', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    Reset MFA
+                  </button>
+                ))}
                 {u.id !== user?.id && (
                   <button onClick={() => toggleActive(u)} style={{ padding: '8px 14px', borderRadius: 8, background: u.is_active ? '#FEF2F2' : '#DCFCE7', border: 'none', color: u.is_active ? '#991B1B' : '#166534', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                     {u.is_active ? 'Deactivate' : 'Reactivate'}
@@ -328,6 +358,15 @@ export default function Settings() {
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Require Photo Capture</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Take a photo of every visitor during check-in</div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.require_prereg_date || false}
+              onChange={(e) => setSettings({...settings, require_prereg_date: e.target.checked})}
+              style={{ width: 22, height: 22 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#0F172A' }}>Require Date for Pre-Registrations</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>Off by default — pre-registered visitors can have open-ended visits with no expected date/time</div>
             </div>
           </label>
 
