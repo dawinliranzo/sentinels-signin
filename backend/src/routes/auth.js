@@ -220,7 +220,11 @@ router.post('/mfa/setup', authenticate, async (req, res) => {
     const qr = await QRCode.toDataURL(otpauth, { width: 240, margin: 1 });
     res.json({ secret, qr });
   } catch (err) {
-    console.error(err);
+    console.error('MFA setup error:', err);
+    // 42P01 missing table, 42703 missing column, 42804 type mismatch, 22001 value too long
+    if (['42P01', '42703', '42804', '22001'].includes(err.code)) {
+      return res.status(500).json({ error: 'MFA columns need a fix — run migration-mfa-fix.txt in Render PSQL' });
+    }
     res.status(500).json({ error: 'Failed to start MFA setup' });
   }
 });
