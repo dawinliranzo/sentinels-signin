@@ -4,9 +4,45 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../utils/db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { sendEmail } = require('../utils/notifications');
 
 // All routes: logged-in org admin (or super admin), scoped to their own org
 router.use(authenticate, requireRole('admin', 'super_admin'));
+
+// 8-char temporary password from an unambiguous alphabet (easy to read & type)
+const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const makeTempPassword = () =>
+  Array.from(crypto.randomBytes(8)).map((b) => TEMP_ALPHABET[b % TEMP_ALPHABET.length]).join('');
+
+const loginUrl = () => (process.env.FRONTEND_URL || 'https://app.sentinelskiosk.com') + '/login';
+
+const sendInviteEmail = async ({ to, firstName, tempPassword, orgName, isReset }) => {
+  const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return sendEmail({
+    to,
+    subject: isReset ? 'Your Sentinels Sign-In password was reset' : `You're invited to ${orgName || 'your team'} on Sentinels Sign-In`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
+        <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
+          <h2 style="margin:0;font-size:19px">${isReset ? 'Password Reset' : 'Welcome to Sentinels Sign-In'} 🛡️</h2>
+        </div>
+        <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
+          <p>Hi ${esc(firstName) || 'there'},</p>
+          <p>${isReset
+            ? 'An administrator reset your password. Sign in with the temporary password below — you\'ll be asked to set a new one right away.'
+            : `You've been invited to join <strong>${esc(orgName) || 'your organization'}</strong> on Sentinels Sign-In, the visitor management kiosk. Sign in with the temporary password below — you'll be asked to set your own password right away.`}</p>
+          <div style="background:#F1F5F9;border-radius:12px;padding:18px;text-align:center;margin:22px 0">
+            <div style="font-size:12px;color:#64748B;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Temporary password</div>
+            <div style="font-size:28px;font-weight:800;letter-spacing:4px;font-family:monospace;color:#0F172A">${tempPassword}</div>
+          </div>
+          <p style="text-align:center">
+            <a href="${loginUrl()}" style="display:inline-block;background:#0D7377;color:#fff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700">Sign In</a>
+          </p>
+          <p style="color:#64748B;font-size:12.5px;margin-top:24px">Sign in at <a href="${loginUrl()}">${loginUrl()}</a> with this email address and the temporary password above.</p>
+        </div>
+      </div>`
+  });
+};
 
 // GET /api/users — list users in my organization
 router.get('/', async (req, res) => {
@@ -22,18 +58,15 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/users — create a user in my organization
+// POST /api/users — invite a user: server generates an 8-char temp password,
+// emails it to them, and forces a password change on first sign-in
 router.post('/', async (req, res) => {
   try {
-    const { email, password, first_name, last_name, role } = req.body;
+    const { email, first_name, last_name, role } = req.body;
 
-    if (!email || !password || !first_name || !last_name) {
-      return res.status(400).json({ error: 'Email, password, first name and last name are required' });
+    if (!email || !first_name || !last_name) {
+      return res.status(400).json({ error: 'Email, first name and last name are required' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-    // Never allow creating super admins from here
     const safeRole = role === 'admin' ? 'admin' : 'receptionist';
 
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
@@ -41,14 +74,21 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'A user with this email already exists' });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
+    const tempPassword = makeTempPassword();
+    const hashed = await bcrypt.hash(tempPassword, 10);
     const result = await db.query(
-      `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING id, email, first_name, last_name, role, is_active`,
+      `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, is_active, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, true, true) RETURNING id, email, first_name, last_name, role, is_active`,
       [req.user.org_id, email.toLowerCase(), hashed, first_name, last_name, safeRole]
     );
 
-    res.status(201).json(result.rows[0]);
+    const orgRes = await db.query('SELECT name FROM organizations WHERE id = $1', [req.user.org_id]);
+    const emailResult = await sendInviteEmail({
+      to: email.toLowerCase(), firstName: first_name, tempPassword,
+      orgName: orgRes.rows[0]?.name, isReset: false
+    });
+
+    res.status(201).json({ ...result.rows[0], temp_password: tempPassword, invite_sent: !emailResult?.simulated });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create user' });
@@ -66,11 +106,17 @@ router.post('/:id/reset-password', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const tempPassword = 'Ksk-' + crypto.randomBytes(4).toString('hex');
+    const tempPassword = makeTempPassword();
     const hashed = await bcrypt.hash(tempPassword, 10);
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashed, req.params.id]);
+    await db.query('UPDATE users SET password_hash = $1, must_change_password = true WHERE id = $2', [hashed, req.params.id]);
 
-    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email });
+    const userRow = await db.query('SELECT first_name FROM users WHERE id = $1', [req.params.id]);
+    const emailResult = await sendInviteEmail({
+      to: userResult.rows[0].email, firstName: userRow.rows[0]?.first_name,
+      tempPassword, orgName: null, isReset: true
+    });
+
+    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email, invite_sent: !emailResult?.simulated });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reset password' });
