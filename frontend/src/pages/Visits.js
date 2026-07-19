@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { Search, Filter, Download, CheckCircle, XCircle } from 'lucide-react';
 import api from '../utils/api';
+import { toast } from '../utils/toast';
 
 export default function Visits() {
   const [search, setSearch] = useState('');
@@ -20,7 +21,7 @@ export default function Visits() {
       await api.post(`/visits/${id}/check-out`);
       refetch();
     } catch (err) {
-      alert('Failed to check out');
+      toast('Failed to check out visitor', 'error');
     }
   };
 
