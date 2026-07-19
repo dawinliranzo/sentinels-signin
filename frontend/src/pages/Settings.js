@@ -16,6 +16,54 @@ export default function Settings() {
   const [savingUser, setSavingUser] = useState(false);
   const [notifyOffline, setNotifyOffline] = useState(false);
 
+  // MFA
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSetup, setMfaSetup] = useState(null); // { secret, qr }
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaBusy, setMfaBusy] = useState(false);
+
+  const startMfaSetup = async () => {
+    setMfaBusy(true);
+    try {
+      const res = await api.post('/auth/mfa/setup');
+      setMfaSetup(res.data);
+      setMfaCode('');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to start MFA setup', 'error');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const enableMfa = async () => {
+    if (!mfaCode) return alert('Enter the 6-digit code from your authenticator app');
+    setMfaBusy(true);
+    try {
+      await api.post('/auth/mfa/enable', { code: mfaCode });
+      setMfaEnabled(true);
+      setMfaSetup(null);
+      setMfaCode('');
+      toast('MFA enabled — you will need your code at next login');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Invalid code', 'error');
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const disableMfa = async () => {
+    if (!window.confirm('Disable MFA? Your account will be protected by password only.')) return;
+    const code = window.prompt('Enter your current 6-digit code to confirm:');
+    if (!code) return;
+    try {
+      await api.post('/auth/mfa/disable', { code });
+      setMfaEnabled(false);
+      toast('MFA disabled');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Invalid code', 'error');
+    }
+  };
+
   const toggleOfflineAlerts = async (value) => {
     setNotifyOffline(value);
     try {
@@ -28,7 +76,7 @@ export default function Settings() {
 
   useEffect(() => {
     if (canManage) loadTeam();
-    api.get('/auth/me').then(r => setNotifyOffline(!!r.data.notify_offline)).catch(() => {});
+    api.get('/auth/me').then(r => { setNotifyOffline(!!r.data.notify_offline); setMfaEnabled(!!r.data.mfa_enabled); }).catch(() => {});
     api.get('/settings').then(r => {
       if (r.data && Object.keys(r.data).length > 0) {
         setSettings(prev => ({ ...prev, ...r.data }));
@@ -282,6 +330,64 @@ export default function Settings() {
               <div style={{ fontSize: 13, color: '#64748B' }}>Take a photo of every visitor during check-in</div>
             </div>
           </label>
+
+          {/* ─── MFA ─── */}
+          <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 16, marginTop: 4 }}>
+            <div style={{ fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>Two-Factor Authentication (MFA)</div>
+            <div style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+              Status: <strong style={{ color: mfaEnabled ? '#166534' : '#92400E' }}>{mfaEnabled ? 'Enabled' : 'Disabled'}</strong>
+              {' '}— protects your account with an authenticator app (Google Authenticator, Authy, 1Password...)
+            </div>
+
+            {!mfaEnabled && !mfaSetup && (
+              <button onClick={startMfaSetup} disabled={mfaBusy}
+                style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+                {mfaBusy ? 'Preparing...' : 'Set Up MFA'}
+              </button>
+            )}
+
+            {mfaSetup && (
+              <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 16, marginTop: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>1. Scan with your authenticator app:</div>
+                <img src={mfaSetup.qr} alt="MFA QR" style={{ width: 180, height: 180, display: 'block', marginBottom: 8 }} />
+                <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                  Can't scan? Enter manually: <code style={{ background: '#fff', padding: '2px 8px', borderRadius: 6, border: '1px solid #E2E8F0' }}>{mfaSetup.secret}</code>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>2. Enter the 6-digit code:</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="text" inputMode="numeric" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="123456"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 18, letterSpacing: 6, width: 160, textAlign: 'center' }} />
+                  <button onClick={enableMfa} disabled={mfaBusy}
+                    style={{ padding: '12px 20px', borderRadius: 10, background: '#166534', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                    Verify & Enable
+                  </button>
+                  <button onClick={() => { setMfaSetup(null); setMfaCode(''); }}
+                    style={{ padding: '12px 16px', borderRadius: 10, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {mfaEnabled && (
+              <button onClick={disableMfa}
+                style={{ padding: '10px 20px', borderRadius: 10, background: '#FEF2F2', border: 'none', color: '#991B1B', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+                Disable MFA
+              </button>
+            )}
+
+            {canManage && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginTop: 16, paddingTop: 12, borderTop: '1px solid #F1F5F9' }}>
+                <input type="checkbox" checked={settings.mfa_required || false}
+                  onChange={(e) => setSettings({...settings, mfa_required: e.target.checked})}
+                  style={{ width: 22, height: 22 }} />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#0F172A' }}>Require MFA for everyone in this organization</div>
+                  <div style={{ fontSize: 13, color: '#64748B' }}>Users without MFA will be sent to set it up at next login (remember to Save Settings below)</div>
+                </div>
+              </label>
+            )}
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.require_nda}
               onChange={(e) => setSettings({...settings, require_nda: e.target.checked})}
