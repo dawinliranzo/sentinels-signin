@@ -198,7 +198,8 @@ router.post('/check-in', async (req, res) => {
       vehicle_plate,
       custom_data,
       sign_in_method = 'kiosk',
-      pre_reg_id
+      pre_reg_id,
+      photo_data
     } = req.body;
 
     // ─── ORG VALIDATION ───
@@ -268,10 +269,10 @@ router.post('/check-in', async (req, res) => {
       INSERT INTO visits (
         org_id, pre_reg_id, visitor_type_id, host_id,
         visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company,
-        purpose, badge_number, vehicle_plate, custom_data, sign_in_method, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'checked_in')
+        purpose, badge_number, vehicle_plate, custom_data, sign_in_method, photo_data, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'checked_in')
       RETURNING *
-    `, [org_id, pre_reg_id || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method]);
+    `, [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null]);
 
     const visit = result.rows[0];
 
