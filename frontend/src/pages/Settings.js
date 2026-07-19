@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useStore } from '../utils/store';
 import { Upload, Palette, Bell, Shield, Save, Users, UserPlus } from 'lucide-react';
 import api from '../utils/api';
@@ -8,6 +9,15 @@ export default function Settings() {
   const org = useStore((s) => s.organization);
   const user = useStore((s) => s.user);
   const canManage = user?.role === 'admin' || user?.role === 'super_admin';
+
+  // Deep-link: /settings?section=team scrolls straight to Team Members
+  const [searchParams] = useSearchParams();
+  const teamRef = useRef(null);
+  useEffect(() => {
+    if (searchParams.get('section') === 'team') {
+      setTimeout(() => teamRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    }
+  }, [searchParams]);
 
   const [team, setTeam] = useState([]);
   const [newUser, setNewUser] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'receptionist' });
@@ -238,7 +248,7 @@ export default function Settings() {
 
       {/* Team Members */}
       {canManage && (
-        <div style={sectionStyle}>
+        <div ref={teamRef} style={{ ...sectionStyle, scrollMarginTop: 24 }}>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
             <Users size={20} color="#0D7377" /> Team Members
           </h3>
