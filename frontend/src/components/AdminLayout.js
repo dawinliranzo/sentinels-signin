@@ -1,6 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../utils/store';
+import Toaster from './Toaster';
 import {
   LayoutDashboard, Users, Calendar, Settings, LogOut,
   QrCode, Package, Shield, Bell, Menu, X
@@ -163,6 +164,8 @@ export default function AdminLayout() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 40 }}
         />
       )}
+
+      <Toaster />
 
       {/* Main Content */}
       <main style={{
