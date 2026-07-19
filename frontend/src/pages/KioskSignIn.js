@@ -6,6 +6,8 @@ import api from '../utils/api';
 export default function KioskSignIn() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Must be declared BEFORE any useEffect that references it (was declared below -> TDZ crash -> white screen)
+  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState([]);
@@ -16,6 +18,7 @@ export default function KioskSignIn() {
     purpose: '', vehicle_plate: '',
   });
   const [visitResult, setVisitResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Photo capture (org-configurable)
   const [photoRequired, setPhotoRequired] = useState(false);
@@ -72,9 +75,6 @@ export default function KioskSignIn() {
   const [showHostDropdown, setShowHostDropdown] = useState(false);
   const [selectedHost, setSelectedHost] = useState(null);
   const hostDropdownRef = useRef(null);
-
-  // CRITICAL FIX: No fallback to demo org. Must have org ID.
-  const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
 
   React.useEffect(() => {
     if (orgId) {
@@ -148,7 +148,7 @@ export default function KioskSignIn() {
       setVisitResult(res.data);
       setStep(3);
     } catch (err) {
-      alert('Sign-in failed: ' + (err.response?.data?.error || 'Unknown error'));
+      setErrorMsg('Sign-in failed: ' + (err.response?.data?.error || 'Please try again'));
     } finally {
       setLoading(false);
     }
@@ -387,8 +387,18 @@ export default function KioskSignIn() {
             </div>
           )}
 
+          {errorMsg && (
+            <div style={{
+              marginTop: 16, padding: '14px 18px', borderRadius: 12,
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+              color: '#FCA5A5', fontSize: 15, fontWeight: 500, textAlign: 'center'
+            }} onClick={() => setErrorMsg('')}>
+              {errorMsg}
+            </div>
+          )}
+
           <button
-            onClick={() => setStep(2)}
+            onClick={() => { setErrorMsg(''); setStep(2); }}
             disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
@@ -525,6 +535,16 @@ export default function KioskSignIn() {
               style={inputStyle} placeholder="ABC-1234"
             />
           </div>
+
+          {errorMsg && (
+            <div style={{
+              padding: '14px 18px', borderRadius: 12,
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+              color: '#FCA5A5', fontSize: 15, fontWeight: 500, textAlign: 'center'
+            }} onClick={() => setErrorMsg('')}>
+              {errorMsg}
+            </div>
+          )}
 
           <button
             onClick={handleSubmit}
