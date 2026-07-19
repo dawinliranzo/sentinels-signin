@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -11,6 +11,63 @@ import { useStore } from '../utils/store';
 export default function Dashboard() {
   const navigate = useNavigate();
   const org = useStore((s) => s.organization);
+  const [showEvac, setShowEvac] = useState(false);
+  const [evacList, setEvacList] = useState([]);
+  const [exporting, setExporting] = useState(false);
+
+  const openEvacuation = async () => {
+    try {
+      const res = await api.get('/visits/active');
+      setEvacList(res.data);
+      setShowEvac(true);
+    } catch (err) {
+      alert('Failed to load evacuation list');
+    }
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/visits');
+      const rows = res.data;
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const header = ['First Name','Last Name','Email','Phone','Company','Purpose','Badge','Method','Status','Checked In','Checked Out'];
+      const lines = [header.join(',')];
+      rows.forEach(v => lines.push([
+        v.visitor_first_name, v.visitor_last_name, v.visitor_email, v.visitor_phone, v.visitor_company,
+        v.purpose, v.badge_number, v.sign_in_method, v.status,
+        v.checked_in_at ? new Date(v.checked_in_at).toLocaleString() : '',
+        v.checked_out_at ? new Date(v.checked_out_at).toLocaleString() : ''
+      ].map(esc).join(',')));
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `visits-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      alert('Failed to export');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const printEvacuation = () => {
+    const orgName = org?.name || 'Organization';
+    const now = new Date().toLocaleString();
+    const rows = evacList.map(v =>
+      `<tr><td style="padding:8px;border:1px solid #ccc">${v.visitor_first_name} ${v.visitor_last_name}</td><td style="padding:8px;border:1px solid #ccc">${v.visitor_company || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.host_first_name ? v.host_first_name + ' ' + v.host_last_name : ''}</td><td style="padding:8px;border:1px solid #ccc">${v.badge_number || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}</td></tr>`
+    ).join('');
+    const win = window.open('', '_blank', 'width=700,height=600');
+    win.document.write(`<!doctype html><html><head><title>Evacuation List</title></head><body style="font-family:Arial;padding:24px">
+      <h2 style="margin:0">${orgName} — Evacuation List</h2>
+      <p style="color:#555">${now} · ${evacList.length} people on site</p>
+      <table style="border-collapse:collapse;width:100%"><thead><tr>
+      <th style="text-align:left;padding:8px;border:1px solid #ccc">Visitor</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Company</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Host</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Badge</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Checked In</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <script>window.onload=function(){window.print()}<\/script></body></html>`);
+    win.document.close();
+  };
   const { data: stats, isLoading } = useQuery('dashboard-stats', () =>
     api.get('/dashboard/stats').then(r => r.data)
   );
@@ -178,6 +235,56 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Evacuation List Modal */}
+      {showEvac && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 680,
+            maxHeight: '85vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0F172A' }}>
+                Evacuation List
+              </h2>
+              <span style={{ background: '#FF6B35', color: '#fff', padding: '6px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14 }}>
+                {evacList.length} on site
+              </span>
+            </div>
+
+            {evacList.length === 0 ? (
+              <p style={{ color: '#64748B', textAlign: 'center', padding: 32 }}>No one is currently checked in.</p>
+            ) : (
+              evacList.map(v => (
+                <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 15, color: '#0F172A' }}>{v.visitor_first_name} {v.visitor_last_name}</div>
+                    <div style={{ fontSize: 12, color: '#64748B' }}>
+                      {v.visitor_company || 'No company'}{v.host_first_name ? ` · with ${v.host_first_name} ${v.host_last_name}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: 12, color: '#64748B' }}>
+                    <div style={{ fontWeight: 600, color: '#0D7377' }}>{v.badge_number}</div>
+                    <div>{v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}</div>
+                  </div>
+                </div>
+              ))
+            )}
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+              <button onClick={() => setShowEvac(false)} style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                Close
+              </button>
+              <button onClick={printEvacuation} style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#FF6B35', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                Print List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
