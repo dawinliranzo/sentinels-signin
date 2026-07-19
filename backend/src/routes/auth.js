@@ -223,9 +223,10 @@ router.post('/mfa/setup', authenticate, async (req, res) => {
     console.error('MFA setup error:', err);
     // 42P01 missing table, 42703 missing column, 42804 type mismatch, 22001 value too long
     if (['42P01', '42703', '42804', '22001'].includes(err.code)) {
-      return res.status(500).json({ error: 'MFA columns need a fix — run migration-mfa-fix.txt in Render PSQL' });
+      return res.status(500).json({ error: `MFA columns need a fix — run migration-mfa-fix.txt in Render PSQL (code ${err.code})` });
     }
-    res.status(500).json({ error: 'Failed to start MFA setup' });
+    // Surface the real cause so the next failure tells us exactly what it is
+    res.status(500).json({ error: `Failed to start MFA setup (${err.code || err.message || 'unknown'})` });
   }
 });
 
