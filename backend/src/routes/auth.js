@@ -56,6 +56,12 @@ router.post('/login', async (req, res) => {
 
     const orgResult = await db.query('SELECT * FROM organizations WHERE id = $1', [user.org_id]);
 
+    // Temporary password -> must set a new one before anything else
+    if (user.must_change_password) {
+      const changeToken = jwt.sign({ userId: user.id, orgId: user.org_id, purpose: 'password-change' }, JWT_SECRET, { expiresIn: '15m' });
+      return res.json({ must_change_password: true, change_token: changeToken });
+    }
+
     // MFA enabled -> require the authenticator code before issuing a session
     if (user.mfa_enabled && user.mfa_secret) {
       const mfaToken = jwt.sign({ userId: user.id, orgId: user.org_id, purpose: 'mfa' }, JWT_SECRET, { expiresIn: '5m' });
@@ -76,6 +82,59 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /api/auth/set-password — first-login / post-reset: exchange the
+// password-change ticket + new password for a real session
+router.post('/set-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+    if (String(password).length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Session expired — please sign in again' });
+    }
+    if (decoded.purpose !== 'password-change') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const result = await db.query('SELECT * FROM users WHERE id = $1 AND is_active = true', [decoded.userId]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    const user = result.rows[0];
+
+    // Don't allow re-using the temporary password
+    if (await bcrypt.compare(String(password), user.password_hash)) {
+      return res.status(400).json({ error: 'New password must be different from the temporary one' });
+    }
+
+    const hashed = await bcrypt.hash(String(password), 10);
+    await db.query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [hashed, user.id]);
+
+    // Password changed — if the org enforces MFA and the user hasn't set it up, flag it
+    const orgResult = await db.query('SELECT * FROM organizations WHERE id = $1', [user.org_id]);
+    const orgSettings = orgResult.rows[0]?.settings || {};
+    const sessionToken = jwt.sign({ userId: user.id, orgId: user.org_id }, JWT_SECRET, { expiresIn: '24h' });
+
+    res.json({
+      token: sessionToken,
+      user: { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, role: user.role },
+      organization: orgResult.rows[0],
+      mfa_setup_required: !!orgSettings.mfa_required && !user.mfa_enabled
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to set password' });
   }
 });
 
