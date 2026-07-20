@@ -164,15 +164,39 @@ export default function KioskWelcome() {
         </p>
         <div style={{
           background: 'rgba(255,255,255,0.1)', borderRadius: 16,
-          padding: '20px 24px', border: '1px solid rgba(255,255,255,0.2)',
-          maxWidth: 400
+          padding: '24px', border: '1px solid rgba(255,255,255,0.2)',
+          width: '100%', maxWidth: 400
         }}>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
-            Example URL format:
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.8)', marginBottom: 14, fontWeight: 600 }}>
+            Pair this kiosk to set it up
           </p>
-          <code style={{ fontSize: 12, color: '#14FFEC', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-            https://yoursite.com/kiosk?org=your-org-id
-          </code>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginBottom: 16 }}>
+            Scan the pairing QR from <strong style={{ color: 'rgba(255,255,255,0.85)' }}>Dashboard → Devices</strong>,
+            or enter the 6-character pairing code:
+          </p>
+          <input
+            type="text" value={pairCode}
+            onChange={(e) => setPairCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+            onKeyDown={(e) => { if (e.key === 'Enter') submitPair(); }}
+            placeholder="ABC123"
+            style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: '2px solid rgba(20,255,236,0.4)',
+              background: 'rgba(0,0,0,0.3)', color: '#14FFEC', fontSize: 26, fontWeight: 800,
+              textAlign: 'center', letterSpacing: 8, fontFamily: 'monospace', outline: 'none', marginBottom: 12
+            }}
+          />
+          {pairError && <div style={{ fontSize: 13, color: '#FCA5A5', marginBottom: 10 }}>{pairError}</div>}
+          <button onClick={submitPair} disabled={pairBusy || pairCode.length < 6}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+              background: pairCode.length < 6 ? 'rgba(13,115,119,0.4)' : '#0D7377',
+              color: '#fff', fontSize: 16, fontWeight: 700, cursor: pairCode.length < 6 ? 'not-allowed' : 'pointer'
+            }}>
+            {pairBusy ? 'Pairing…' : 'Pair Kiosk'}
+          </button>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 14, marginBottom: 0 }}>
+            No code yet? Ask your admin to add this kiosk under Dashboard → Devices.
+          </p>
         </div>
       </div>
     );
