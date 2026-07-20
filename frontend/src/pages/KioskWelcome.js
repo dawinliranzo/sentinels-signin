@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, LogIn, LogOut, QrCode, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowRight, LogIn, LogOut, QrCode, CheckCircle, XCircle, PenLine } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
+import SignaturePad from '../components/SignaturePad';
+
+// Same fallback as the backend — used when NDA is on but no custom text is saved yet.
+const DEFAULT_NDA_TEXT = `VISITOR NON-DISCLOSURE AGREEMENT
+
+By signing below, the visitor agrees to keep confidential all non-public information, materials, and activities observed or accessed while on these premises.
+
+The visitor agrees not to disclose, copy, photograph, record, or share any such information with any third party, and to follow all site safety and security rules for the duration of the visit.
+
+This agreement takes effect upon signing and remains in effect after the visit ends.`;
 
 export default function KioskWelcome() {
   const navigate = useNavigate();
@@ -22,15 +32,85 @@ export default function KioskWelcome() {
   // pairFlow: null | 'pairing' | 'paired' | 'error'
   const [pairFlow, setPairFlow] = useState(null);
   const [pairFlowMsg, setPairFlowMsg] = useState('');
+  // NDA signing for pre-registered visitors (when the org requires it)
+  const [ndaRequired, setNdaRequired] = useState(false);
+  const [ndaText, setNdaText] = useState('');
+  const [pendingVisitor, setPendingVisitor] = useState(null);
+  const [ndaSig, setNdaSig] = useState(null);
+  const [ndaName, setNdaName] = useState('');
+  const [ndaBusy, setNdaBusy] = useState(false);
   const scannerRef = useRef(null);
   const processingRef = useRef(false);
   const pairAttemptedRef = useRef(false);
+  const ndaRequiredRef = useRef(false); // read inside the scanner callback (avoids stale closure)
 
   useEffect(() => {
     if (orgId) {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
+
+  // Load org kiosk config (NDA requirement) once we know the org
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/kiosk/config/${orgId}`).then(r => {
+      setNdaRequired(!!r.data.nda_required);
+      ndaRequiredRef.current = !!r.data.nda_required;
+      setNdaText(r.data.nda_text || '');
+    }).catch(() => {});
+  }, [orgId]);
+
+  // ─── DEVICE PAIRING (declared before any early returns that reference them) ───
+  const submitPair = async () => {
+    if (!pairCode.trim()) return;
+    setPairBusy(true);
+    setPairError('');
+    try {
+      const r = await api.post('/devices/pair', { code: pairCode.trim().toUpperCase() });
+      localStorage.setItem('kiosk_device_id', r.data.device_id);
+      localStorage.setItem('kiosk_device_name', r.data.device_name);
+      if (r.data.org_id) localStorage.setItem('kiosk_org_id', r.data.org_id);
+      setPairedName(r.data.device_name);
+      setShowPair(false);
+      setPairCode('');
+    } catch (err) {
+      setPairError(err.response?.data?.error || 'Pairing failed — check the code');
+    } finally {
+      setPairBusy(false);
+    }
+  };
+
+  const unpair = () => {
+    localStorage.removeItem('kiosk_device_id');
+    localStorage.removeItem('kiosk_device_name');
+    setPairedName('');
+  };
+
+  // Pre-registered visitor check-in, with or without a signed NDA
+  const completePreregCheckin = async (visitor, nda) => {
+    try {
+      const r = await api.post('/visits/check-in', {
+        org_id: visitor.org_id,
+        pre_reg_id: visitor.id,
+        visitor_type_id: visitor.visitor_type_id,
+        host_id: visitor.host_id,
+        first_name: visitor.first_name,
+        last_name: visitor.last_name,
+        email: visitor.email,
+        phone: visitor.phone,
+        company: visitor.company,
+        purpose: visitor.purpose,
+        sign_in_method: 'qr_code',
+        ...(nda ? { nda_signature: nda.signature, nda_signed_name: nda.name } : {})
+      });
+      setResult({ name: visitor.first_name, badge: r.data?.badge_number });
+      setMode(r.data?.already_checked_in ? 'already' : 'done');
+      setTimeout(() => setMode('welcome'), 6000);
+    } catch (err) {
+      setResult({ message: err.response?.data?.error || 'Invalid or expired QR code' });
+      setMode('error');
+    }
+  };
 
   // ─── MAGIC-LINK PAIRING: /kiosk?pair=ABC123 pairs this device automatically ───
   useEffect(() => {
@@ -101,30 +181,27 @@ export default function KioskWelcome() {
           setMode('error');
           return;
         }
-        const r = await api.post('/visits/check-in', {
-          org_id: visitor.org_id,
-          pre_reg_id: visitor.id,
-          visitor_type_id: visitor.visitor_type_id,
-          host_id: visitor.host_id,
-          first_name: visitor.first_name,
-          last_name: visitor.last_name,
-          email: visitor.email,
-          phone: visitor.phone,
-          company: visitor.company,
-          purpose: visitor.purpose,
-          sign_in_method: 'qr_code'
-        });
-        setResult({ name: visitor.first_name, badge: r.data?.badge_number });
-        setMode(r.data?.already_checked_in ? 'already' : 'done');
-        setTimeout(() => setMode('welcome'), 6000);
+        // NDA required? Pause here and ask the visitor to sign before checking in
+        if (ndaRequiredRef.current) {
+          setPendingVisitor(visitor);
+          setNdaSig(null);
+          setNdaName(`${visitor.first_name} ${visitor.last_name}`.trim());
+          setMode('nda');
+          return;
+        }
+        await completePreregCheckin(visitor, null);
       } catch (err) {
         setResult({ message: err.response?.data?.error || 'Invalid or expired QR code' });
         setMode('error');
       }
     };
 
+    // Front camera first — visitors hold their phone up to the screen, so the
+    // selfie camera is the right one. Fall back to any camera if none exists.
+    const scanConfig = { fps: 10, qrbox: { width: 260, height: 260 } };
     scanner
-      .start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 260 } }, onScan, () => {})
+      .start({ facingMode: 'user' }, scanConfig, onScan, () => {})
+      .catch(() => scanner.start({ facingMode: 'environment' }, scanConfig, onScan, () => {}))
       .catch(() => {
         if (!cancelled) {
           setResult({ message: 'Camera unavailable. Please allow camera access, or use Sign In instead.' });
@@ -268,6 +345,75 @@ export default function KioskWelcome() {
     );
   }
 
+  // ─── NDA SIGNING (pre-registered visitor, org requires NDA) ───
+  if (mode === 'nda' && pendingVisitor) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, maxWidth: 620, width: '100%', padding: '0 16px' }}>
+        <PenLine size={40} color="#14FFEC" style={{ marginBottom: 12 }} />
+        <h1 style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 6, textAlign: 'center' }}>
+          One more step, {pendingVisitor.first_name}
+        </h1>
+        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', marginBottom: 20, textAlign: 'center' }}>
+          Please read and sign the agreement below to complete your check-in
+        </p>
+
+        <div style={{
+          width: '100%', background: 'rgba(255,255,255,0.95)', borderRadius: 14,
+          padding: '18px 20px', maxHeight: 180, overflowY: 'auto',
+          color: '#1E293B', fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+          marginBottom: 18, textAlign: 'left'
+        }}>
+          {ndaText || DEFAULT_NDA_TEXT}
+        </div>
+
+        <div style={{ width: '100%', marginBottom: 16 }}>
+          <SignaturePad onChange={setNdaSig} height={160} />
+        </div>
+
+        <input
+          type="text" value={ndaName}
+          onChange={(e) => setNdaName(e.target.value)}
+          placeholder="Type your full legal name"
+          style={{
+            width: '100%', padding: '14px 18px', borderRadius: 12, marginBottom: 16,
+            border: '2px solid rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.1)',
+            color: '#fff', fontSize: 17, outline: 'none'
+          }}
+        />
+
+        <div style={{ display: 'flex', gap: 12, width: '100%' }}>
+          <button
+            onClick={() => { setPendingVisitor(null); setMode('welcome'); }}
+            style={{
+              flex: 1, padding: '16px', borderRadius: 14,
+              background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.3)',
+              color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              setNdaBusy(true);
+              await completePreregCheckin(pendingVisitor, { signature: ndaSig, name: ndaName });
+              setNdaBusy(false);
+              setPendingVisitor(null);
+            }}
+            disabled={ndaBusy || !ndaSig || !ndaName.trim()}
+            style={{
+              flex: 2, padding: '16px', borderRadius: 14, border: 'none',
+              background: (ndaBusy || !ndaSig || !ndaName.trim()) ? 'rgba(255,107,53,0.35)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              color: '#fff', fontSize: 17, fontWeight: 700,
+              cursor: (ndaBusy || !ndaSig || !ndaName.trim()) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {ndaBusy ? 'Checking in…' : 'Sign & Check In'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ─── SUCCESS / ALREADY / ERROR SCREENS ───
   if (mode === 'done' || mode === 'already' || mode === 'error' || mode === 'bye') {
     const conf = {
@@ -294,32 +440,6 @@ export default function KioskWelcome() {
       </div>
     );
   }
-
-  // ─── DEVICE PAIRING (state declared at top of component) ───
-  const submitPair = async () => {
-    if (!pairCode.trim()) return;
-    setPairBusy(true);
-    setPairError('');
-    try {
-      const r = await api.post('/devices/pair', { code: pairCode.trim().toUpperCase() });
-      localStorage.setItem('kiosk_device_id', r.data.device_id);
-      localStorage.setItem('kiosk_device_name', r.data.device_name);
-      if (r.data.org_id) localStorage.setItem('kiosk_org_id', r.data.org_id);
-      setPairedName(r.data.device_name);
-      setShowPair(false);
-      setPairCode('');
-    } catch (err) {
-      setPairError(err.response?.data?.error || 'Pairing failed — check the code');
-    } finally {
-      setPairBusy(false);
-    }
-  };
-
-  const unpair = () => {
-    localStorage.removeItem('kiosk_device_id');
-    localStorage.removeItem('kiosk_device_name');
-    setPairedName('');
-  };
 
   // ─── WELCOME MODE ───
   return (
