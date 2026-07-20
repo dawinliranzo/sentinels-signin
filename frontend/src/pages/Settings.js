@@ -1,8 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
-import { Upload, Palette, Bell, Shield, Save } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
+
+// Default org settings blob — keep in one place so the "unsaved changes"
+// tracker compares against a stable shape
+const DEFAULTS = (orgName) => ({
+  org_name: orgName || '',
+  primary_color: '#0D7377',
+  accent_color: '#FF6B35',
+  notify_email: true,
+  notify_sms: false,
+  require_photo: false,
+  require_nda: false,
+  require_prereg_date: false,
+  nda_text: '',
+  badge_label: '',
+  logo_data: '',
+});
 
 export default function Settings() {
   const org = useStore((s) => s.organization);
@@ -12,11 +28,41 @@ export default function Settings() {
 
   const [notifyOffline, setNotifyOffline] = useState(false);
 
+  // Org settings blob + unsaved-changes tracking
+  const [settings, setSettings] = useState(() => DEFAULTS(org?.name));
+  const savedSnapshot = useRef(JSON.stringify(DEFAULTS(org?.name)));
+  const dirty = JSON.stringify(settings) !== savedSnapshot.current;
+  const logoInputRef = useRef(null);
+
   // MFA
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaSetup, setMfaSetup] = useState(null); // { secret, qr }
   const [mfaCode, setMfaCode] = useState('');
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaDisableCode, setMfaDisableCode] = useState('');
+
+  // Logo upload: read file, downscale to max 256px, store as data URL in the settings blob
+  const handleLogoFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 256;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = file.type === 'image/png' ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+        setSettings(s => ({ ...s, logo_data: out }));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const startMfaSetup = async () => {
     setMfaBusy(true);
@@ -48,15 +94,17 @@ export default function Settings() {
   };
 
   const disableMfa = async () => {
-    if (!window.confirm('Disable MFA? Your account will be protected by password only.')) return;
-    const code = window.prompt('Enter your current 6-digit code to confirm:');
-    if (!code) return;
+    if (!mfaDisableCode.trim()) return toast('Enter your current 6-digit code to disable MFA', 'error');
+    setMfaBusy(true);
     try {
-      await api.post('/auth/mfa/disable', { code });
+      await api.post('/auth/mfa/disable', { code: mfaDisableCode.trim() });
       setMfaEnabled(false);
-      toast('MFA disabled');
+      setMfaDisableCode('');
+      toast('MFA disabled — your account is protected by password only');
     } catch (err) {
       toast(err.response?.data?.error || 'Invalid code', 'error');
+    } finally {
+      setMfaBusy(false);
     }
   };
 
@@ -74,31 +122,20 @@ export default function Settings() {
     api.get('/auth/me').then(r => { setNotifyOffline(!!r.data.notify_offline); setMfaEnabled(!!r.data.mfa_enabled); }).catch(() => {});
     api.get('/settings').then(r => {
       if (r.data && Object.keys(r.data).length > 0) {
-        setSettings(prev => ({ ...prev, ...r.data }));
+        const merged = { ...DEFAULTS(org?.name), ...r.data };
+        setSettings(merged);
+        savedSnapshot.current = JSON.stringify(merged);
       }
     }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-
-
-
-
-  const [settings, setSettings] = useState({
-    org_name: org?.name || '',
-    primary_color: '#0D7377',
-    accent_color: '#FF6B35',
-    notify_email: true,
-    notify_sms: false,
-    require_photo: false,
-    require_nda: false,
-    require_prereg_date: false,
-  });
 
   const [saving, setSaving] = useState(false);
   const handleSave = async () => {
     setSaving(true);
     try {
       await api.patch('/settings', settings);
+      savedSnapshot.current = JSON.stringify(settings); // no longer dirty
       toast('Settings saved');
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to save settings', 'error');
@@ -136,13 +173,44 @@ export default function Settings() {
           </div>
           <div>
             <label style={labelStyle}>Logo</label>
-            <div style={{
-              width: 120, height: 120, borderRadius: 16, border: '2px dashed #E2E8F0',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              color: '#64748B', cursor: 'pointer', gap: 8
-            }}>
-              <Upload size={24} />
-              <span style={{ fontSize: 12 }}>Upload logo</span>
+            <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoFile} style={{ display: 'none' }} />
+            {settings.logo_data ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <img src={settings.logo_data} alt="Organization logo"
+                  style={{ width: 120, height: 120, objectFit: 'contain', borderRadius: 16, border: '1px solid #E2E8F0', background: '#fff', padding: 8 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button type="button" onClick={() => logoInputRef.current?.click()}
+                    style={{ padding: '9px 16px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#334155' }}>
+                    Replace logo
+                  </button>
+                  <button type="button" onClick={() => setSettings({ ...settings, logo_data: '' })}
+                    style={{ padding: '9px 16px', borderRadius: 10, background: '#FEF2F2', border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#991B1B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <X size={14} /> Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div onClick={() => logoInputRef.current?.click()} style={{
+                width: 120, height: 120, borderRadius: 16, border: '2px dashed #E2E8F0',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                color: '#64748B', cursor: 'pointer', gap: 8
+              }}>
+                <Upload size={24} />
+                <span style={{ fontSize: 12 }}>Upload logo</span>
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 8 }}>
+              Shown on the kiosk welcome screen. Any image works — it's resized automatically. Save Settings to apply.
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Badge label</label>
+            <input type="text" value={settings.badge_label || ''} placeholder="EMPLOYEE BADGE"
+              onChange={(e) => setSettings({...settings, badge_label: e.target.value})}
+              style={inputStyle} />
+            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 6 }}>
+              What you call the people who receive visitors — printed at the top of their ID badges.
+              Examples: "Sentinels Employee", "Tenant — Building 1". Leave empty for "EMPLOYEE BADGE".
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -198,7 +266,7 @@ export default function Settings() {
               style={{ width: 22, height: 22 }} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Kiosk Offline Alerts</div>
-              <div style={{ fontSize: 13, color: '#64748B' }}>Email me if the kiosk stops responding (10+ min), and when it comes back online</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>Email me if the kiosk stops responding (10+ min), and when it comes back online · <strong>this one saves immediately, no Save needed</strong></div>
             </div>
           </label>
         </div>
@@ -268,10 +336,20 @@ export default function Settings() {
             )}
 
             {mfaEnabled && (
-              <button onClick={disableMfa}
-                style={{ padding: '10px 20px', borderRadius: 10, background: '#FEF2F2', border: 'none', color: '#991B1B', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
-                Disable MFA
-              </button>
+              <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 16, marginTop: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: '#0F172A' }}>Disable MFA</div>
+                <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
+                  Enter your current 6-digit authenticator code to confirm. Your account will be protected by password only.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="text" inputMode="numeric" value={mfaDisableCode} onChange={(e) => setMfaDisableCode(e.target.value)} placeholder="123456"
+                    style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 18, letterSpacing: 6, width: 160, textAlign: 'center' }} />
+                  <button onClick={disableMfa} disabled={mfaBusy}
+                    style={{ padding: '12px 20px', borderRadius: 10, background: '#FEF2F2', border: 'none', color: '#991B1B', fontWeight: 600, cursor: 'pointer' }}>
+                    {mfaBusy ? 'Checking…' : 'Disable MFA'}
+                  </button>
+                </div>
+              </div>
             )}
 
             {canManage && (
@@ -325,13 +403,24 @@ export default function Settings() {
         </div>
       </div>
 
+      {dirty && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 18px', borderRadius: 12, marginBottom: 16,
+          background: '#FFFBEB', border: '1px solid #FDE68A',
+          color: '#92400E', fontSize: 14, fontWeight: 600
+        }}>
+          ⚠ You have unsaved changes — they won't apply until you click Save Settings. Switching tabs discards them.
+        </div>
+      )}
+
       <button
         onClick={handleSave}
         disabled={saving}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '14px 32px', borderRadius: 12,
-          background: saving ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff',
+          background: saving ? '#94A3B8' : dirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff',
           fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 16
         }}
       >
