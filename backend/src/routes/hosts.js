@@ -40,6 +40,9 @@ router.post('/', authenticate, async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    if (['42703', '42P01'].includes(err.code)) {
+      return res.status(500).json({ error: 'Host photo column missing — run the host-photos migration in Render PSQL' });
+    }
     res.status(500).json({ error: 'Failed to create host' });
   }
 });
@@ -65,6 +68,9 @@ router.put('/:id', authenticate, async (req, res) => {
     );
     res.json(result.rows[0]);
   } catch (err) {
+    if (['42703', '42P01'].includes(err.code)) {
+      return res.status(500).json({ error: 'Host photo column missing — run the host-photos migration in Render PSQL' });
+    }
     res.status(500).json({ error: 'Failed to update host' });
   }
 });
