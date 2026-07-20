@@ -111,6 +111,7 @@ router.get('/config/:orgId', async (req, res) => {
       photo_required: !!(s.require_photo || s.photo_required),
       nda_required: !!s.require_nda,
       nda_text: s.nda_text || '',
+      logo_data: s.logo_data || '',
     });
   } catch (err) {
     console.error(err);
