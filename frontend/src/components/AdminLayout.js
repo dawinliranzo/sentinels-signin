@@ -29,7 +29,7 @@ export default function AdminLayout() {
     { path: '/hosts', icon: Users, label: 'Hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered' },
     { path: '/devices', icon: Monitor, label: 'Devices' },
-    { path: '/settings?section=team', icon: UserPlus, label: 'Team' },
+    { path: '/team', icon: UserPlus, label: 'Team' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
