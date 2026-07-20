@@ -35,6 +35,7 @@ export default function KioskWelcome() {
   // NDA signing for pre-registered visitors (when the org requires it)
   const [ndaRequired, setNdaRequired] = useState(false);
   const [ndaText, setNdaText] = useState('');
+  const [logoData, setLogoData] = useState('');
   const [pendingVisitor, setPendingVisitor] = useState(null);
   const [ndaSig, setNdaSig] = useState(null);
   const [ndaName, setNdaName] = useState('');
@@ -50,13 +51,14 @@ export default function KioskWelcome() {
     }
   }, [orgId]);
 
-  // Load org kiosk config (NDA requirement) once we know the org
+  // Load org kiosk config (NDA requirement, branding) once we know the org
   useEffect(() => {
     if (!orgId) return;
     api.get(`/kiosk/config/${orgId}`).then(r => {
       setNdaRequired(!!r.data.nda_required);
       ndaRequiredRef.current = !!r.data.nda_required;
       setNdaText(r.data.nda_text || '');
+      setLogoData(r.data.logo_data || '');
     }).catch(() => {});
   }, [orgId]);
 
@@ -448,16 +450,24 @@ export default function KioskWelcome() {
       alignItems: 'center', justifyContent: 'center',
       textAlign: 'center', zIndex: 1, maxWidth: 600
     }}>
-      {/* Logo */}
-      <div style={{
-        width: 120, height: 120, borderRadius: 30,
-        background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 40, boxShadow: '0 20px 60px rgba(13, 115, 119, 0.4)',
-        fontSize: 60, fontWeight: 800, color: '#fff'
-      }}>
-        S
-      </div>
+      {/* Logo — org's uploaded logo when available, otherwise the default mark */}
+      {logoData ? (
+        <img src={logoData} alt="Organization logo" style={{
+          width: 120, height: 120, borderRadius: 30, objectFit: 'contain',
+          background: 'rgba(255,255,255,0.95)', padding: 10,
+          marginBottom: 40, boxShadow: '0 20px 60px rgba(13, 115, 119, 0.4)'
+        }} />
+      ) : (
+        <div style={{
+          width: 120, height: 120, borderRadius: 30,
+          background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 40, boxShadow: '0 20px 60px rgba(13, 115, 119, 0.4)',
+          fontSize: 60, fontWeight: 800, color: '#fff'
+        }}>
+          S
+        </div>
+      )}
 
       <h1 style={{
         fontSize: 52, fontWeight: 800, color: '#fff',
