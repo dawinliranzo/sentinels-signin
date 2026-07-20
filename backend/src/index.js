@@ -20,6 +20,7 @@ const kioskRoutes = require('./routes/kiosk');
 const settingsRoutes = require('./routes/settings');
 const deviceRoutes = require('./routes/devices');
 const accessRequestRoutes = require('./routes/accessRequests');
+const complianceRoutes = require('./routes/compliance');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -84,6 +85,7 @@ app.use('/api/kiosk', kioskRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/access-requests', accessRequestRoutes);
+app.use('/api/compliance', complianceRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
