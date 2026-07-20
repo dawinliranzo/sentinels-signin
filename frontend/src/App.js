@@ -15,6 +15,7 @@ import Hosts from './pages/Hosts';
 import PreRegistered from './pages/PreRegistered';
 import Settings from './pages/Settings';
 import Devices from './pages/Devices';
+import Team from './pages/Team';
 import SuperAdmin from './pages/SuperAdmin';
 import KioskWelcome from './pages/KioskWelcome';
 import KioskSignIn from './pages/KioskSignIn';
@@ -51,6 +52,7 @@ function App() {
         <Route path="pre-registered" element={<PreRegistered />} />
         <Route path="settings" element={<Settings />} />
         <Route path="devices" element={<Devices />} />
+        <Route path="team" element={<Team />} />
         <Route path="super-admin" element={<SuperAdmin />} />
       </Route>
     </Routes>
