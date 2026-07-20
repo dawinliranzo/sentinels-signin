@@ -3,6 +3,20 @@ const router = express.Router();
 const db = require('../utils/db');
 const { authenticate } = require('../middleware/auth');
 
+// Turn Postgres "missing column/table" errors into a precise, actionable message
+// that names the ACTUAL missing column instead of guessing (a past version blamed
+// photo_data for every 42703 — including a missing updated_at — and sent everyone
+// chasing the wrong migration).
+function missingColumnError(err, res) {
+  if (err.code === '42703' || err.code === '42P01') {
+    const m = /column "([^"]+)" of relation "([^"]+)"/.exec(err.message || '');
+    const detail = m ? `column "${m[1]}" on table "${m[2]}"` : (err.message || 'a required column');
+    res.status(500).json({ error: `Database schema out of date — ${detail} is missing. Run the latest migration in Render PSQL.` });
+    return true;
+  }
+  return false;
+}
+
 // PUBLIC ENDPOINTS (must come BEFORE authenticated routes with params)
 router.get('/public/:orgId', async (req, res) => {
   try {
@@ -40,9 +54,7 @@ router.post('/', authenticate, async (req, res) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    if (['42703', '42P01'].includes(err.code)) {
-      return res.status(500).json({ error: 'Host photo column missing — run the host-photos migration in Render PSQL' });
-    }
+    if (missingColumnError(err, res)) return;
     res.status(500).json({ error: 'Failed to create host' });
   }
 });
@@ -61,16 +73,15 @@ router.put('/:id', authenticate, async (req, res) => {
       notify_email ?? true, notify_sms ?? false, req.params.id, req.user.org_id];
     if (hasPhoto) params.push(req.body.photo_data || null);
 
+    // NOTE: the hosts table has no updated_at column — don't reference one here
     const result = await db.query(
-      `UPDATE hosts SET first_name=$1, last_name=$2, email=$3, phone=$4, department=$5, job_title=$6, notify_email=$7, notify_sms=$8, updated_at=NOW()${photoSet}
+      `UPDATE hosts SET first_name=$1, last_name=$2, email=$3, phone=$4, department=$5, job_title=$6, notify_email=$7, notify_sms=$8${photoSet}
        WHERE id=$9 AND org_id=$10 RETURNING *`,
       params
     );
     res.json(result.rows[0]);
   } catch (err) {
-    if (['42703', '42P01'].includes(err.code)) {
-      return res.status(500).json({ error: 'Host photo column missing — run the host-photos migration in Render PSQL' });
-    }
+    if (missingColumnError(err, res)) return;
     res.status(500).json({ error: 'Failed to update host' });
   }
 });
