@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Search, Filter, Download, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Filter, Download, CheckCircle, XCircle, FileText } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -8,6 +8,17 @@ export default function Visits() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
+  const [ndaView, setNdaView] = useState(null); // { loading, data, error, name }
+
+  const openNda = async (visit) => {
+    setNdaView({ loading: true, data: null, error: null, name: `${visit.visitor_first_name} ${visit.visitor_last_name}` });
+    try {
+      const r = await api.get(`/visits/${visit.id}/nda`);
+      setNdaView({ loading: false, data: r.data, error: null, name: `${visit.visitor_first_name} ${visit.visitor_last_name}` });
+    } catch (err) {
+      setNdaView({ loading: false, data: null, error: err.response?.data?.error || 'Could not load the signed NDA', name: '' });
+    }
+  };
 
   const { data: visits, isLoading, refetch } = useQuery(
     ['visits', statusFilter, dateFilter, search],
@@ -173,24 +184,84 @@ export default function Visits() {
                   </span>
                 </td>
                 <td style={{ padding: '16px 20px' }}>
-                  {v.status === 'checked_in' && (
-                    <button
-                      onClick={() => handleCheckOut(v.id)}
-                      style={{
-                        padding: '8px 16px', borderRadius: 8,
-                        background: '#FF6B35', border: 'none', color: '#fff',
-                        fontSize: 12, fontWeight: 600, cursor: 'pointer'
-                      }}
-                    >
-                      Check Out
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {v.nda_signed && (
+                      <button onClick={() => openNda(v)} title="View signed NDA"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '8px 12px', borderRadius: 8,
+                          background: '#ECFEFF', border: 'none', color: '#0D7377',
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                        }}>
+                        <FileText size={14} /> NDA
+                      </button>
+                    )}
+                    {v.status === 'checked_in' && (
+                      <button
+                        onClick={() => handleCheckOut(v.id)}
+                        style={{
+                          padding: '8px 16px', borderRadius: 8,
+                          background: '#FF6B35', border: 'none', color: '#fff',
+                          fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                        }}
+                      >
+                        Check Out
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Signed NDA viewer */}
+      {ndaView && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 520,
+            boxShadow: '0 25px 80px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto'
+          }}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Signed NDA</h2>
+            {ndaView.loading && <p style={{ color: '#64748B' }}>Loading…</p>}
+            {ndaView.error && <p style={{ color: '#DC2626' }}>{ndaView.error}</p>}
+            {ndaView.data && (
+              <>
+                <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>
+                  Signed by <strong>{ndaView.data.signed_name}</strong> ({ndaView.name}) on{' '}
+                  {new Date(ndaView.data.signed_at).toLocaleString()}
+                </p>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Document signed</div>
+                <div style={{
+                  background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12,
+                  padding: '14px 16px', maxHeight: 200, overflowY: 'auto',
+                  fontSize: 13, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginBottom: 16
+                }}>
+                  {ndaView.data.document_text}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Signature</div>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden', marginBottom: 8 }}>
+                  <img src={ndaView.data.signature_data} alt="Visitor signature" style={{ width: '100%', display: 'block' }} />
+                </div>
+                <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                  Typed name confirmation: <strong>{ndaView.data.signed_name}</strong>
+                </div>
+              </>
+            )}
+            <button onClick={() => setNdaView(null)}
+              style={{
+                width: '100%', marginTop: 20, padding: '13px', borderRadius: 10,
+                background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer'
+              }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
