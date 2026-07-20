@@ -4,6 +4,16 @@ const db = require('../utils/db');
 const { authenticate } = require('../middleware/auth');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
+// Fallback NDA text when the org has turned on NDA signing but hasn't written
+// their own document yet. The kiosk shows the same fallback.
+const DEFAULT_NDA_TEXT = `VISITOR NON-DISCLOSURE AGREEMENT
+
+By signing below, the visitor agrees to keep confidential all non-public information, materials, and activities observed or accessed while on these premises.
+
+The visitor agrees not to disclose, copy, photograph, record, or share any such information with any third party, and to follow all site safety and security rules for the duration of the visit.
+
+This agreement takes effect upon signing and remains in effect after the visit ends.`;
+
 // PUBLIC ENDPOINTS (must come BEFORE authenticated routes with params)
 router.get('/active/public/:orgId', async (req, res) => {
   try {
@@ -176,10 +186,44 @@ router.get('/', authenticate, async (req, res) => {
     query += ` ORDER BY v.checked_in_at DESC LIMIT 500`;
 
     const result = await db.query(query, params);
-    res.json(result.rows);
+
+    // Flag visits that have a signed NDA attached. Separate query (not a JOIN)
+    // so the list keeps working if the NDA migration hasn't been run yet.
+    let signedIds = new Set();
+    try {
+      const ids = result.rows.map(r => r.id);
+      if (ids.length > 0) {
+        const nda = await db.query('SELECT DISTINCT visit_id FROM nda_signatures WHERE visit_id = ANY($1)', [ids]);
+        signedIds = new Set(nda.rows.map(r => r.visit_id));
+      }
+    } catch (ndaErr) {
+      if (ndaErr.code !== '42P01') console.error('NDA flag lookup failed:', ndaErr.message);
+    }
+
+    res.json(result.rows.map(r => ({ ...r, nda_signed: signedIds.has(r.id) })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch visits' });
+  }
+});
+
+// GET /api/visits/:id/nda — the signed NDA attached to a visit (admins)
+router.get('/:id/nda', authenticate, async (req, res) => {
+  try {
+    const r = await db.query(
+      'SELECT * FROM nda_signatures WHERE visit_id = $1 AND org_id = $2 ORDER BY signed_at DESC LIMIT 1',
+      [req.params.id, req.user.org_id]
+    );
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: 'No signed NDA found for this visit' });
+    }
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'NDA table missing — run the NDA migration in Render PSQL (migration-nda.txt)' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Failed to load signed NDA' });
   }
 });
 
@@ -199,7 +243,9 @@ router.post('/check-in', async (req, res) => {
       custom_data,
       sign_in_method = 'kiosk',
       pre_reg_id,
-      photo_data
+      photo_data,
+      nda_signature,
+      nda_signed_name
     } = req.body;
 
     // ─── ORG VALIDATION ───
@@ -217,6 +263,22 @@ router.post('/check-in', async (req, res) => {
     // ─── END ORG VALIDATION ───
 
     const orgSettings = orgCheck.rows[0].settings || {};
+
+    // ─── NDA: when the org requires it, a signature must accompany check-in ───
+    if (orgSettings.require_nda) {
+      // Fail fast with a clear message if the migration hasn't been run yet
+      try {
+        await db.query('SELECT 1 FROM nda_signatures LIMIT 1');
+      } catch (probeErr) {
+        if (probeErr.code === '42P01') {
+          return res.status(500).json({ error: 'NDA table missing — run the NDA migration in Render PSQL (migration-nda.txt)' });
+        }
+      }
+      if (!nda_signature) {
+        return res.status(400).json({ error: 'This organization requires visitors to sign an NDA before entry', nda_required: true });
+      }
+    }
+    // ─── END NDA ───
 
     // ─── AUTO-LINK: kiosk check-in without QR -> match a pre-registration ───
     let linkedPreRegId = pre_reg_id;
@@ -275,6 +337,28 @@ router.post('/check-in', async (req, res) => {
     `, [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null]);
 
     const visit = result.rows[0];
+
+    // Store the signed NDA linked to this visit (with a snapshot of the exact text signed)
+    if (orgSettings.require_nda && nda_signature) {
+      try {
+        await db.query(
+          `INSERT INTO nda_signatures (org_id, visit_id, visitor_name, visitor_email, signed_name, signature_data, document_text)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            org_id,
+            visit.id,
+            `${first_name} ${last_name}`,
+            email || null,
+            (nda_signed_name || `${first_name} ${last_name}`).slice(0, 255),
+            nda_signature,
+            orgSettings.nda_text || DEFAULT_NDA_TEXT,
+          ]
+        );
+      } catch (ndaErr) {
+        // The visit is already created — log loudly but don't break check-in
+        console.error('NDA signature save failed:', ndaErr);
+      }
+    }
 
     // Mark the pre-registration as arrived
     if (linkedPreRegId) {
