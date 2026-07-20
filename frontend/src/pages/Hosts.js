@@ -12,6 +12,9 @@ export default function Hosts() {
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
   const [printHost, setPrintHost] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // Which optional fields appear on the printed badge (name, photo, QR always show)
+  const defaultBadgeFields = { job_title: true, department: true, email: false, phone: false };
+  const [badgeFields, setBadgeFields] = useState(defaultBadgeFields);
   const org = useStore((s) => s.organization);
 
   // Resize an uploaded/taken photo to a small JPEG data URL (keeps DB + payloads light)
@@ -109,6 +112,15 @@ export default function Hosts() {
     const canvas = document.getElementById(`badge-qr-${host.id}`);
     const qrUrl = canvas ? canvas.toDataURL('image/png') : '';
     const orgName = org?.name || 'Organization';
+
+    // Build the optional detail lines from the selected badge fields
+    const titleParts = [];
+    if (badgeFields.job_title && host.job_title) titleParts.push(host.job_title);
+    if (badgeFields.department && host.department) titleParts.push(host.department);
+    const contactParts = [];
+    if (badgeFields.email && host.email) contactParts.push(host.email);
+    if (badgeFields.phone && host.phone) contactParts.push(host.phone);
+
     const win = window.open('', '_blank', 'width=420,height=640');
     win.document.write(`<!doctype html><html><head><title>ID Badge - ${host.first_name} ${host.last_name}</title></head>
       <body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial,sans-serif;background:#f1f5f9">
@@ -122,7 +134,8 @@ export default function Hosts() {
             ? `<img src="${host.photo_data}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin:0 auto 14px" />`
             : `<div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#0D7377,#14FFEC);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;font-weight:700">${host.first_name[0]}${host.last_name[0]}</div>`}
           <div style="font-size:22px;font-weight:700;color:#0F172A">${host.first_name} ${host.last_name}</div>
-          <div style="font-size:13px;color:#64748B;margin:4px 0 20px">${host.job_title || ''}${host.department ? ' · ' + host.department : ''}</div>
+          <div style="font-size:13px;color:#64748B;margin:4px 0 ${contactParts.length ? '2px' : '20px'}">${titleParts.join(' · ')}</div>
+          ${contactParts.length ? `<div style="font-size:12px;color:#94A3B8;margin:0 0 20px">${contactParts.join(' · ')}</div>` : ''}
           <img src="${qrUrl}" style="width:200px;height:200px" />
           <div style="font-size:12px;color:#64748B;margin-top:14px">Scan at the kiosk to check in / out</div>
         </div>
@@ -168,6 +181,10 @@ export default function Hosts() {
   const inputStyle = {
     width: '100%', padding: '12px 16px', borderRadius: 10,
     border: '2px solid #E2E8F0', fontSize: 14, outline: 'none'
+  };
+
+  const hintStyle = {
+    fontSize: 11, color: '#94A3B8', marginTop: 4, lineHeight: 1.4
   };
 
   return (
@@ -248,7 +265,7 @@ export default function Hosts() {
                 </td>
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <button onClick={() => setPrintHost(h)} title="Print ID badge"
+                    <button onClick={() => { setBadgeFields(defaultBadgeFields); setPrintHost(h); }} title="Print ID badge"
                       style={{ padding: 8, borderRadius: 8, background: '#ECFEFF', border: 'none', cursor: 'pointer' }}>
                       <Printer size={16} color="#0D7377" />
                     </button>
@@ -336,21 +353,33 @@ export default function Hosts() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <input type="text" placeholder="First Name" required value={form.first_name}
-                  onChange={(e) => setForm({...form, first_name: e.target.value})} style={inputStyle} />
-                <input type="text" placeholder="Last Name" required value={form.last_name}
-                  onChange={(e) => setForm({...form, last_name: e.target.value})} style={inputStyle} />
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <input type="text" placeholder="First Name" required value={form.first_name}
+                    onChange={(e) => setForm({...form, first_name: e.target.value})} style={inputStyle} />
+                  <input type="text" placeholder="Last Name" required value={form.last_name}
+                    onChange={(e) => setForm({...form, last_name: e.target.value})} style={inputStyle} />
+                </div>
+                <div style={hintStyle}>Shown on the kiosk host picker, in visitor-arrival notifications, and on the printed ID badge</div>
               </div>
-              <input type="email" placeholder="Email" required value={form.email}
-                onChange={(e) => setForm({...form, email: e.target.value})} style={inputStyle} />
-              <input type="tel" placeholder="Phone" value={form.phone}
-                onChange={(e) => setForm({...form, phone: e.target.value})} style={inputStyle} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <input type="text" placeholder="Department" value={form.department}
-                  onChange={(e) => setForm({...form, department: e.target.value})} style={inputStyle} />
-                <input type="text" placeholder="Job Title" value={form.job_title}
-                  onChange={(e) => setForm({...form, job_title: e.target.value})} style={inputStyle} />
+              <div>
+                <input type="email" placeholder="Email" required value={form.email}
+                  onChange={(e) => setForm({...form, email: e.target.value})} style={inputStyle} />
+                <div style={hintStyle}>Where "visitor arrived" email alerts are sent. Can also be printed on the badge (you choose at print time)</div>
+              </div>
+              <div>
+                <input type="tel" placeholder="Phone" value={form.phone}
+                  onChange={(e) => setForm({...form, phone: e.target.value})} style={inputStyle} />
+                <div style={hintStyle}>Used for SMS arrival alerts when SMS is enabled below. Optional on the badge</div>
+              </div>
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <input type="text" placeholder="Department" value={form.department}
+                    onChange={(e) => setForm({...form, department: e.target.value})} style={inputStyle} />
+                  <input type="text" placeholder="Job Title" value={form.job_title}
+                    onChange={(e) => setForm({...form, job_title: e.target.value})} style={inputStyle} />
+                </div>
+                <div style={hintStyle}>Department helps visitors find the right host in kiosk search; Job Title prints under the name on the badge. Both optional on the badge</div>
               </div>
               <div style={{ display: 'flex', gap: 24, padding: '8px 0' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -391,7 +420,22 @@ export default function Hosts() {
             background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380,
             boxShadow: '0 25px 80px rgba(0,0,0,0.3)', textAlign: 'center'
           }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Employee ID Badge</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Employee ID Badge</h2>
+
+            {/* Field picker — name, photo and QR always print */}
+            <div style={{ textAlign: 'left', marginBottom: 14, padding: '12px 14px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Show on badge</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px' }}>
+                {[['job_title', 'Job title'], ['department', 'Department'], ['email', 'Email'], ['phone', 'Phone']].map(([key, label]) => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#334155', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={badgeFields[key]}
+                      onChange={(e) => setBadgeFields({ ...badgeFields, [key]: e.target.checked })} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 6 }}>Name, photo, and QR code are always included.</div>
+            </div>
 
             {/* Badge preview */}
             <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0', marginBottom: 20 }}>
@@ -413,10 +457,17 @@ export default function Hosts() {
                   </div>
                 )}
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>{printHost.first_name} {printHost.last_name}</div>
-                <div style={{ fontSize: 12, color: '#64748B', margin: '2px 0 14px' }}>
-                  {printHost.job_title || ''}{printHost.department ? ` · ${printHost.department}` : ''}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                {(badgeFields.job_title || badgeFields.department) && (
+                  <div style={{ fontSize: 12, color: '#64748B', margin: '2px 0 2px' }}>
+                    {[badgeFields.job_title && printHost.job_title, badgeFields.department && printHost.department].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {(badgeFields.email || badgeFields.phone) && (
+                  <div style={{ fontSize: 11, color: '#94A3B8', margin: '0 0 2px' }}>
+                    {[badgeFields.email && printHost.email, badgeFields.phone && printHost.phone].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
                   <QRCodeCanvas id={`badge-qr-${printHost.id}`} value={`STAFF:${printHost.id}`} size={150} level="M" includeMargin />
                 </div>
                 <div style={{ fontSize: 11, color: '#64748B', marginTop: 12 }}>Scan at the kiosk to check in / out</div>
