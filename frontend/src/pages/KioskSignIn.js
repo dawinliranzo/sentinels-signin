@@ -1,7 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine } from 'lucide-react';
 import api from '../utils/api';
+import SignaturePad from '../components/SignaturePad';
+
+// Shown when the org requires an NDA but hasn't written their own text yet.
+// Keep in sync with DEFAULT_NDA_TEXT in backend/src/routes/visits.js.
+const DEFAULT_NDA_TEXT = `VISITOR NON-DISCLOSURE AGREEMENT
+
+By signing below, the visitor agrees to keep confidential all non-public information, materials, and activities observed or accessed while on these premises.
+
+The visitor agrees not to disclose, copy, photograph, record, or share any such information with any third party, and to follow all site safety and security rules for the duration of the visit.
+
+This agreement takes effect upon signing and remains in effect after the visit ends.`;
 
 export default function KioskSignIn() {
   const navigate = useNavigate();
@@ -19,6 +30,13 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [done, setDone] = useState(false);
+
+  // NDA signing (org-configurable)
+  const [ndaRequired, setNdaRequired] = useState(false);
+  const [ndaText, setNdaText] = useState('');
+  const [ndaSig, setNdaSig] = useState(null);
+  const [ndaName, setNdaName] = useState('');
 
   // Photo capture (org-configurable)
   const [photoRequired, setPhotoRequired] = useState(false);
@@ -29,7 +47,11 @@ export default function KioskSignIn() {
 
   useEffect(() => {
     if (!orgId) return;
-    api.get(`/kiosk/config/${orgId}`).then(r => setPhotoRequired(!!r.data.photo_required)).catch(() => {});
+    api.get(`/kiosk/config/${orgId}`).then(r => {
+      setPhotoRequired(!!r.data.photo_required);
+      setNdaRequired(!!r.data.nda_required);
+      setNdaText(r.data.nda_text || '');
+    }).catch(() => {});
   }, [orgId]);
 
   const stopCamera = () => {
@@ -136,22 +158,39 @@ export default function KioskSignIn() {
     );
   }
 
+  const totalSteps = ndaRequired ? 3 : 2;
+
   const handleSubmit = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         ...formData,
         sign_in_method: 'kiosk',
-        photo_data: photo
+        photo_data: photo,
+        nda_signature: ndaRequired ? ndaSig : undefined,
+        nda_signed_name: ndaRequired ? ndaName : undefined
       });
       setVisitResult(res.data);
-      setStep(3);
+      setDone(true);
     } catch (err) {
+      if (err.response?.data?.nda_required && ndaRequired) {
+        setStep(3); // server still demands the NDA — send them to the signing step
+      }
       setErrorMsg('Sign-in failed: ' + (err.response?.data?.error || 'Please try again'));
     } finally {
       setLoading(false);
     }
+  };
+
+  // Entering the NDA step: pre-fill the typed name from the form
+  const goToNdaStep = () => {
+    setErrorMsg('');
+    if (!ndaName.trim()) {
+      setNdaName(`${formData.first_name} ${formData.last_name}`.trim());
+    }
+    setStep(3);
   };
 
   const filteredHosts = hosts.filter(h => {
@@ -189,7 +228,7 @@ export default function KioskSignIn() {
     fontSize: 14, fontWeight: 500, marginBottom: 8
   };
 
-  if (step === 3 && visitResult) {
+  if (done && visitResult) {
     return (
       <div style={{ textAlign: 'center', zIndex: 1 }}>
         <div style={{
@@ -277,14 +316,16 @@ export default function KioskSignIn() {
           <ArrowLeft size={24} />
         </button>
         <div>
-          <h2 style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>Sign In</h2>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>Step {step} of 2</p>
+          <h2 style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>
+            {step === 3 ? 'Sign the NDA' : 'Sign In'}
+          </h2>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>Step {step} of {totalSteps}</p>
         </div>
       </div>
 
       {/* Progress Bar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 32 }}>
-        {[1, 2].map(s => (
+        {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
           <div key={s} style={{
             flex: 1, height: 4, borderRadius: 2,
             background: s <= step ? '#14FFEC' : 'rgba(255,255,255,0.2)',
@@ -547,7 +588,7 @@ export default function KioskSignIn() {
           )}
 
           <button
-            onClick={handleSubmit}
+            onClick={ndaRequired ? goToNdaStep : handleSubmit}
             disabled={loading || !formData.host_id}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
@@ -557,7 +598,68 @@ export default function KioskSignIn() {
               opacity: (!formData.host_id || loading) ? 0.5 : 1
             }}
           >
-            {loading ? 'Processing...' : 'Complete Sign In'}
+            {loading ? 'Processing...' : ndaRequired ? 'Continue to NDA' : 'Complete Sign In'}
+          </button>
+        </div>
+      )}
+
+      {step === 3 && ndaRequired && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <label style={labelStyle}>
+              <PenLine size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+              Please read and sign to enter
+            </label>
+            <div style={{
+              background: 'rgba(255,255,255,0.95)', borderRadius: 14,
+              padding: '20px 22px', maxHeight: 220, overflowY: 'auto',
+              color: '#1E293B', fontSize: 14, lineHeight: 1.6,
+              whiteSpace: 'pre-wrap', border: '2px solid rgba(255,255,255,0.3)'
+            }}>
+              {ndaText || DEFAULT_NDA_TEXT}
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Your signature</label>
+            <SignaturePad onChange={setNdaSig} height={170} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Type your full legal name</label>
+            <input
+              type="text" value={ndaName}
+              onChange={(e) => setNdaName(e.target.value)}
+              style={inputStyle} placeholder="Full name"
+            />
+          </div>
+
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', textAlign: 'center' }}>
+            By signing, you agree to the document above. A copy is stored with your visit record.
+          </div>
+
+          {errorMsg && (
+            <div style={{
+              padding: '14px 18px', borderRadius: 12,
+              background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+              color: '#FCA5A5', fontSize: 15, fontWeight: 500, textAlign: 'center'
+            }} onClick={() => setErrorMsg('')}>
+              {errorMsg}
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !ndaSig || !ndaName.trim()}
+            style={{
+              marginTop: 4, padding: '20px', borderRadius: 16,
+              background: (loading || !ndaSig || !ndaName.trim()) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
+              cursor: (loading || !ndaSig || !ndaName.trim()) ? 'not-allowed' : 'pointer',
+              opacity: (loading || !ndaSig || !ndaName.trim()) ? 0.5 : 1
+            }}
+          >
+            {loading ? 'Processing...' : 'Sign & Complete Sign In'}
           </button>
         </div>
       )}
