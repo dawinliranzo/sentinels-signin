@@ -15,6 +15,14 @@ export default function Hosts() {
   // Which optional fields appear on the printed badge (name, photo, QR always show)
   const defaultBadgeFields = { job_title: true, department: true, email: false, phone: false };
   const [badgeFields, setBadgeFields] = useState(defaultBadgeFields);
+  // What the org calls these people (Settings → Badge label), printed on badges
+  const [badgeLabel, setBadgeLabel] = useState('');
+
+  useEffect(() => {
+    api.get('/settings').then(r => setBadgeLabel((r.data?.badge_label || '').trim())).catch(() => {});
+  }, []);
+
+  const badgeTitle = (badgeLabel || 'EMPLOYEE BADGE').toUpperCase();
   const org = useStore((s) => s.organization);
 
   // Resize an uploaded/taken photo to a small JPEG data URL (keeps DB + payloads light)
@@ -127,7 +135,7 @@ export default function Hosts() {
       <div style="width:340px;border-radius:20px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2);background:#fff;text-align:center">
         <div style="background:linear-gradient(135deg,#0D7377,#14919B);padding:24px;color:#fff">
           <div style="font-size:13px;letter-spacing:2px;opacity:0.8">${orgName.toUpperCase()}</div>
-          <div style="font-size:12px;margin-top:4px;opacity:0.7">EMPLOYEE BADGE</div>
+          <div style="font-size:12px;margin-top:4px;opacity:0.7">${badgeTitle}</div>
         </div>
         <div style="padding:28px 24px">
           ${host.photo_data
@@ -192,7 +200,7 @@ export default function Hosts() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Hosts</h1>
-          <p style={{ color: '#64748B', marginTop: 4 }}>Manage employees who receive visitors</p>
+          <p style={{ color: '#64748B', marginTop: 4 }}>Manage the people who receive visitors — employees, tenants, or staff. What they're called on badges is set in Settings → Badge label.</p>
         </div>
         <button
           onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null }); setShowModal(true); }}
@@ -441,7 +449,7 @@ export default function Hosts() {
             <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0', marginBottom: 20 }}>
               <div style={{ background: 'linear-gradient(135deg, #0D7377, #14919B)', padding: '14px', color: '#fff' }}>
                 <div style={{ fontSize: 11, letterSpacing: 2, opacity: 0.85 }}>{(org?.name || 'Organization').toUpperCase()}</div>
-                <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>EMPLOYEE BADGE</div>
+                <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{badgeTitle}</div>
               </div>
               <div style={{ padding: '20px 16px' }}>
                 {printHost.photo_data ? (
