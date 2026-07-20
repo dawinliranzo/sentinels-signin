@@ -179,6 +179,40 @@ router.post('/:id/reset-mfa', async (req, res) => {
   }
 });
 
+// PATCH /api/users/:id/role — change a member's role.
+// Admins can set receptionist/admin. Only super admins can grant OR revoke super_admin.
+router.patch('/:id/role', async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['receptionist', 'admin', 'super_admin'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be receptionist, admin, or super_admin' });
+    }
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+
+    const userResult = await db.query(
+      'SELECT id, email, role FROM users WHERE id = $1 AND org_id = $2',
+      [req.params.id, req.user.org_id]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const target = userResult.rows[0];
+
+    // Super admin is a platform-level role (Sentinels staff) — only a super admin may touch it
+    if ((role === 'super_admin' || target.role === 'super_admin') && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super admin can grant or change a super admin role' });
+    }
+
+    await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+    res.json({ id: req.params.id, email: target.email, role });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update role' });
+  }
+});
+
 // PATCH /api/users/:id/status — activate/deactivate a user in my org (not myself)
 router.patch('/:id/status', async (req, res) => {
   try {
