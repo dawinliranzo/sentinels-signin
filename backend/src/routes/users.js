@@ -48,7 +48,7 @@ const sendInviteEmail = async ({ to, firstName, tempPassword, orgName, isReset }
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, email, first_name, last_name, role, is_active, mfa_enabled FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
+      'SELECT id, email, first_name, last_name, role, is_active, mfa_enabled, mfa_required FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
       [req.user.org_id]
     );
     res.json(result.rows);
@@ -120,6 +120,32 @@ router.post('/:id/reset-password', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// Require / unrequire MFA for one team member — they will be asked to set it up at next login
+router.patch('/:id/mfa-require', async (req, res) => {
+  try {
+    const required = !!req.body.required;
+    const userResult = await db.query(
+      'SELECT id, email, role, mfa_enabled FROM users WHERE id = $1 AND org_id = $2',
+      [req.params.id, req.user.org_id]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const target = userResult.rows[0];
+    if (target.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super admin can change a super admin\'s MFA requirement' });
+    }
+    if (required && target.mfa_enabled) {
+      return res.json({ success: true, note: 'already_enabled', user_email: target.email });
+    }
+    await db.query('UPDATE users SET mfa_required = $1 WHERE id = $2', [required, req.params.id]);
+    res.json({ success: true, mfa_required: required, user_email: target.email });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update MFA requirement' });
   }
 });
 
