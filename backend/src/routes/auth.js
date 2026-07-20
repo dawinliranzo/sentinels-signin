@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../utils/db');
 const { authenticate, JWT_SECRET } = require('../middleware/auth');
+const { authenticator } = require('otplib');
+const QRCode = require('qrcode');
 
 router.post('/register', async (req, res) => {
   try {
@@ -72,7 +74,7 @@ router.post('/login', async (req, res) => {
 
     // Org enforces MFA but this user hasn't set it up yet -> flag it
     const orgSettings = orgResult.rows[0]?.settings || {};
-    const mfaSetupRequired = !!orgSettings.mfa_required && !user.mfa_enabled;
+    const mfaSetupRequired = !!(orgSettings.mfa_required || user.mfa_required) && !user.mfa_enabled;
 
     res.json({
       token,
@@ -130,7 +132,7 @@ router.post('/set-password', async (req, res) => {
       token: sessionToken,
       user: { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, role: user.role },
       organization: orgResult.rows[0],
-      mfa_setup_required: !!orgSettings.mfa_required && !user.mfa_enabled
+      mfa_setup_required: !!(orgSettings.mfa_required || user.mfa_required) && !user.mfa_enabled
     });
   } catch (err) {
     console.error(err);
