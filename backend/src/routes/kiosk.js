@@ -106,7 +106,12 @@ router.get('/config/:orgId', async (req, res) => {
       return res.status(404).json({ error: 'Invalid organization' });
     }
     const s = r.rows[0].settings || {};
-    res.json({ org_name: r.rows[0].name, photo_required: !!(s.require_photo || s.photo_required) });
+    res.json({
+      org_name: r.rows[0].name,
+      photo_required: !!(s.require_photo || s.photo_required),
+      nda_required: !!s.require_nda,
+      nda_text: s.nda_text || '',
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to load kiosk config' });
