@@ -4,7 +4,7 @@ import { useStore } from '../utils/store';
 import Toaster from './Toaster';
 import {
   LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor, UserPlus,
-  QrCode, Package, Shield, Bell, Menu, X
+  QrCode, Package, Shield, Bell, Menu, X, FileCheck
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -30,6 +30,7 @@ export default function AdminLayout() {
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered' },
     { path: '/devices', icon: Monitor, label: 'Devices' },
     { path: '/team', icon: UserPlus, label: 'Team' },
+    { path: '/compliance', icon: FileCheck, label: 'Compliance' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
@@ -194,7 +195,9 @@ export default function AdminLayout() {
         flex: 1, transition: 'margin-left 0.3s ease',
         padding: isMobile ? '64px 16px 16px' : 32, minHeight: '100vh'
       }}>
-        <Outlet />
+        {/* key remounts the page on every tab switch, so unsaved form state
+            (e.g. Settings toggles) can't silently linger across tabs */}
+        <Outlet key={location.pathname} />
       </main>
     </div>
   );
