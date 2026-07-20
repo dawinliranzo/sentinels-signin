@@ -295,6 +295,33 @@ export default function Settings() {
               <div style={{ fontSize: 13, color: '#64748B' }}>Visitors must sign an NDA before entry</div>
             </div>
           </label>
+
+          {settings.require_nda && (
+            <div style={{ marginTop: 16, padding: 20, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 6 }}>NDA Document</div>
+              <div style={{ fontSize: 13, color: '#64748B', marginBottom: 12, lineHeight: 1.5 }}>
+                This text is shown on the kiosk during check-in — for both walk-in visitors and
+                pre-registered visitors scanning their QR code. The visitor signs with their finger
+                on the kiosk screen and can't complete check-in without signing.
+                Each signed copy (signature image + typed name + exact text signed + date/time) is
+                stored with the visit — open <strong>Visits</strong> and click the NDA icon on any row to view it.
+              </div>
+              <textarea
+                rows={10}
+                value={settings.nda_text || ''}
+                placeholder={'VISITOR NON-DISCLOSURE AGREEMENT\n\nBy signing below, the visitor agrees to keep confidential all non-public information, materials, and activities observed or accessed while on these premises.\n\nThe visitor agrees not to disclose, copy, photograph, record, or share any such information with any third party, and to follow all site safety and security rules for the duration of the visit.\n\nThis agreement takes effect upon signing and remains in effect after the visit ends.'}
+                onChange={(e) => setSettings({...settings, nda_text: e.target.value})}
+                style={{
+                  width: '100%', padding: '12px 16px', borderRadius: 10,
+                  border: '2px solid #E2E8F0', fontSize: 14, lineHeight: 1.6,
+                  outline: 'none', resize: 'vertical', fontFamily: 'inherit'
+                }}
+              />
+              <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 8 }}>
+                Leave empty to use the default agreement shown above. Remember to click Save Settings.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
