@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
-import { Upload, Palette, Bell, Shield, Save, X } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -18,6 +18,7 @@ const DEFAULTS = (orgName) => ({
   nda_text: '',
   badge_label: '',
   logo_data: '',
+  custom_fields: [],
 });
 
 export default function Settings() {
@@ -40,6 +41,24 @@ export default function Settings() {
   const [mfaCode, setMfaCode] = useState('');
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaDisableCode, setMfaDisableCode] = useState('');
+
+  // Test SMS + custom registration fields editor
+  const [testPhone, setTestPhone] = useState('');
+  const [smsBusy, setSmsBusy] = useState(false);
+  const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
+
+  const sendTestSms = async () => {
+    if (!testPhone.trim()) return toast('Enter a phone number first', 'error');
+    setSmsBusy(true);
+    try {
+      const r = await api.post('/settings/test-sms', { phone: testPhone.trim() });
+      r.data.ok ? toast(r.data.message) : toast(r.data.message || 'SMS not sent', 'error');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to send test SMS', 'error');
+    } finally {
+      setSmsBusy(false);
+    }
+  };
 
   // Logo upload: read file, downscale to max 256px, store as data URL in the settings blob
   const handleLogoFile = (e) => {
@@ -269,6 +288,82 @@ export default function Settings() {
               <div style={{ fontSize: 13, color: '#64748B' }}>Email me if the kiosk stops responding (10+ min), and when it comes back online · <strong>this one saves immediately, no Save needed</strong></div>
             </div>
           </label>
+
+          {/* Test SMS — verifies the Twilio env vars on Render actually work */}
+          <div style={{ marginTop: 16, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4 }}>Test SMS</div>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10 }}>
+              Verify your Twilio setup — sends one text from your Twilio number. Include the country code (e.g. +1347…).
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input type="tel" placeholder="+1…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)}
+                style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
+              <button type="button" onClick={sendTestSms} disabled={smsBusy}
+                style={{ padding: '12px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                {smsBusy ? 'Sending…' : 'Send Test SMS'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Registration Form — custom fields per organization */}
+      <div style={sectionStyle}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <PenLine size={20} color="#0D7377" /> Registration Form
+        </h3>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+          Extra questions asked on the kiosk during check-in — every organization can have its own
+          (e.g. an apartment building asks "Apartment #", a school asks "Student ID").
+          Answers are stored with each visit (Visits → eye icon). Remember to Save Settings after editing.
+        </p>
+
+        {(settings.custom_fields || []).map((f, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{f.label}</span>
+              <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>
+                {f.type}{f.required ? ' · required' : ''}{f.type === 'dropdown' ? ` · ${(f.options || []).join(', ')}` : ''}
+              </span>
+            </div>
+            <button type="button" onClick={() => setSettings({ ...settings, custom_fields: settings.custom_fields.filter((_, j) => j !== i) })}
+              style={{ padding: '6px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              Remove
+            </button>
+          </div>
+        ))}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginTop: 12 }}>
+          <input type="text" placeholder="Field label — e.g. Apartment #" value={newField.label}
+            onChange={(e) => setNewField({ ...newField, label: e.target.value })} style={inputStyle} />
+          <select value={newField.type} onChange={(e) => setNewField({ ...newField, type: e.target.value })} style={{ ...inputStyle, background: '#fff' }}>
+            <option value="text">Text answer</option>
+            <option value="dropdown">Dropdown (choices)</option>
+            <option value="checkbox">Checkbox (yes/no)</option>
+          </select>
+        </div>
+        {newField.type === 'dropdown' && (
+          <input type="text" placeholder="Choices, comma separated — e.g. Building 1, Building 2, Building 3" value={newField.options}
+            onChange={(e) => setNewField({ ...newField, options: e.target.value })} style={{ ...inputStyle, marginTop: 10 }} />
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, flexWrap: 'wrap', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155', cursor: 'pointer' }}>
+            <input type="checkbox" checked={newField.required} onChange={(e) => setNewField({ ...newField, required: e.target.checked })} />
+            Required (visitor can't continue without answering)
+          </label>
+          <button type="button" onClick={() => {
+            if (!newField.label.trim()) return toast('Give the field a label first', 'error');
+            const field = { label: newField.label.trim(), type: newField.type, required: newField.required };
+            if (newField.type === 'dropdown') {
+              field.options = newField.options.split(',').map(o => o.trim()).filter(Boolean);
+              if (field.options.length === 0) return toast('Add at least one choice for the dropdown', 'error');
+            }
+            setSettings({ ...settings, custom_fields: [...(settings.custom_fields || []), field] });
+            setNewField({ label: '', type: 'text', required: false, options: '' });
+          }}
+            style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            + Add Field
+          </button>
         </div>
       </div>
 
