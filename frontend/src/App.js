@@ -17,6 +17,7 @@ import Settings from './pages/Settings';
 import Devices from './pages/Devices';
 import Team from './pages/Team';
 import Compliance from './pages/Compliance';
+import Reports from './pages/Reports';
 import SuperAdmin from './pages/SuperAdmin';
 import KioskWelcome from './pages/KioskWelcome';
 import KioskSignIn from './pages/KioskSignIn';
@@ -55,6 +56,7 @@ function App() {
         <Route path="devices" element={<Devices />} />
         <Route path="team" element={<Team />} />
         <Route path="compliance" element={<Compliance />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="super-admin" element={<SuperAdmin />} />
       </Route>
     </Routes>
