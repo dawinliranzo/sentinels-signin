@@ -108,7 +108,13 @@ router.post('/staff-checkin', async (req, res) => {
          WHERE id = $1 RETURNING *`,
         [active.rows[0].id]
       );
-      return res.json({ action: 'checked_out', name: host.first_name, visit: out.rows[0] });
+      return res.json({
+        action: 'checked_out',
+        name: host.first_name,
+        photo: host.photo_data || null,
+        notes: host.notes || null,
+        visit: out.rows[0]
+      });
     }
 
     const date = new Date();
@@ -119,7 +125,14 @@ router.post('/staff-checkin', async (req, res) => {
       [org_id, null, null, host.first_name, host.last_name, staffEmail, host.phone || null, host.department || 'Staff', 'Employee check-in', badgeNum]
     );
 
-    res.json({ action: 'checked_in', name: host.first_name, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
+    res.json({
+      action: 'checked_in',
+      name: host.first_name,
+      photo: host.photo_data || null,
+      notes: host.notes || null,
+      badge: ins.rows[0].badge_number,
+      visit: ins.rows[0]
+    });
   } catch (err) {
     console.error('Staff check-in error:', err);
     res.status(500).json({ error: 'Staff check-in failed', details: err.message });
@@ -149,7 +162,7 @@ router.get('/active', authenticate, async (req, res) => {
 
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { date, status, host_id, search } = req.query;
+    const { date, status, host_id, search, from, to } = req.query;
     let query = `
       SELECT v.*, 
         h.first_name as host_first_name, h.last_name as host_last_name,
@@ -167,6 +180,17 @@ router.get('/', authenticate, async (req, res) => {
       query += ` AND DATE(v.checked_in_at) = $${paramCount}`;
       params.push(date);
     }
+    // Date+time range (ISO datetimes from the UI, e.g. 2026-07-15T09:00)
+    if (from) {
+      paramCount++;
+      query += ` AND v.checked_in_at >= $${paramCount}`;
+      params.push(new Date(from).toISOString());
+    }
+    if (to) {
+      paramCount++;
+      query += ` AND v.checked_in_at <= $${paramCount}`;
+      params.push(new Date(to).toISOString());
+    }
     if (status) {
       paramCount++;
       query += ` AND v.status = $${paramCount}`;
@@ -179,7 +203,8 @@ router.get('/', authenticate, async (req, res) => {
     }
     if (search) {
       paramCount++;
-      query += ` AND (v.visitor_first_name ILIKE $${paramCount} OR v.visitor_last_name ILIKE $${paramCount} OR v.visitor_email ILIKE $${paramCount})`;
+      query += ` AND (v.visitor_first_name ILIKE $${paramCount} OR v.visitor_last_name ILIKE $${paramCount} OR v.visitor_email ILIKE $${paramCount}
+        OR v.badge_number ILIKE $${paramCount} OR h.first_name ILIKE $${paramCount} OR h.last_name ILIKE $${paramCount})`;
       params.push(`%${search}%`);
     }
 
