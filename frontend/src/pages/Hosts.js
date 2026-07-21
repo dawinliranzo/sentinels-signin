@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload, FileSpreadsheet } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -17,6 +17,11 @@ export default function Hosts() {
   const [badgeFields, setBadgeFields] = useState(defaultBadgeFields);
   // What the org calls these people (Settings → Badge label), printed on badges
   const [badgeLabel, setBadgeLabel] = useState('');
+  // Bulk import + bulk print
+  const importInputRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [printAllHosts, setPrintAllHosts] = useState(null);
 
   useEffect(() => {
     api.get('/settings').then(r => setBadgeLabel((r.data?.badge_label || '').trim())).catch(() => {});
@@ -24,6 +29,100 @@ export default function Hosts() {
 
   const badgeTitle = (badgeLabel || 'EMPLOYEE BADGE').toUpperCase();
   const org = useStore((s) => s.organization);
+
+  // ─── CSV bulk import ───
+  const downloadTemplate = () => {
+    const csv = 'first_name,last_name,email,phone,department,job_title,notes\n' +
+                'Jane,Doe,jane.doe@company.com,+13475550100,Front Desk,Receptionist,Has a package waiting\n';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'hosts-import-template.csv';
+    a.click();
+  };
+
+  // Minimal CSV parser that handles quoted fields with commas
+  const parseCSV = (text) => {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') inQuotes = false;
+        else field += c;
+      } else if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some(cell => cell.trim() !== '')) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    if (field !== '' || row.length) { row.push(field); if (row.some(cell => cell.trim() !== '')) rows.push(row); }
+    if (rows.length < 2) return [];
+    const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    return rows.slice(1).map(r => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
+  };
+
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const text = await file.text();
+    const rows = parseCSV(text);
+    if (rows.length === 0) {
+      return toast('No valid rows found — download the CSV template to see the required columns', 'error');
+    }
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const r = await api.post('/hosts/import', { rows });
+      setImportResult(r.data);
+      refetch();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Import failed', 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // ─── Print all badges: hidden QRs render first, then collect into one document ───
+  useEffect(() => {
+    if (!printAllHosts) return;
+    const timer = setTimeout(() => {
+      const orgName = org?.name || 'Organization';
+      const cards = printAllHosts.map(h => {
+        const canvas = document.getElementById(`bulk-qr-${h.id}`);
+        const qrUrl = canvas ? canvas.toDataURL('image/png') : '';
+        const photoHtml = h.photo_data
+          ? `<img src="${h.photo_data}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;margin:0 auto 10px" />`
+          : `<div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#0D7377,#14FFEC);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700">${h.first_name[0]}${h.last_name[0]}</div>`;
+        return `<div style="width:320px;border-radius:18px;overflow:hidden;border:1px solid #E2E8F0;background:#fff;text-align:center;page-break-inside:avoid">
+          <div style="background:linear-gradient(135deg,#0D7377,#14919B);padding:16px;color:#fff">
+            <div style="font-size:11px;letter-spacing:2px;opacity:0.85">${orgName.toUpperCase()}</div>
+            <div style="font-size:11px;margin-top:3px;opacity:0.7">${badgeTitle}</div>
+          </div>
+          <div style="padding:20px">
+            ${photoHtml}
+            <div style="font-size:19px;font-weight:700;color:#0F172A">${h.first_name} ${h.last_name}</div>
+            <div style="font-size:12px;color:#64748B;margin:3px 0 14px">${[h.job_title, h.department].filter(Boolean).join(' · ')}</div>
+            <img src="${qrUrl}" style="width:170px;height:170px" />
+            <div style="font-size:11px;color:#64748B;margin-top:10px">Scan at the kiosk to check in / out</div>
+          </div>
+        </div>`;
+      }).join('');
+      const win = window.open('', '_blank', 'width=1100,height=800');
+      win.document.write(`<!doctype html><html><head><title>All Badges - ${orgName}</title></head>
+        <body style="margin:0;padding:24px;font-family:Arial,sans-serif;background:#f1f5f9">
+        <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center">${cards}</div>
+        <script>window.onload=function(){window.print()}<\/script></body></html>`);
+      win.document.close();
+      setPrintAllHosts(null);
+    }, 400); // give the hidden QR canvases a moment to render
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printAllHosts]);
 
   // Resize an uploaded/taken photo to a small JPEG data URL (keeps DB + payloads light)
   const processPhoto = (file) => new Promise((resolve, reject) => {
@@ -202,18 +301,57 @@ export default function Hosts() {
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Hosts</h1>
           <p style={{ color: '#64748B', marginTop: 4 }}>Manage the people who receive visitors — employees, tenants, or staff. What they're called on badges is set in Settings → Badge label.</p>
         </div>
-        <button
-          onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null }); setShowModal(true); }}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '12px 24px', borderRadius: 12,
-            background: '#0D7377', border: 'none', color: '#fff',
-            fontWeight: 600, cursor: 'pointer', fontSize: 14
-          }}
-        >
-          <Plus size={18} /> Add Host
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={downloadTemplate}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#F1F5F9', border: 'none', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            <FileSpreadsheet size={16} /> CSV Template
+          </button>
+          <button onClick={() => importInputRef.current?.click()} disabled={importing}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#E0E7FF', border: 'none', color: '#3730A3', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
+          </button>
+          <input ref={importInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
+          {(hosts?.length > 0) && (
+            <button onClick={() => setPrintAllHosts(hosts)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#F1F5F9', border: 'none', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              <Printer size={16} /> Print All Badges
+            </button>
+          )}
+          <button
+            onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null, notes: '' }); setShowModal(true); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '12px 24px', borderRadius: 12,
+              background: '#0D7377', border: 'none', color: '#fff',
+              fontWeight: 600, cursor: 'pointer', fontSize: 14
+            }}
+          >
+            <Plus size={18} /> Add Host
+          </button>
+        </div>
       </div>
+
+      {/* Import result summary */}
+      {importResult && (
+        <div style={{ padding: 16, borderRadius: 12, marginBottom: 16, background: importResult.errors > 0 ? '#FFFBEB' : '#ECFDF5', border: `1px solid ${importResult.errors > 0 ? '#FDE68A' : '#A7F3D0'}` }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A', marginBottom: 4 }}>
+            Import complete: {importResult.created} added · {importResult.skipped} skipped (duplicates) · {importResult.errors} failed
+          </div>
+          {importResult.detail?.errors?.slice(0, 5).map((e, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#92400E' }}>Row {e.line}: {e.reason}</div>
+          ))}
+          <button onClick={() => setImportResult(null)} style={{ marginTop: 8, padding: '6px 12px', borderRadius: 8, background: 'transparent', border: '1px solid #CBD5E1', fontSize: 12, cursor: 'pointer' }}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Hidden QR canvases for Print All — collected into one print document */}
+      {printAllHosts && (
+        <div style={{ position: 'fixed', left: -99999, top: 0, width: 1, overflow: 'hidden' }}>
+          {printAllHosts.map(h => (
+            <QRCodeCanvas key={h.id} id={`bulk-qr-${h.id}`} value={`STAFF:${h.id}`} size={200} level="M" includeMargin />
+          ))}
+        </div>
+      )}
 
       <div style={{
         background: '#fff', borderRadius: 20, overflow: 'auto',
@@ -388,6 +526,13 @@ export default function Hosts() {
                     onChange={(e) => setForm({...form, job_title: e.target.value})} style={inputStyle} />
                 </div>
                 <div style={hintStyle}>Department helps visitors find the right host in kiosk search; Job Title prints under the name on the badge. Both optional on the badge</div>
+              </div>
+              <div>
+                <textarea placeholder="Note for the security guard (optional) — e.g. 'Has a package at the front desk' or 'Payment due'"
+                  value={form.notes || ''} rows={2}
+                  onChange={(e) => setForm({...form, notes: e.target.value})}
+                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+                <div style={hintStyle}>Shown in large type on the kiosk next to this person's photo whenever they badge in</div>
               </div>
               <div style={{ display: 'flex', gap: 24, padding: '8px 0' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
