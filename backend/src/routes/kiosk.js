@@ -112,6 +112,7 @@ router.get('/config/:orgId', async (req, res) => {
       nda_required: !!s.require_nda,
       nda_text: s.nda_text || '',
       logo_data: s.logo_data || '',
+      custom_fields: Array.isArray(s.custom_fields) ? s.custom_fields : [],
     });
   } catch (err) {
     console.error(err);
