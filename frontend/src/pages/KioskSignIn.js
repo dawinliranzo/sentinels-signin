@@ -38,6 +38,10 @@ export default function KioskSignIn() {
   const [ndaSig, setNdaSig] = useState(null);
   const [ndaName, setNdaName] = useState('');
 
+  // Custom registration fields (org-configurable, Settings → Registration Form)
+  const [customFields, setCustomFields] = useState([]);
+  const [customData, setCustomData] = useState({});
+
   // Photo capture (org-configurable)
   const [photoRequired, setPhotoRequired] = useState(false);
   const [photo, setPhoto] = useState(null);
@@ -51,6 +55,12 @@ export default function KioskSignIn() {
       setPhotoRequired(!!r.data.photo_required);
       setNdaRequired(!!r.data.nda_required);
       setNdaText(r.data.nda_text || '');
+      const cf = Array.isArray(r.data.custom_fields) ? r.data.custom_fields : [];
+      setCustomFields(cf);
+      // pre-fill checkbox defaults
+      const init = {};
+      cf.forEach(f => { if (f.type === 'checkbox') init[f.label] = false; });
+      setCustomData(init);
     }).catch(() => {});
   }, [orgId]);
 
@@ -160,6 +170,13 @@ export default function KioskSignIn() {
 
   const totalSteps = ndaRequired ? 3 : 2;
 
+  // Required custom fields gate step 1's Continue button
+  const customRequiredMissing = customFields.some(f => {
+    if (!f.required) return false;
+    const v = customData[f.label];
+    return f.type === 'checkbox' ? !v : !v || !String(v).trim();
+  });
+
   const handleSubmit = async () => {
     setLoading(true);
     setErrorMsg('');
@@ -169,6 +186,7 @@ export default function KioskSignIn() {
         ...formData,
         sign_in_method: 'kiosk',
         photo_data: photo,
+        custom_data: Object.keys(customData).length > 0 ? customData : undefined,
         nda_signature: ndaRequired ? ndaSig : undefined,
         nda_signed_name: ndaRequired ? ndaName : undefined
       });
@@ -440,13 +458,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={() => { setErrorMsg(''); setStep(2); }}
-            disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)}
+            disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo)) ? 0.5 : 1
+              cursor: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 'not-allowed' : 'pointer',
+              opacity: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 0.5 : 1
             }}
           >
             Continue
@@ -567,6 +585,43 @@ export default function KioskSignIn() {
               placeholder="Meeting, interview, delivery, etc."
             />
           </div>
+
+          {/* Org-defined custom registration fields */}
+          {customFields.map((f) => (
+            <div key={f.label}>
+              {f.type === 'checkbox' ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#fff', fontSize: 16, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!customData[f.label]}
+                    onChange={(e) => setCustomData({ ...customData, [f.label]: e.target.checked })}
+                    style={{ width: 24, height: 24 }}
+                  />
+                  {f.label}{f.required ? ' *' : ''}
+                </label>
+              ) : (
+                <>
+                  <label style={labelStyle}>{f.label}{f.required ? ' *' : ''}</label>
+                  {f.type === 'dropdown' ? (
+                    <select
+                      value={customData[f.label] || ''}
+                      onChange={(e) => setCustomData({ ...customData, [f.label]: e.target.value })}
+                      style={{ ...inputStyle, background: 'rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="" style={{ color: '#000' }}>Select…</option>
+                      {(f.options || []).map(o => <option key={o} value={o} style={{ color: '#000' }}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text" value={customData[f.label] || ''}
+                      onChange={(e) => setCustomData({ ...customData, [f.label]: e.target.value })}
+                      style={inputStyle} placeholder={f.label}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          ))}
 
           <div>
             <label style={labelStyle}><Car size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Vehicle Plate (optional)</label>
