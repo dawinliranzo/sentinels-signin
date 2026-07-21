@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Search, Filter, Download, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
 export default function Visits() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('');
+  const [fromFilter, setFromFilter] = useState(''); // datetime-local
+  const [toFilter, setToFilter] = useState('');
   const [ndaView, setNdaView] = useState(null); // { loading, data, error, name }
+  const [confirmOutId, setConfirmOutId] = useState(null); // 2-step checkout, no browser popups
+  const [detailVisit, setDetailVisit] = useState(null);
 
   const openNda = async (visit) => {
     setNdaView({ loading: true, data: null, error: null, name: `${visit.visitor_first_name} ${visit.visitor_last_name}` });
@@ -21,15 +24,22 @@ export default function Visits() {
   };
 
   const { data: visits, isLoading, refetch } = useQuery(
-    ['visits', statusFilter, dateFilter, search],
-    () => api.get(`/visits?status=${statusFilter !== 'all' ? statusFilter : ''}&date=${dateFilter}&search=${search}`).then(r => r.data),
+    ['visits', statusFilter, fromFilter, toFilter, search],
+    () => {
+      const p = new URLSearchParams();
+      if (statusFilter !== 'all') p.set('status', statusFilter);
+      if (fromFilter) p.set('from', new Date(fromFilter).toISOString());
+      if (toFilter) p.set('to', new Date(toFilter).toISOString());
+      if (search) p.set('search', search);
+      return api.get(`/visits?${p.toString()}`).then(r => r.data);
+    },
     { keepPreviousData: true }
   );
 
   const handleCheckOut = async (id) => {
-    if (!window.confirm('Check out this visitor?')) return;
     try {
       await api.post(`/visits/${id}/check-out`);
+      setConfirmOutId(null);
       refetch();
     } catch (err) {
       toast('Failed to check out visitor', 'error');
@@ -76,14 +86,14 @@ export default function Visits() {
 
       {/* Filters */}
       <div style={{
-        display: 'flex', gap: 12, marginBottom: 24,
+        display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap',
         background: '#fff', padding: '16px 20px', borderRadius: 16,
         boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
       }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
           <Search size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
           <input
-            type="text" placeholder="Search visitors..."
+            type="text" placeholder="Search name, email, host, or badge…"
             value={search} onChange={(e) => setSearch(e.target.value)}
             style={{
               width: '100%', padding: '12px 16px 12px 44px', borderRadius: 10,
@@ -99,10 +109,24 @@ export default function Visits() {
           <option value="checked_in">Checked In</option>
           <option value="checked_out">Checked Out</option>
         </select>
-        <input
-          type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
-          style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>From</label>
+          <input
+            type="datetime-local" value={fromFilter} onChange={(e) => setFromFilter(e.target.value)}
+            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13 }}
+          />
+          <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>To</label>
+          <input
+            type="datetime-local" value={toFilter} onChange={(e) => setToFilter(e.target.value)}
+            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13 }}
+          />
+          {(fromFilter || toFilter) && (
+            <button onClick={() => { setFromFilter(''); setToFilter(''); }}
+              style={{ padding: '8px 12px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer', color: '#64748B' }}>
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -184,7 +208,11 @@ export default function Visits() {
                   </span>
                 </td>
                 <td style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button onClick={() => setDetailVisit(v)} title="View visit details"
+                      style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                      <Eye size={15} color="#64748B" />
+                    </button>
                     {v.nda_signed && (
                       <button onClick={() => openNda(v)} title="View signed NDA"
                         style={{
@@ -197,16 +225,29 @@ export default function Visits() {
                       </button>
                     )}
                     {v.status === 'checked_in' && (
-                      <button
-                        onClick={() => handleCheckOut(v.id)}
-                        style={{
-                          padding: '8px 16px', borderRadius: 8,
-                          background: '#FF6B35', border: 'none', color: '#fff',
-                          fontSize: 12, fontWeight: 600, cursor: 'pointer'
-                        }}
-                      >
-                        Check Out
-                      </button>
+                      confirmOutId === v.id ? (
+                        <>
+                          <button onClick={() => handleCheckOut(v.id)}
+                            style={{ padding: '8px 14px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                            Confirm?
+                          </button>
+                          <button onClick={() => setConfirmOutId(null)}
+                            style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer', color: '#64748B' }}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmOutId(v.id)}
+                          style={{
+                            padding: '8px 16px', borderRadius: 8,
+                            background: '#FF6B35', border: 'none', color: '#fff',
+                            fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                          }}
+                        >
+                          Check Out
+                        </button>
+                      )
                     )}
                   </div>
                 </td>
@@ -215,6 +256,55 @@ export default function Visits() {
           </tbody>
         </table>
       </div>
+
+      {/* Visit details modal — everything captured at check-in, incl. custom fields + photo */}
+      {detailVisit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 25px 80px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
+            <button onClick={() => setDetailVisit(null)} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F5F9', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer' }}>
+              <X size={16} />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+              {detailVisit.photo_data ? (
+                <img src={detailVisit.photo_data} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700 }}>
+                  {detailVisit.visitor_first_name?.[0]}{detailVisit.visitor_last_name?.[0]}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#0F172A' }}>{detailVisit.visitor_first_name} {detailVisit.visitor_last_name}</div>
+                <div style={{ fontSize: 13, color: '#64748B' }}>Badge <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0D7377' }}>{detailVisit.badge_number}</span></div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {[
+                ['Email', detailVisit.visitor_email],
+                ['Phone', detailVisit.visitor_phone],
+                ['Company', detailVisit.visitor_company],
+                ['Host', `${detailVisit.host_first_name || ''} ${detailVisit.host_last_name || ''}`.trim()],
+                ['Purpose', detailVisit.purpose],
+                ['Vehicle', detailVisit.vehicle_plate],
+                ['Checked in', detailVisit.checked_in_at ? new Date(detailVisit.checked_in_at).toLocaleString() : null],
+                ['Checked out', detailVisit.checked_out_at ? new Date(detailVisit.checked_out_at).toLocaleString() : null],
+                ['Method', detailVisit.sign_in_method],
+              ].filter(([, val]) => val).map(([label, val]) => (
+                <div key={label} style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: '#64748B', marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', wordBreak: 'break-word' }}>{val}</div>
+                </div>
+              ))}
+              {/* Custom registration fields for this org */}
+              {detailVisit.custom_data && Object.entries(detailVisit.custom_data).filter(([, val]) => val !== '' && val != null).map(([key, val]) => (
+                <div key={key} style={{ padding: '10px 12px', background: '#F0FDFA', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: '#0D7377', marginBottom: 2 }}>{key}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', wordBreak: 'break-word' }}>{typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Signed NDA viewer */}
       {ndaView && (
