@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Search, CheckCircle, User, Clock } from 'lucide-react';
+import { ArrowLeft, Search, CheckCircle, User, Clock, QrCode } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
 
 export default function KioskSignOut() {
@@ -12,6 +13,9 @@ export default function KioskSignOut() {
   const [done, setDone] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [initialLoad, setInitialLoad] = useState(true);
+  const [scanMode, setScanMode] = useState(false);
+  const scannerRef = useRef(null);
+  const processingRef = useRef(false);
 
   // CRITICAL FIX: No fallback to demo org. Must have org ID.
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
@@ -22,6 +26,69 @@ export default function KioskSignOut() {
       localStorage.setItem('kiosk_org_id', orgId);
     }
   }, [orgId]);
+
+  // QR scanner lifecycle for scan-to-sign-out mode
+  useEffect(() => {
+    if (!scanMode) return;
+    let cancelled = false;
+    processingRef.current = false;
+    const scanner = new Html5Qrcode('signout-qr-reader');
+    scannerRef.current = scanner;
+
+    const onScan = async (decodedText) => {
+      if (cancelled || processingRef.current) return;
+      processingRef.current = true;
+      try { await scanner.stop(); } catch (e) { /* ignore */ }
+      let token = decodedText.trim();
+      if (token.includes('/check-in/')) {
+        token = token.split('/check-in/')[1].split(/[?#/&]/)[0];
+      }
+      try {
+        if (token.startsWith('STAFF:')) {
+          // Employee badge: toggles them out (the endpoint flips in->out)
+          await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
+        } else {
+          // Pre-registration QR: find the person's active visit and check it out
+          const v = await api.get(`/pre-registered/validate-qr/${token}`);
+          const visitor = v.data.visitor;
+          if (visitor.org_id !== orgId) throw new Error('wrong org');
+          const matches = await api.get(`/visits/active/public/${orgId}?search=${encodeURIComponent(visitor.email || visitor.first_name)}`);
+          const mine = (matches.data || []).find(x =>
+            (visitor.email && x.visitor_email?.toLowerCase() === visitor.email.toLowerCase()) ||
+            (x.visitor_first_name === visitor.first_name && x.visitor_last_name === visitor.last_name));
+          if (!mine) throw new Error('no active visit');
+          await api.post('/visits/public/check-out', { visit_id: mine.id, org_id: orgId });
+        }
+        setScanMode(false);
+        setDone(true);
+        setTimeout(() => setDone(false), 3000);
+      } catch (err) {
+        setScanMode(false);
+        setErrorMsg('Could not sign out from that QR — search your name instead.');
+        setTimeout(() => setErrorMsg(''), 5000);
+      }
+    };
+
+    const scanConfig = { fps: 10, qrbox: { width: 260, height: 260 } };
+    scanner
+      .start({ facingMode: 'user' }, scanConfig, onScan, () => {})
+      .catch(() => scanner.start({ facingMode: 'environment' }, scanConfig, onScan, () => {}))
+      .catch(() => {
+        if (!cancelled) {
+          setScanMode(false);
+          setErrorMsg('Camera unavailable — search your name instead.');
+          setTimeout(() => setErrorMsg(''), 5000);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
+      }
+    };
+  }, [scanMode, orgId]);
 
   // Debounced search: only fetch when 2+ characters typed (privacy: no full roster)
   useEffect(() => {
@@ -125,8 +192,23 @@ export default function KioskSignOut() {
         <h2 style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>Sign Out</h2>
       </div>
 
+      {scanMode && (
+        <div style={{ marginBottom: 24, textAlign: 'center' }}>
+          <div id="signout-qr-reader" style={{ width: '100%', maxWidth: 420, margin: '0 auto', borderRadius: 16, overflow: 'hidden', background: '#000' }} />
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, marginTop: 12 }}>
+            Point your check-in QR or staff badge at the camera
+          </p>
+          <button onClick={() => setScanMode(false)}
+            style={{ marginTop: 12, padding: '12px 24px', borderRadius: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', fontSize: 15, cursor: 'pointer' }}>
+            Type my name instead
+          </button>
+        </div>
+      )}
+
       {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 24 }}>
+      {!scanMode && (
+      <>
+      <div style={{ position: 'relative', marginBottom: 16 }}>
         <input
           type="text" value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -145,6 +227,18 @@ export default function KioskSignOut() {
           <Search size={20} />
         </button>
       </div>
+
+      <button onClick={() => setScanMode(true)}
+        style={{
+          width: '100%', marginBottom: 24, padding: '14px', borderRadius: 14,
+          background: 'rgba(20,255,236,0.12)', border: '2px solid rgba(20,255,236,0.4)',
+          color: '#14FFEC', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
+        }}>
+        <QrCode size={20} /> Sign out with QR instead
+      </button>
+      </>
+      )}
 
       {/* Active Visitors List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
