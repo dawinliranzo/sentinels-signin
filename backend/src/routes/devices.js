@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 // Unambiguous pairing-code alphabet (no 0/O, 1/I/L)
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -34,7 +34,7 @@ router.post('/pair', async (req, res) => {
 });
 
 // ─── AUTHENTICATED: list devices with live online status ───
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission('devices'), async (req, res) => {
   try {
     const result = await db.query(
       `SELECT id, name, pair_code, paired_at, last_seen_at, created_at, is_active,
@@ -54,7 +54,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── ADMIN: register a new kiosk device ───
-router.post('/', authenticate, requireRole('admin', 'super_admin'), async (req, res) => {
+router.post('/', authenticate, requirePermission('devices'), async (req, res) => {
   try {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Device name is required' });
@@ -83,7 +83,7 @@ router.post('/', authenticate, requireRole('admin', 'super_admin'), async (req, 
 });
 
 // ─── ADMIN: rename a device ───
-router.patch('/:id', authenticate, requireRole('admin', 'super_admin'), async (req, res) => {
+router.patch('/:id', authenticate, requirePermission('devices'), async (req, res) => {
   try {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Device name is required' });
@@ -100,7 +100,7 @@ router.patch('/:id', authenticate, requireRole('admin', 'super_admin'), async (r
 });
 
 // ─── ADMIN: remove a device (kiosk will need a new code to re-pair) ───
-router.delete('/:id', authenticate, requireRole('admin', 'super_admin'), async (req, res) => {
+router.delete('/:id', authenticate, requirePermission('devices'), async (req, res) => {
   try {
     const result = await db.query(
       'UPDATE devices SET is_active = false WHERE id = $1 AND org_id = $2 RETURNING id',
