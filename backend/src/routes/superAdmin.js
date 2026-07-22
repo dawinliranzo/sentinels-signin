@@ -87,31 +87,46 @@ router.get('/organizations/:id', authenticate, requireRole('super_admin'), async
       return res.status(404).json({ error: 'Organization not found' });
     }
 
-    const usersResult = await db.query(
-      'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
-      [req.params.id]
-    );
+    // Each section is independent — if one query fails (e.g. an older database
+    // missing a column or table), the rest of the modal still loads.
+    let users = [], hosts = [], usage = null;
+    const sectionErrors = {};
 
-    const hostsResult = await db.query(
-      'SELECT id, first_name, last_name, email, department, is_active FROM hosts WHERE org_id = $1 ORDER BY last_name, first_name LIMIT 200',
-      [req.params.id]
-    );
+    try {
+      const usersResult = await db.query(
+        'SELECT id, email, first_name, last_name, role, is_active FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
+        [req.params.id]
+      );
+      users = usersResult.rows;
+    } catch (e) { console.error('superAdmin detail: users query failed:', e.message); sectionErrors.users = e.message; }
 
-    const usageResult = await db.query(
-      `SELECT
-         (SELECT COUNT(*) FROM visits WHERE org_id = $1) as total_visits,
-         (SELECT COUNT(*) FROM visits WHERE org_id = $1 AND status = 'checked_in') as active_visits,
-         (SELECT COUNT(*) FROM visits WHERE org_id = $1 AND checked_in_at >= DATE_TRUNC('month', CURRENT_DATE)) as visits_this_month,
-         (SELECT COUNT(*) FROM pre_registered WHERE org_id = $1) as pre_regs,
-         (SELECT COUNT(*) FROM devices WHERE org_id = $1 AND is_active = true) as devices`,
-      [req.params.id]
-    );
+    try {
+      const hostsResult = await db.query(
+        'SELECT id, first_name, last_name, email, department, is_active FROM hosts WHERE org_id = $1 ORDER BY last_name, first_name LIMIT 200',
+        [req.params.id]
+      );
+      hosts = hostsResult.rows;
+    } catch (e) { console.error('superAdmin detail: hosts query failed:', e.message); sectionErrors.hosts = e.message; }
+
+    try {
+      const usageResult = await db.query(
+        `SELECT
+           (SELECT COUNT(*) FROM visits WHERE org_id = $1) as total_visits,
+           (SELECT COUNT(*) FROM visits WHERE org_id = $1 AND status = 'checked_in') as active_visits,
+           (SELECT COUNT(*) FROM visits WHERE org_id = $1 AND checked_in_at >= DATE_TRUNC('month', CURRENT_DATE)) as visits_this_month,
+           (SELECT COUNT(*) FROM pre_registered_visitors WHERE org_id = $1) as pre_regs,
+           (SELECT COUNT(*) FROM devices WHERE org_id = $1 AND is_active = true) as devices`,
+        [req.params.id]
+      );
+      usage = usageResult.rows[0];
+    } catch (e) { console.error('superAdmin detail: usage query failed:', e.message); sectionErrors.usage = e.message; }
 
     res.json({
       organization: orgResult.rows[0],
-      users: usersResult.rows,
-      hosts: hostsResult.rows,
-      usage: usageResult.rows[0],
+      users,
+      hosts,
+      usage,
+      ...(Object.keys(sectionErrors).length > 0 ? { section_errors: sectionErrors } : {}),
     });
   } catch (err) {
     console.error(err);
@@ -305,6 +320,69 @@ router.delete('/organizations/:id/support-access/:userId', authenticate, require
     }
     console.error(err);
     res.status(500).json({ error: 'Failed to revoke support access' });
+  }
+});
+
+// DELETE an organization and ALL its data (super admin only).
+// Finds every table with an org_id column and removes the child rows first,
+// so it works even as the schema grows. Cannot delete your own organization.
+router.delete('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const homeOrg = req.user.home_org_id || req.user.org_id;
+    if (req.params.id === homeOrg) {
+      return res.status(400).json({ error: 'You cannot delete your own organization' });
+    }
+    const orgResult = await db.query('SELECT id, name FROM organizations WHERE id = $1', [req.params.id]);
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    // Every table that references the org — discovered dynamically
+    const tablesResult = await db.query(
+      `SELECT table_name FROM information_schema.columns
+       WHERE column_name = 'org_id' AND table_schema = 'public' AND table_name != 'organizations'`
+    );
+    const childTables = tablesResult.rows
+      .map(r => r.table_name)
+      .filter(n => /^[a-z_][a-z0-9_]*$/.test(n));
+
+    await client.query('BEGIN');
+    for (const table of childTables) {
+      await client.query(`DELETE FROM "${table}" WHERE org_id = $1`, [req.params.id]);
+    }
+    await client.query('DELETE FROM organizations WHERE id = $1', [req.params.id]);
+    await client.query('COMMIT');
+
+    res.json({ success: true, deleted: orgResult.rows[0].name, tables_cleaned: childTables.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: `Could not delete organization: ${err.message}` });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH deactivate/reactivate any user in any org (super admin only)
+router.patch('/users/:userId/status', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const { is_active } = req.body;
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ error: 'is_active (boolean) is required' });
+    }
+    if (req.params.userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot deactivate your own account' });
+    }
+    const r = await db.query(
+      'UPDATE users SET is_active = $1 WHERE id = $2 RETURNING id, email, is_active',
+      [is_active, req.params.userId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, user: r.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update user status' });
   }
 });
 
