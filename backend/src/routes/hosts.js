@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 // Turn Postgres "missing column/table" errors into a precise, actionable message
 // that names the ACTUAL missing column instead of guessing (a past version blamed
@@ -32,7 +32,7 @@ router.get('/public/:orgId', async (req, res) => {
 });
 
 // AUTHENTICATED ENDPOINTS
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     const result = await db.query(
       'SELECT * FROM hosts WHERE org_id = $1 AND is_active = true ORDER BY last_name, first_name',
@@ -44,7 +44,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     const { first_name, last_name, email, phone, department, job_title, photo_data, notes } = req.body;
     const result = await db.query(
@@ -59,7 +59,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     const { first_name, last_name, email, phone, department, job_title, notify_email, notify_sms, notes } = req.body;
 
@@ -89,7 +89,7 @@ router.put('/:id', authenticate, async (req, res) => {
 // POST /api/hosts/import — bulk-create hosts from parsed CSV rows.
 // Body: { rows: [{ first_name, last_name, email, phone?, department?, job_title?, notes? }] }
 // Duplicates (same email already a host in this org) are skipped, not failed.
-router.post('/import', authenticate, async (req, res) => {
+router.post('/import', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
     if (rows.length === 0) {
@@ -145,7 +145,7 @@ router.post('/import', authenticate, async (req, res) => {
   }
 });
 
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     await db.query('UPDATE hosts SET is_active = false WHERE id = $1 AND org_id = $2', 
       [req.params.id, req.user.org_id]);
