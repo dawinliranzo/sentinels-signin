@@ -217,6 +217,97 @@ router.post('/organizations/:id/support-admin', authenticate, requireRole('super
   }
 });
 
+// ---- Tech Support Access: assign EXISTING users from your own org to support a customer org ----
+// Assigned users get an org switcher in their sidebar and can jump into the customer org
+// with full access to troubleshoot. Tracked in the support_assignments table.
+
+// GET active users from the super admin's OWN organization (the picker list)
+router.get('/support-candidates', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const homeOrg = req.user.home_org_id || req.user.org_id;
+    const result = await db.query(
+      `SELECT id, first_name, last_name, email, role FROM users
+       WHERE org_id = $1 AND is_active = true ORDER BY first_name, last_name`,
+      [homeOrg]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch your team members' });
+  }
+});
+
+// GET current support assignments for a customer org
+router.get('/organizations/:id/support-access', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT sa.user_id, u.first_name, u.last_name, u.email, sa.created_at
+       FROM support_assignments sa JOIN users u ON u.id = sa.user_id
+       WHERE sa.org_id = $1 ORDER BY sa.created_at`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'support_assignments table is missing — run migration-support-roles.txt in Render PSQL' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch support access' });
+  }
+});
+
+// POST assign one of your existing users as support for a customer org
+router.post('/organizations/:id/support-access', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+    const homeOrg = req.user.home_org_id || req.user.org_id;
+
+    // Only users from your own organization can be assigned
+    const userCheck = await db.query(
+      'SELECT id, first_name, last_name, email FROM users WHERE id = $1 AND org_id = $2 AND is_active = true',
+      [user_id, homeOrg]
+    );
+    if (userCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'That user is not an active member of your organization' });
+    }
+    if (user_id === req.user.id) {
+      return res.status(400).json({ error: 'You are already a super admin — you can switch into any organization without an assignment' });
+    }
+    const orgCheck = await db.query('SELECT id, name FROM organizations WHERE id = $1', [req.params.id]);
+    if (orgCheck.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
+    if (req.params.id === homeOrg) {
+      return res.status(400).json({ error: 'This user already belongs to that organization' });
+    }
+
+    await db.query(
+      'INSERT INTO support_assignments (user_id, org_id) VALUES ($1, $2) ON CONFLICT (user_id, org_id) DO NOTHING',
+      [user_id, req.params.id]
+    );
+    res.json({ success: true, user: userCheck.rows[0], org_name: orgCheck.rows[0].name });
+  } catch (err) {
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'support_assignments table is missing — run migration-support-roles.txt in Render PSQL' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Failed to assign support access' });
+  }
+});
+
+// DELETE revoke a user's support access to a customer org
+router.delete('/organizations/:id/support-access/:userId', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    await db.query('DELETE FROM support_assignments WHERE org_id = $1 AND user_id = $2', [req.params.id, req.params.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === '42P01') {
+      return res.status(500).json({ error: 'support_assignments table is missing — run migration-support-roles.txt in Render PSQL' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Failed to revoke support access' });
+  }
+});
+
 // GET every user across all orgs (super admin only) — verifies the "Total Users" number
 router.get('/all-users', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
