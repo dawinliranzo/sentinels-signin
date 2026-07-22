@@ -2,11 +2,11 @@ const express = require('express');
 const QRCode = require('qrcode');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const { sendEmail } = require('../utils/notifications');
 
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission('prereg'), async (req, res) => {
   try {
     const { date } = req.query;
     let query = `
@@ -60,7 +60,7 @@ const buildQrAttachment = async (token) => {
   };
 };
 
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requirePermission('prereg'), async (req, res) => {
   try {
     const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
 
@@ -131,7 +131,7 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 // UPDATE pre-registration
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, requirePermission('prereg'), async (req, res) => {
   try {
     const { first_name, last_name, email, phone, company, host_id, visitor_type_id, purpose, expected_date, expected_time_start, expected_time_end } = req.body;
 
@@ -166,7 +166,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // DELETE pre-registration
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, requirePermission('prereg'), async (req, res) => {
   try {
     const result = await db.query(
       'DELETE FROM pre_registered_visitors WHERE id = $1 AND org_id = $2 RETURNING id',
@@ -185,7 +185,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 });
 
 // RESEND invitation
-router.post('/:id/resend', authenticate, async (req, res) => {
+router.post('/:id/resend', authenticate, requirePermission('prereg'), async (req, res) => {
   try {
     const result = await db.query(
       'SELECT * FROM pre_registered_visitors WHERE id = $1 AND org_id = $2',
