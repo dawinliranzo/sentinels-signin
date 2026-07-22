@@ -3,11 +3,11 @@ const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../utils/db');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requireRole, requirePermission } = require('../middleware/auth');
 const { sendEmail } = require('../utils/notifications');
 
 // All routes: logged-in org admin (or super admin), scoped to their own org
-router.use(authenticate, requireRole('admin', 'super_admin'));
+router.use(authenticate, requirePermission('team'));
 
 // 8-char temporary password from an unambiguous alphabet (easy to read & type)
 const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -47,11 +47,23 @@ const sendInviteEmail = async ({ to, firstName, tempPassword, orgName, isReset }
 // GET /api/users — list users in my organization
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query(
-      'SELECT id, email, first_name, last_name, role, is_active, mfa_enabled, mfa_required FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
-      [req.user.org_id]
-    );
-    res.json(result.rows);
+    try {
+      const result = await db.query(
+        `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.role_id, u.is_active,
+                u.mfa_enabled, u.mfa_required, o.name as custom_role_name
+         FROM users u LEFT JOIN org_roles o ON o.id = u.role_id
+         WHERE u.org_id = $1 ORDER BY u.first_name, u.last_name`,
+        [req.user.org_id]
+      );
+      return res.json(result.rows);
+    } catch (e) {
+      if (e.code !== '42703' && e.code !== '42P01') throw e; // roles migration not run yet
+      const result = await db.query(
+        'SELECT id, email, first_name, last_name, role, is_active, mfa_enabled, mfa_required FROM users WHERE org_id = $1 ORDER BY first_name, last_name',
+        [req.user.org_id]
+      );
+      return res.json(result.rows.map(u => ({ ...u, role_id: null, custom_role_name: null })));
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -180,13 +192,12 @@ router.post('/:id/reset-mfa', async (req, res) => {
 });
 
 // PATCH /api/users/:id/role — change a member's role.
-// Admins can set receptionist/admin. Only super admins can grant OR revoke super_admin.
+// Body: { role: 'receptionist'|'admin'|'super_admin' } for built-ins
+//    or { custom_role_id: '<org_roles id>' } for a custom role (clears with { role: ... }).
+// Only super admins can grant or revoke super_admin.
 router.patch('/:id/role', async (req, res) => {
   try {
-    const { role } = req.body;
-    if (!['receptionist', 'admin', 'super_admin'].includes(role)) {
-      return res.status(400).json({ error: 'Role must be receptionist, admin, or super_admin' });
-    }
+    const { role, custom_role_id } = req.body;
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'You cannot change your own role' });
     }
@@ -200,13 +211,40 @@ router.patch('/:id/role', async (req, res) => {
     }
     const target = userResult.rows[0];
 
-    // Super admin is a platform-level role (Sentinels staff) — only a super admin may touch it
-    if ((role === 'super_admin' || target.role === 'super_admin') && req.user.role !== 'super_admin') {
+    if (target.role === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a super admin can change a super admin role' });
+    }
+
+    if (custom_role_id) {
+      // Custom role must belong to this org
+      let roleRow;
+      try {
+        const r = await db.query('SELECT id, name FROM org_roles WHERE id = $1 AND org_id = $2', [custom_role_id, req.user.org_id]);
+        roleRow = r.rows[0];
+      } catch (e) {
+        if (e.code === '42P01') return res.status(500).json({ error: 'Custom roles table missing — run the latest migration in Render PSQL' });
+        throw e;
+      }
+      if (!roleRow) return res.status(404).json({ error: 'Custom role not found' });
+      await db.query('UPDATE users SET role_id = $1 WHERE id = $2', [custom_role_id, req.params.id]);
+      return res.json({ id: req.params.id, email: target.email, role: target.role, role_id: custom_role_id, custom_role_name: roleRow.name });
+    }
+
+    if (!['receptionist', 'admin', 'super_admin'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be receptionist, admin, or super_admin' });
+    }
+    if (role === 'super_admin' && req.user.role !== 'super_admin') {
       return res.status(403).json({ error: 'Only a super admin can grant or change a super admin role' });
     }
 
-    await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
-    res.json({ id: req.params.id, email: target.email, role });
+    // Built-in role assignment clears any custom role
+    try {
+      await db.query('UPDATE users SET role = $1, role_id = NULL WHERE id = $2', [role, req.params.id]);
+    } catch (e) {
+      if (e.code !== '42703') throw e; // role_id column not migrated yet
+      await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+    }
+    res.json({ id: req.params.id, email: target.email, role, role_id: null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update role' });
