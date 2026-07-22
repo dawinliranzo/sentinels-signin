@@ -24,7 +24,7 @@ const DEFAULTS = (orgName) => ({
 export default function Settings() {
   const org = useStore((s) => s.organization);
   const user = useStore((s) => s.user);
-  const canManage = user?.role === 'admin' || user?.role === 'super_admin';
+  const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.switched || (user?.permissions || []).includes('settings');
 
 
   const [notifyOffline, setNotifyOffline] = useState(false);
