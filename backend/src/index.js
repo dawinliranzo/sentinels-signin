@@ -22,6 +22,7 @@ const deviceRoutes = require('./routes/devices');
 const accessRequestRoutes = require('./routes/accessRequests');
 const complianceRoutes = require('./routes/compliance');
 const reportsRoutes = require('./routes/reports');
+const rolesRoutes = require('./routes/roles');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -88,6 +89,7 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/access-requests', accessRequestRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/roles', rolesRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
