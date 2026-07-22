@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../utils/store';
-import { Users, UserPlus, Shield, ShieldCheck, ShieldOff, Info } from 'lucide-react';
+import { Users, UserPlus, Shield, ShieldCheck, ShieldOff, Info, Plus, Trash2, KeyRound } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -16,9 +16,22 @@ const ROLE_INFO = [
   { role: 'super_admin', label: 'Super Admin', text: 'Sentinels staff only — manages ALL organizations on the platform (plans, status, every company). Never give this to a customer.' },
 ];
 
+// Functions a custom role can be given — must match ALL_PERMISSIONS on the backend
+const PERMISSION_OPTIONS = [
+  { key: 'visits', label: 'Visits (view, check in/out)' },
+  { key: 'prereg', label: 'Pre-registration' },
+  { key: 'hosts', label: 'Hosts' },
+  { key: 'devices', label: 'Kiosk devices' },
+  { key: 'team', label: 'Team & roles' },
+  { key: 'reports', label: 'Reports' },
+  { key: 'compliance', label: 'Compliance / NDAs' },
+  { key: 'settings', label: 'Settings' },
+  { key: 'deliveries', label: 'Deliveries' },
+];
+
 export default function Team() {
   const user = useStore((s) => s.user);
-  const canManage = user?.role === 'admin' || user?.role === 'super_admin';
+  const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.switched || (user?.permissions || []).includes('team');
   const isSuper = user?.role === 'super_admin';
 
   const [team, setTeam] = useState([]);
@@ -26,12 +39,17 @@ export default function Team() {
   const [teamMsg, setTeamMsg] = useState(null);
   const [tempPw, setTempPw] = useState(null);
   const [savingUser, setSavingUser] = useState(false);
-  // Generic inline confirm: { action: 'resetPw'|'toggleActive'|'mfaRequire'|'mfaReset'|'role', userId, user, role? }
+  // Generic inline confirm: { action: 'resetPw'|'toggleActive'|'mfaRequire'|'mfaReset'|'role'|'customRole'|'deleteRole', userId, user, role?, roleId?, roleName? }
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Custom roles
+  const [roles, setRoles] = useState([]);
+  const [rolesError, setRolesError] = useState(null);
+  const [roleForm, setRoleForm] = useState({ name: '', permissions: [] });
+  const [roleBusy, setRoleBusy] = useState(false);
 
   useEffect(() => {
-    if (canManage) loadTeam();
+    if (canManage) { loadTeam(); loadRoles(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage]);
 
@@ -41,6 +59,39 @@ export default function Team() {
       setTeam(r.data);
     } catch {
       toast('Failed to load team members', 'error');
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const r = await api.get('/roles');
+      setRoles(r.data);
+      setRolesError(null);
+    } catch (err) {
+      setRolesError(err.response?.data?.error || 'Custom roles are unavailable');
+    }
+  };
+
+  const togglePerm = (key) => {
+    setRoleForm(f => ({
+      ...f,
+      permissions: f.permissions.includes(key) ? f.permissions.filter(p => p !== key) : [...f.permissions, key]
+    }));
+  };
+
+  const createRole = async () => {
+    if (!roleForm.name.trim()) return toast('Give the role a name', 'error');
+    if (roleForm.permissions.length === 0) return toast('Select at least one function', 'error');
+    setRoleBusy(true);
+    try {
+      await api.post('/roles', roleForm);
+      setRoleForm({ name: '', permissions: [] });
+      toast('Role created — assign it from each member\'s role dropdown');
+      loadRoles();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to create role', 'error');
+    } finally {
+      setRoleBusy(false);
     }
   };
 
@@ -93,6 +144,15 @@ export default function Team() {
         await api.patch(`/users/${u.id}/role`, { role: confirm.role });
         toast(`${u.email} is now ${confirm.role === 'super_admin' ? 'a Super Admin' : confirm.role === 'admin' ? 'an Admin' : 'a Receptionist'}`);
         loadTeam();
+      } else if (confirm.action === 'customRole') {
+        await api.patch(`/users/${u.id}/role`, { custom_role_id: confirm.roleId });
+        toast(`${u.email} now has the "${confirm.roleName}" role`);
+        loadTeam();
+      } else if (confirm.action === 'deleteRole') {
+        await api.delete(`/roles/${confirm.roleId}`);
+        toast(`Role "${confirm.roleName}" deleted`);
+        loadRoles();
+        loadTeam();
       }
       setConfirm(null);
     } catch (err) {
@@ -115,6 +175,8 @@ export default function Team() {
         : `Require MFA for ${u.email}? They'll be forced to set up an authenticator app at next sign-in.`;
       case 'mfaReset': return `Reset MFA for ${u.email}? Use this when they lost their authenticator. Their current MFA setup is erased.`;
       case 'role': return `Change ${u.email} from ${u.role} to ${confirm.role}?${confirm.role === 'super_admin' ? ' Super admins can manage ALL organizations — Sentinels staff only.' : ''}`;
+      case 'customRole': return `Give ${u.email} the "${confirm.roleName}" role? They'll get exactly the functions that role allows, and their menu will update at next sign-in.`;
+      case 'deleteRole': return `Delete the "${confirm.roleName}" role? This only works while no members are assigned to it.`;
       default: return '';
     }
   };
@@ -219,12 +281,21 @@ export default function Team() {
                       <ShieldOff size={12} /> MFA OFF
                     </span>
                   )}
-                  {/* Role picker — super_admin option visible only to super admins; own role locked */}
+                  {/* Role picker — built-in roles + your custom roles; own role locked */}
                   <select
-                    value={u.role}
+                    value={u.role_id ? `custom:${u.role_id}` : u.role}
                     disabled={u.id === user?.id || (u.role === 'super_admin' && !isSuper)}
                     onChange={(e) => {
-                      if (e.target.value !== u.role) setConfirm({ action: 'role', userId: u.id, user: u, role: e.target.value });
+                      const val = e.target.value;
+                      if (val.startsWith('custom:')) {
+                        const roleId = val.slice(7);
+                        if (roleId !== u.role_id) {
+                          const r = roles.find(x => x.id === roleId);
+                          setConfirm({ action: 'customRole', userId: u.id, user: u, roleId, roleName: r?.name || 'custom' });
+                        }
+                      } else if (val !== u.role || u.role_id) {
+                        setConfirm({ action: 'role', userId: u.id, user: u, role: val });
+                      }
                     }}
                     title={u.id === user?.id ? 'You cannot change your own role' : 'Change role'}
                     style={{
@@ -236,7 +307,19 @@ export default function Team() {
                     <option value="receptionist">Receptionist</option>
                     <option value="admin">Admin</option>
                     {(isSuper || u.role === 'super_admin') && <option value="super_admin">Super Admin</option>}
+                    {roles.length > 0 && (
+                      <optgroup label="Custom roles">
+                        {roles.map(r => (
+                          <option key={r.id} value={`custom:${r.id}`}>{r.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
+                  {u.custom_role_name && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#F0FDFA', color: '#0F766E', border: '1px solid #99F6E4' }}>
+                      <KeyRound size={11} /> {u.custom_role_name}
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -267,7 +350,7 @@ export default function Team() {
             </div>
 
             {/* Inline confirm bar — replaces all browser popups */}
-            {confirm && confirm.userId === u.id && (
+            {confirm && confirm.userId === u.id && confirm.action !== 'deleteRole' && (
               <div style={{
                 marginTop: 12, padding: '12px 14px', borderRadius: 10,
                 background: '#FFFBEB', border: '1px solid #FDE68A',
@@ -281,6 +364,105 @@ export default function Team() {
                   </button>
                   <button onClick={runConfirmed} disabled={busy}
                     style={{ padding: '8px 16px', borderRadius: 8, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    {busy ? 'Working…' : 'Confirm'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Custom Roles — build your own roles by picking exactly which functions they unlock */}
+      <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', marginTop: 20 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <KeyRound size={20} color="#0D7377" /> Custom Roles <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>({roles.length})</span>
+        </h3>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+          Create roles like "Security Guard" or "Office Manager" with exactly the functions they need — nothing more.
+          Then assign them from each member's role dropdown above.
+        </p>
+
+        {rolesError && (
+          <div style={{ fontSize: 13, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+            {rolesError}
+          </div>
+        )}
+
+        {/* Create a role */}
+        <div style={{ background: '#F8FAFC', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <input
+              type="text" placeholder='Role name — e.g. "Security Guard"' value={roleForm.name}
+              onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
+              style={{ ...inputStyle, flex: '1 1 240px' }}
+            />
+            <button onClick={createRole} disabled={roleBusy}
+              style={{ padding: '12px 20px', borderRadius: 10, background: roleBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              <Plus size={15} /> {roleBusy ? 'Creating…' : 'Create Role'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 8 }}>Functions this role can use:</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8 }}>
+            {PERMISSION_OPTIONS.map(p => (
+              <label key={p.key} style={{
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer',
+                padding: '8px 10px', borderRadius: 8,
+                background: roleForm.permissions.includes(p.key) ? '#F0FDFA' : '#fff',
+                border: roleForm.permissions.includes(p.key) ? '1px solid #5EEAD4' : '1px solid #E2E8F0'
+              }}>
+                <input type="checkbox" checked={roleForm.permissions.includes(p.key)} onChange={() => togglePerm(p.key)} />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Existing roles */}
+        {roles.length === 0 && !rolesError && (
+          <p style={{ fontSize: 13, color: '#94A3B8' }}>No custom roles yet — create one above.</p>
+        )}
+        {roles.map(r => (
+          <div key={r.id} style={{ padding: '12px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{r.name}</span>
+                <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>{r.member_count} member{Number(r.member_count) !== 1 ? 's' : ''}</span>
+              </div>
+              <button
+                onClick={() => setConfirm({ action: 'deleteRole', roleId: r.id, roleName: r.name })}
+                disabled={r.member_count > 0}
+                title={r.member_count > 0 ? 'Reassign members before deleting' : 'Delete role'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8,
+                  background: r.member_count > 0 ? '#F1F5F9' : '#FEF2F2', border: 'none',
+                  color: r.member_count > 0 ? '#94A3B8' : '#991B1B', fontSize: 12, fontWeight: 600,
+                  cursor: r.member_count > 0 ? 'not-allowed' : 'pointer'
+                }}>
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {(r.permissions || []).map(p => (
+                <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E0F2F1', color: '#0F766E' }}>
+                  {PERMISSION_OPTIONS.find(o => o.key === p)?.label || p}
+                </span>
+              ))}
+            </div>
+            {confirm?.action === 'deleteRole' && confirm.roleId === r.id && (
+              <div style={{
+                marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                background: '#FFFBEB', border: '1px solid #FDE68A',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap'
+              }}>
+                <div style={{ fontSize: 12, color: '#92400E', flex: 1, minWidth: 200 }}>{confirmText()}</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setConfirm(null)} disabled={busy}
+                    style={{ padding: '6px 12px', borderRadius: 6, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={runConfirmed} disabled={busy}
+                    style={{ padding: '6px 14px', borderRadius: 6, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                     {busy ? 'Working…' : 'Confirm'}
                   </button>
                 </div>
