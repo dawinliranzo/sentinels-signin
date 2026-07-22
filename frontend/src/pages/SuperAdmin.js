@@ -6,7 +6,7 @@ import { toast } from '../utils/toast';
 import {
   Building2, Users, CreditCard, TrendingUp, DollarSign,
   Shield, Activity, ArrowUpRight, ArrowDownRight, Search,
-  Edit, X, Copy, Check, Wrench, Mail
+  Edit, X, Copy, Check, Wrench, Mail, Trash2
 } from 'lucide-react';
 
 const PLANS = {
@@ -40,6 +40,8 @@ export default function SuperAdmin() {
   const [statModal, setStatModal] = useState(null); // 'users' | 'visits'
   const [statModalData, setStatModalData] = useState([]);
   const [confirmSuspend, setConfirmSuspend] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // org pending delete confirmation
+  const [deleting, setDeleting] = useState(false);
   const [changeEmail, setChangeEmail] = useState(null); // { user, value }
   const [supportForm, setSupportForm] = useState({ email: '', first_name: 'Sentinels', last_name: 'Support' });
   const [showSupport, setShowSupport] = useState(false);
@@ -222,6 +224,31 @@ export default function SuperAdmin() {
     }
   };
 
+  const deleteOrg = async (org) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/super-admin/organizations/${org.id}`);
+      toast(`Organization "${org.name}" and all its data were deleted`);
+      setConfirmDelete(null);
+      setViewOrg(null);
+      fetchData();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to delete organization', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleUserStatus = async (u) => {
+    try {
+      await api.patch(`/super-admin/users/${u.id}/status`, { is_active: !u.is_active });
+      toast(`${u.is_active ? 'Deactivated' : 'Reactivated'} ${u.email}`);
+      openView(viewOrg); // refresh the modal's user list
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update user', 'error');
+    }
+  };
+
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   const planCounts = { free: 0, pro: 0, enterprise: 0 };
@@ -366,14 +393,23 @@ export default function SuperAdmin() {
                   }}>{org.status}</span>
                 </td>
                 <td style={{ padding: '16px 20px' }}>
-                  {confirmSuspend?.id === org.id ? (
+                  {confirmDelete?.id === org.id ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', maxWidth: 280 }}>
+                      <span style={{ fontSize: 12, color: '#991B1B', fontWeight: 600 }}>Delete forever? All users, hosts and visit history will be lost.</span>
+                      <button onClick={() => deleteOrg(org)} disabled={deleting}
+                        style={{ padding: '8px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer' }}>
+                        {deleting ? 'Deleting…' : 'Yes, delete'}
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)} style={{ padding: '8px 12px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+                    </div>
+                  ) : confirmSuspend?.id === org.id ? (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span style={{ fontSize: 12, color: '#92400E', fontWeight: 600 }}>{org.status === 'suspended' ? 'Reactivate?' : 'Suspend?'}</span>
                       <button onClick={() => toggleOrgStatus(org)} style={{ padding: '8px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Confirm</button>
                       <button onClick={() => setConfirmSuspend(null)} style={{ padding: '8px 12px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button onClick={() => openView(org)}
                         style={{ padding: '8px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}
                         title="Manage users, plan, billing, hosts and support access">
@@ -382,6 +418,13 @@ export default function SuperAdmin() {
                       <button onClick={() => setConfirmSuspend(org)} style={{ padding: '8px 12px', borderRadius: 8, background: org.status === 'suspended' ? '#DCFCE7' : '#FEF3C7', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: org.status === 'suspended' ? '#166534' : '#92400E' }} title={org.status === 'suspended' ? 'Reactivate' : 'Suspend'}>
                         {org.status === 'suspended' ? 'Reactivate' : 'Suspend'}
                       </button>
+                      {org.id !== (user?.home_org_id || user?.org_id) && (
+                        <button onClick={() => setConfirmDelete(org)}
+                          style={{ padding: '8px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#991B1B', display: 'flex', alignItems: 'center', gap: 5 }}
+                          title="Delete this organization and ALL its data — cannot be undone">
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -565,6 +608,13 @@ export default function SuperAdmin() {
                           style={{ padding: '7px 12px', borderRadius: 8, background: '#FEF3C7', border: 'none', color: '#92400E', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           Reset Password
                         </button>
+                        {u.id !== user?.id && (
+                          <button onClick={() => toggleUserStatus(u)}
+                            title={u.is_active ? 'Deactivate — they immediately lose access (account & history kept)' : 'Reactivate this user'}
+                            style={{ padding: '7px 12px', borderRadius: 8, background: u.is_active ? '#FEF2F2' : '#DCFCE7', border: 'none', color: u.is_active ? '#991B1B' : '#166534', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {u.is_active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                        )}
                       </div>
                     </div>
                     {changeEmail?.user.id === u.id && (
