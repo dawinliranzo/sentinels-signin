@@ -1,16 +1,21 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from 'react-query';
 import { useStore } from '../utils/store';
+import api from '../utils/api';
+import { toast } from '../utils/toast';
 import Toaster from './Toaster';
 import {
   LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor, UserPlus,
-  QrCode, Package, Shield, Bell, Menu, X, FileCheck, BarChart3
+  Shield, Menu, X, FileCheck, BarChart3, ArrowLeftRight, Undo2
 } from 'lucide-react';
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
+  const [supportOrgs, setSupportOrgs] = React.useState([]);
+  const [switching, setSwitching] = React.useState(false);
 
   React.useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -20,21 +25,67 @@ export default function AdminLayout() {
   const logout = useStore((s) => s.logout);
   const user = useStore((s) => s.user);
   const org = useStore((s) => s.organization);
+  const setAuth = useStore((s) => s.setAuth);
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
+
+  // Refresh the signed-in user (picks up role/permission changes) and load
+  // the list of organizations this user may switch into for tech support
+  React.useEffect(() => {
+    api.get('/auth/me').then(r => {
+      const me = r.data;
+      setAuth(useStore.getState().token, me, { id: me.org_id, name: me.org_name });
+    }).catch(() => {});
+    api.get('/auth/support-orgs').then(r => setSupportOrgs(r.data || [])).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switch into another organization (tech support) or back to your own
+  const switchTo = async (orgId) => {
+    if (!orgId || switching) return;
+    setSwitching(true);
+    try {
+      const r = await api.post('/auth/switch-org', { org_id: orgId });
+      // Store the new token first so /auth/me authenticates with the new scope
+      setAuth(r.data.token, user, { id: orgId, name: r.data.org_name });
+      const me = await api.get('/auth/me');
+      setAuth(r.data.token, me.data, { id: me.data.org_id, name: me.data.org_name || r.data.org_name });
+      queryClient.clear(); // drop every cached query from the previous org
+      navigate('/');
+      toast(`Now viewing ${me.data.org_name || r.data.org_name}`, 'success');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Could not switch organization', 'error');
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  // Which menu entries is this user allowed to see?
+  const hasPerm = (p) => {
+    if (!user) return false;
+    if (user.switched) return true; // support sessions get full access to the customer org
+    if (user.role === 'admin' || user.role === 'super_admin') return true;
+    if (Array.isArray(user.permissions)) return user.permissions.includes(p);
+    return ['visits', 'prereg'].includes(p); // receptionist fallback
+  };
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/visits', icon: Users, label: 'Visits' },
-    { path: '/hosts', icon: Users, label: 'Hosts' },
-    { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered' },
-    { path: '/devices', icon: Monitor, label: 'Devices' },
-    { path: '/team', icon: UserPlus, label: 'Team' },
-    { path: '/reports', icon: BarChart3, label: 'Reports' },
-    { path: '/compliance', icon: FileCheck, label: 'Compliance' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
+    { path: '/visits', icon: Users, label: 'Visits', perm: 'visits' },
+    { path: '/hosts', icon: Users, label: 'Hosts', perm: 'hosts' },
+    { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered', perm: 'prereg' },
+    { path: '/devices', icon: Monitor, label: 'Devices', perm: 'devices' },
+    { path: '/team', icon: UserPlus, label: 'Team', perm: 'team' },
+    { path: '/reports', icon: BarChart3, label: 'Reports', perm: 'reports' },
+    { path: '/compliance', icon: FileCheck, label: 'Compliance', perm: 'compliance' },
+    { path: '/settings', icon: Settings, label: 'Settings', perm: 'settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
+
+  const visibleNav = navItems.filter(i =>
+    i.requireRole ? (user?.role === i.requireRole && !user?.switched) : (!i.perm || hasPerm(i.perm))
+  );
 
   const handleLogout = () => {
     logout();
@@ -90,9 +141,33 @@ export default function AdminLayout() {
           {sidebarOpen ? '<' : '>'}
         </button>)}
 
+        {/* Organization switcher — tech support access to customer orgs */}
+        {supportOrgs.length > 0 && (!isMobile ? sidebarOpen : true) && (
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1E293B' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <ArrowLeftRight size={11} /> {user?.switched ? 'Viewing as support' : 'Switch organization'}
+            </div>
+            <select
+              value=""
+              disabled={switching}
+              onChange={(e) => { if (e.target.value) switchTo(e.target.value); }}
+              style={{
+                width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                background: '#1E293B', color: '#E2E8F0', border: '1px solid #334155',
+                cursor: switching ? 'wait' : 'pointer'
+              }}
+            >
+              <option value="">{switching ? 'Switching…' : 'Open a customer org…'}</option>
+              {supportOrgs
+                .filter(o => o.id !== org?.id)
+                .map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
+
         {/* Nav */}
         <nav style={{ flex: 1, padding: '16px 12px' }}>
-          {navItems.filter(i => !i.requireRole || user?.role === i.requireRole).map((item) => (
+          {visibleNav.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -196,6 +271,32 @@ export default function AdminLayout() {
         flex: 1, transition: 'margin-left 0.3s ease',
         padding: isMobile ? '64px 16px 16px' : 32, minHeight: '100vh'
       }}>
+        {/* Support-mode banner — always visible while inside a customer org */}
+        {user?.switched && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+            background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12,
+            padding: '10px 16px', marginBottom: 20
+          }}>
+            <div style={{ fontSize: 13, color: '#92400E', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Shield size={15} />
+              <span>
+                You're viewing <b>{org?.name}</b> as tech support. Changes you make here affect this customer.
+              </span>
+            </div>
+            <button
+              onClick={() => switchTo(user.home_org_id)}
+              disabled={switching}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+                background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700,
+                cursor: switching ? 'wait' : 'pointer', whiteSpace: 'nowrap'
+              }}
+            >
+              <Undo2 size={13} /> {switching ? 'Returning…' : `Back to ${user.home_org_name || 'my organization'}`}
+            </button>
+          </div>
+        )}
         {/* key remounts the page on every tab switch, so unsaved form state
             (e.g. Settings toggles) can't silently linger across tabs */}
         <Outlet key={location.pathname} />
