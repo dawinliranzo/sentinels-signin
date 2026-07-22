@@ -296,37 +296,39 @@ export default function Hosts() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        <div style={{ flex: '1 1 280px', minWidth: 220 }}>
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Hosts</h1>
-          <p style={{ color: '#64748B', marginTop: 4 }}>Manage the people who receive visitors — employees, tenants, or staff. What they're called on badges is set in Settings → Badge label.</p>
+          <p style={{ color: '#64748B', marginTop: 4, maxWidth: 520 }}>Manage the people who receive visitors — employees, tenants, or staff. The badge label is set in Settings.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button onClick={downloadTemplate}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#F1F5F9', border: 'none', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            <FileSpreadsheet size={16} /> CSV Template
-          </button>
-          <button onClick={() => importInputRef.current?.click()} disabled={importing}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#E0E7FF', border: 'none', color: '#3730A3', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
-          </button>
-          <input ref={importInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
-          {(hosts?.length > 0) && (
-            <button onClick={() => setPrintAllHosts(hosts)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderRadius: 12, background: '#F1F5F9', border: 'none', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              <Printer size={16} /> Print All Badges
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+          {[
+            { label: 'CSV Template', icon: FileSpreadsheet, onClick: downloadTemplate, show: true },
+            { label: importing ? 'Importing…' : 'Import CSV', icon: Upload, onClick: () => importInputRef.current?.click(), show: true, disabled: importing },
+            { label: 'Print All Badges', icon: Printer, onClick: () => setPrintAllHosts(hosts), show: hosts?.length > 0 },
+          ].filter(b => b.show).map((b, i) => (
+            <button key={i} onClick={b.onClick} disabled={b.disabled}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                height: 40, padding: '0 14px', borderRadius: 10,
+                background: '#fff', border: '1px solid #CBD5E1', color: '#334155',
+                fontWeight: 600, cursor: b.disabled ? 'not-allowed' : 'pointer', fontSize: 13,
+                whiteSpace: 'nowrap', opacity: b.disabled ? 0.6 : 1
+              }}>
+              <b.icon size={15} /> {b.label}
             </button>
-          )}
+          ))}
+          <input ref={importInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} style={{ display: 'none' }} />
           <button
             onClick={() => { setEditing(null); setForm({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null, notes: '' }); setShowModal(true); }}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 24px', borderRadius: 12,
-              background: '#0D7377', border: 'none', color: '#fff',
-              fontWeight: 600, cursor: 'pointer', fontSize: 14
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              height: 40, padding: '0 16px', borderRadius: 10,
+              background: '#0D7377', border: '1px solid #0D7377', color: '#fff',
+              fontWeight: 600, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap'
             }}
           >
-            <Plus size={18} /> Add Host
+            <Plus size={16} /> Add Host
           </button>
         </div>
       </div>
