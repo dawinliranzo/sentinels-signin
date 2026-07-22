@@ -6,7 +6,7 @@ import { toast } from '../utils/toast';
 import {
   Building2, Users, CreditCard, TrendingUp, DollarSign,
   Shield, Activity, ArrowUpRight, ArrowDownRight, Search,
-  Eye, Edit, X, Copy, Check, Monitor, Wrench, Mail
+  Edit, X, Copy, Check, Wrench, Mail
 } from 'lucide-react';
 
 const PLANS = {
@@ -30,8 +30,6 @@ export default function SuperAdmin() {
 
   // Modals / panels
   const [viewOrg, setViewOrg] = useState(null);
-  const [editOrg, setEditOrg] = useState(null);
-  const [editForm, setEditForm] = useState({});
   const [copied, setCopied] = useState(false);
   const [viewOrgUsers, setViewOrgUsers] = useState([]);
   const [viewOrgHosts, setViewOrgHosts] = useState([]);
@@ -45,6 +43,14 @@ export default function SuperAdmin() {
   const [changeEmail, setChangeEmail] = useState(null); // { user, value }
   const [supportForm, setSupportForm] = useState({ email: '', first_name: 'Sentinels', last_name: 'Support' });
   const [showSupport, setShowSupport] = useState(false);
+  // Plan & billing editing inside the manage modal
+  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '' });
+  const [savingPlan, setSavingPlan] = useState(false);
+  // Tech support access: assign existing members of YOUR org to a customer org
+  const [candidates, setCandidates] = useState([]);
+  const [supportList, setSupportList] = useState([]);
+  const [supportPick, setSupportPick] = useState('');
+  const [supportError, setSupportError] = useState(null);
 
   useEffect(() => {
     if (user?.role !== 'super_admin') {
@@ -54,6 +60,10 @@ export default function SuperAdmin() {
 
   useEffect(() => {
     fetchData();
+    // Load your own team once — these are the people you can grant support access to
+    api.get('/super-admin/support-candidates')
+      .then(r => setCandidates(r.data))
+      .catch(() => {});
   }, []);
 
   const fetchData = async () => {
@@ -79,6 +89,10 @@ export default function SuperAdmin() {
     setViewOrgHosts([]);
     setViewOrgUsage(null);
     setShowSupport(false);
+    setSupportList([]);
+    setSupportPick('');
+    setSupportError(null);
+    setPlanEdit({ plan: org.plan || 'free', billing_email: org.billing_email || '' });
     setLoadingDetail(true);
     try {
       const res = await api.get(`/super-admin/organizations/${org.id}`);
@@ -86,10 +100,55 @@ export default function SuperAdmin() {
       setViewOrgUsers(res.data.users || []);
       setViewOrgHosts(res.data.hosts || []);
       setViewOrgUsage(res.data.usage || null);
+      setPlanEdit({ plan: res.data.organization.plan || 'free', billing_email: res.data.organization.billing_email || '' });
+      // Who from your team already has support access to this org?
+      try {
+        const sa = await api.get(`/super-admin/organizations/${org.id}/support-access`);
+        setSupportList(sa.data);
+      } catch (e) {
+        setSupportError(e.response?.data?.error || null);
+      }
     } catch (err) {
       toast('Failed to load organization details', 'error');
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const savePlanEdit = async () => {
+    setSavingPlan(true);
+    try {
+      await api.patch(`/super-admin/organizations/${viewOrg.id}`, planEdit);
+      toast('Plan & billing updated');
+      setViewOrg({ ...viewOrg, ...planEdit });
+      fetchData();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update plan', 'error');
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const grantSupport = async () => {
+    if (!supportPick) return toast('Pick a team member first', 'error');
+    try {
+      await api.post(`/super-admin/organizations/${viewOrg.id}/support-access`, { user_id: supportPick });
+      toast('Support access granted — they now have an organization switcher in their sidebar');
+      setSupportPick('');
+      const sa = await api.get(`/super-admin/organizations/${viewOrg.id}/support-access`);
+      setSupportList(sa.data);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to grant support access', 'error');
+    }
+  };
+
+  const revokeSupport = async (userId) => {
+    try {
+      await api.delete(`/super-admin/organizations/${viewOrg.id}/support-access/${userId}`);
+      setSupportList(supportList.filter(s => s.user_id !== userId));
+      toast('Support access revoked');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to revoke access', 'error');
     }
   };
 
@@ -150,21 +209,6 @@ export default function SuperAdmin() {
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const openEdit = (org) => {
-    setEditOrg(org);
-    setEditForm({ ...org });
-  };
-
-  const saveEdit = async () => {
-    try {
-      await api.patch(`/super-admin/organizations/${editOrg.id}`, editForm);
-      setEditOrg(null);
-      fetchData();
-    } catch (err) {
-      toast(err.response?.data?.error || 'Failed to update organization', 'error');
-    }
   };
 
   const toggleOrgStatus = async (org) => {
@@ -330,11 +374,10 @@ export default function SuperAdmin() {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => openView(org)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="Manage">
-                        <Eye size={16} color="#64748B" />
-                      </button>
-                      <button onClick={() => openEdit(org)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }} title="Edit">
-                        <Edit size={16} color="#64748B" />
+                      <button onClick={() => openView(org)}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: 6 }}
+                        title="Manage users, plan, billing, hosts and support access">
+                        <Edit size={14} /> Manage
                       </button>
                       <button onClick={() => setConfirmSuspend(org)} style={{ padding: '8px 12px', borderRadius: 8, background: org.status === 'suspended' ? '#DCFCE7' : '#FEF3C7', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: org.status === 'suspended' ? '#166534' : '#92400E' }} title={org.status === 'suspended' ? 'Reactivate' : 'Suspend'}>
                         {org.status === 'suspended' ? 'Reactivate' : 'Suspend'}
@@ -457,12 +500,35 @@ export default function SuperAdmin() {
               ))}
             </div>
 
+            {/* Plan & Billing — editable */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CreditCard size={16} color="#0D7377" /> Plan & Billing
+            </h3>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16, padding: 14, background: '#F8FAFC', borderRadius: 12 }}>
+              <div style={{ flex: '1 1 140px' }}>
+                <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Plan</label>
+                <select value={planEdit.plan} onChange={(e) => setPlanEdit({ ...planEdit, plan: e.target.value })}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                  <option value="free">Free ($0/mo)</option>
+                  <option value="pro">Pro ($49/mo)</option>
+                  <option value="enterprise">Enterprise ($149/mo)</option>
+                </select>
+              </div>
+              <div style={{ flex: '2 1 220px' }}>
+                <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Billing Email</label>
+                <input type="email" value={planEdit.billing_email} onChange={(e) => setPlanEdit({ ...planEdit, billing_email: e.target.value })}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+              </div>
+              <button onClick={savePlanEdit} disabled={savingPlan}
+                style={{ padding: '10px 18px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
+                {savingPlan ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
               {[
                 { label: 'Organization ID', value: viewOrg.id },
-                { label: 'Plan', value: `${PLANS[viewOrg.plan]?.label} ($${PLANS[viewOrg.plan]?.price}/mo)` },
                 { label: 'Status', value: viewOrg.status },
-                { label: 'Billing Email', value: viewOrg.billing_email },
                 { label: 'Max Users', value: viewOrg.max_users ?? 'N/A' },
                 { label: 'Max Visits/Month', value: viewOrg.max_visits_per_month ?? 'N/A' },
               ].map((item, i) => (
@@ -527,31 +593,76 @@ export default function SuperAdmin() {
               {viewOrgHosts.length === 0 && !loadingDetail && <p style={{ color: '#64748B', fontSize: 14 }}>No hosts yet.</p>}
             </div>
 
-            {/* Support admin */}
+            {/* Tech Support Access — grant YOUR existing team members access to this org */}
             <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: 16, marginBottom: 24 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Wrench size={16} /> Tech Support Access
-                </div>
-                <button onClick={() => setShowSupport(!showSupport)}
-                  style={{ padding: '8px 14px', borderRadius: 8, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                  {showSupport ? 'Cancel' : 'Create Support Admin'}
-                </button>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Wrench size={16} /> Tech Support Access
               </div>
-              <div style={{ fontSize: 12, color: '#92400E', marginTop: 6 }}>
-                Creates an admin login inside this organization so Sentinels staff can troubleshoot for them (enterprise-tier feature).
+              <div style={{ fontSize: 12, color: '#92400E', marginBottom: 12 }}>
+                Give members of <b>your</b> organization access to this customer. They'll get an organization switcher in their sidebar and can sign in as support — no new accounts or passwords needed.
               </div>
-              {showSupport && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-                  <input type="email" placeholder="support email (yours)" value={supportForm.email}
-                    onChange={(e) => setSupportForm({ ...supportForm, email: e.target.value })}
-                    style={{ flex: 1, minWidth: 200, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
-                  <button onClick={createSupportAdmin}
-                    style={{ padding: '10px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                    Create
-                  </button>
+
+              {supportError && (
+                <div style={{ fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+                  {supportError}
                 </div>
               )}
+
+              {/* Current assignments */}
+              {supportList.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  {supportList.map(s => (
+                    <div key={s.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#fff', borderRadius: 8, marginBottom: 6, border: '1px solid #FDE68A' }}>
+                      <div style={{ fontSize: 13 }}>
+                        <b>{s.first_name} {s.last_name}</b> <span style={{ color: '#92400E' }}>· {s.email}</span>
+                      </div>
+                      <button onClick={() => revokeSupport(s.user_id)}
+                        style={{ padding: '6px 12px', borderRadius: 6, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {supportList.length === 0 && !supportError && (
+                <div style={{ fontSize: 12, color: '#B45309', marginBottom: 12 }}>Nobody from your team has access to this organization yet.</div>
+              )}
+
+              {/* Assign an existing member of your org */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <select value={supportPick} onChange={(e) => setSupportPick(e.target.value)}
+                  style={{ flex: 1, minWidth: 220, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                  <option value="">Pick a member of your team…</option>
+                  {candidates
+                    .filter(c => !supportList.some(s => s.user_id === c.id))
+                    .map(c => (
+                      <option key={c.id} value={c.id}>{c.first_name} {c.last_name} — {c.email}</option>
+                    ))}
+                </select>
+                <button onClick={grantSupport}
+                  style={{ padding: '10px 16px', borderRadius: 8, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Grant Access
+                </button>
+              </div>
+
+              {/* Optional: dedicated support login (separate account inside the customer org) */}
+              <div style={{ marginTop: 12, borderTop: '1px dashed #FDE68A', paddingTop: 10 }}>
+                <button onClick={() => setShowSupport(!showSupport)}
+                  style={{ background: 'none', border: 'none', color: '#B45309', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                  {showSupport ? '− Hide advanced option' : '+ Or create a dedicated support login inside this organization'}
+                </button>
+                {showSupport && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <input type="email" placeholder="new support account email" value={supportForm.email}
+                      onChange={(e) => setSupportForm({ ...supportForm, email: e.target.value })}
+                      style={{ flex: 1, minWidth: 200, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                    <button onClick={createSupportAdmin}
+                      style={{ padding: '10px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      Create
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Temp password display */}
@@ -567,10 +678,6 @@ export default function SuperAdmin() {
             )}
 
             <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => { setViewOrg(null); openEdit(viewOrg); }}
-                style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
-                Edit Organization
-              </button>
               <button onClick={() => setViewOrg(null)}
                 style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
                 Close
@@ -580,78 +687,6 @@ export default function SuperAdmin() {
         </div>
       )}
 
-      {/* EDIT ORGANIZATION MODAL */}
-      {editOrg && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 500,
-            boxShadow: '0 25px 80px rgba(0,0,0,0.3)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 700 }}>Edit {editOrg.name}</h2>
-              <button onClick={() => setEditOrg(null)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Billing Email</label>
-                <input type="email" value={editForm.billing_email || ''} onChange={(e) => setEditForm({...editForm, billing_email: e.target.value})}
-                  style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Plan</label>
-                  <select value={editForm.plan || 'free'} onChange={(e) => setEditForm({...editForm, plan: e.target.value})}
-                    style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
-                    <option value="free">Free ($0/mo)</option>
-                    <option value="pro">Pro ($49/mo)</option>
-                    <option value="enterprise">Enterprise ($149/mo)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Status</label>
-                  <select value={editForm.status || 'active'} onChange={(e) => setEditForm({...editForm, status: e.target.value})}
-                    style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
-                    <option value="active">Active</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Max Users</label>
-                  <input type="number" value={editForm.max_users || 5} onChange={(e) => setEditForm({...editForm, max_users: parseInt(e.target.value)})}
-                    style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 14, fontWeight: 500, color: '#334155', marginBottom: 8 }}>Max Visits/Month</label>
-                  <input type="number" value={editForm.max_visits_per_month || 100} onChange={(e) => setEditForm({...editForm, max_visits_per_month: parseInt(e.target.value)})}
-                    style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }} />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-              <button onClick={() => setEditOrg(null)}
-                style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={saveEdit}
-                style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
