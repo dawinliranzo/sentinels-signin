@@ -1,14 +1,41 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
+// Convert a Date to the "YYYY-MM-DDTHH:mm" format datetime-local inputs expect
+const toLocalInput = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// Read initial filters from the URL so Dashboard stat cards can deep-link here
+// e.g. /visits?status=checked_in  ·  /visits?range=today  ·  /visits?range=week
+function initialFilters(params) {
+  const f = { status: 'all', from: '', to: '' };
+  const status = params.get('status');
+  if (status) f.status = status;
+  const range = params.get('range');
+  const now = new Date();
+  if (range === 'today') {
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    f.from = toLocalInput(start); f.to = toLocalInput(now);
+  } else if (range === 'week') {
+    const start = new Date(now.getTime() - 7 * 864e5);
+    f.from = toLocalInput(start); f.to = toLocalInput(now);
+  }
+  return f;
+}
+
 export default function Visits() {
+  const [searchParams] = useSearchParams();
+  const [init] = useState(() => initialFilters(searchParams));
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [fromFilter, setFromFilter] = useState(''); // datetime-local
-  const [toFilter, setToFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(init.status);
+  const [fromFilter, setFromFilter] = useState(init.from); // datetime-local
+  const [toFilter, setToFilter] = useState(init.to);
   const [ndaView, setNdaView] = useState(null); // { loading, data, error, name }
   const [confirmOutId, setConfirmOutId] = useState(null); // 2-step checkout, no browser popups
   const [detailVisit, setDetailVisit] = useState(null);
