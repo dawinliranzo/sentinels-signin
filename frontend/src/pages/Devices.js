@@ -9,7 +9,7 @@ import { useStore } from '../utils/store';
 export default function Devices() {
   const org = useStore((s) => s.organization);
   const user = useStore((s) => s.user);
-  const canManage = user?.role === 'admin' || user?.role === 'super_admin';
+  const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.switched || (user?.permissions || []).includes('devices');
 
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
