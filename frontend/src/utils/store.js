@@ -9,6 +9,7 @@ export const useStore = create(
       user: null,
       organization: null,
       setAuth: (token, user, organization) => set({ token, user, organization }),
+      updateUser: (user) => set({ user }),
       logout: () => set({ token: null, user: null, organization: null }),
 
       // Kiosk mode
