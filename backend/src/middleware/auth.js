@@ -44,16 +44,19 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
+    // Keep this SELECT minimal — every column listed here is a hard dependency for
+    // EVERY authenticated request. Optional/user-profile columns are fetched by
+    // the routes that actually need them (e.g. /auth/me), not here.
     let result;
     try {
       result = await db.query(
-        'SELECT id, email, first_name, last_name, role, role_id, org_id, is_active, mfa_enabled, mfa_required, preferences FROM users WHERE id = $1',
+        'SELECT id, email, first_name, last_name, role, role_id, org_id, is_active FROM users WHERE id = $1',
         [decoded.userId]
       );
     } catch (e) {
       if (e.code !== '42703') throw e; // role_id column not migrated yet — fall back
       result = await db.query(
-        'SELECT id, email, first_name, last_name, role, org_id, is_active, mfa_enabled, mfa_required, preferences FROM users WHERE id = $1',
+        'SELECT id, email, first_name, last_name, role, org_id, is_active FROM users WHERE id = $1',
         [decoded.userId]
       );
     }
@@ -78,7 +81,13 @@ const authenticate = async (req, res, next) => {
 
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
+    // Only token problems should log the user out. A database hiccup is a 500,
+    // NOT a 401 — otherwise one bad query kicks every user out of the app.
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    console.error('Auth middleware error:', err);
+    return res.status(500).json({ error: 'Authentication service error — check backend logs' });
   }
 };
 
