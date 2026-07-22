@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requireRole } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { sendSMS } = require('../utils/notifications');
 
 // GET /api/settings — this organization's settings (any logged-in user)
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission('settings'), async (req, res) => {
   try {
     const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
     res.json(r.rows[0]?.settings || {});
@@ -16,7 +16,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // PATCH /api/settings — replace this organization's settings (admins only)
-router.patch('/', authenticate, requireRole('admin', 'super_admin'), async (req, res) => {
+router.patch('/', authenticate, requirePermission('settings'), async (req, res) => {
   try {
     const r = await db.query(
       'UPDATE organizations SET settings = $1 WHERE id = $2 RETURNING settings',
@@ -30,7 +30,7 @@ router.patch('/', authenticate, requireRole('admin', 'super_admin'), async (req,
 });
 
 // POST /api/settings/test-sms — send a test text to verify Twilio configuration (admins only)
-router.post('/test-sms', authenticate, requireRole('admin', 'super_admin'), async (req, res) => {
+router.post('/test-sms', authenticate, requirePermission('settings'), async (req, res) => {
   try {
     const phone = (req.body.phone || '').trim();
     if (!phone) {
