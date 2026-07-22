@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
@@ -140,7 +140,7 @@ router.post('/staff-checkin', async (req, res) => {
 });
 
 // AUTHENTICATED ENDPOINTS
-router.get('/active', authenticate, async (req, res) => {
+router.get('/active', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const result = await db.query(`
       SELECT v.*, 
@@ -160,7 +160,7 @@ router.get('/active', authenticate, async (req, res) => {
   }
 });
 
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const { date, status, host_id, search, from, to } = req.query;
     let query = `
@@ -233,7 +233,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // GET /api/visits/:id/nda — the signed NDA attached to a visit (admins)
-router.get('/:id/nda', authenticate, async (req, res) => {
+router.get('/:id/nda', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const r = await db.query(
       'SELECT * FROM nda_signatures WHERE visit_id = $1 AND org_id = $2 ORDER BY signed_at DESC LIMIT 1',
@@ -451,7 +451,7 @@ router.post('/check-in', async (req, res) => {
   }
 });
 
-router.post('/:id/check-out', authenticate, async (req, res) => {
+router.post('/:id/check-out', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
@@ -482,7 +482,7 @@ router.post('/:id/check-out', authenticate, async (req, res) => {
   }
 });
 
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const result = await db.query(`
       SELECT v.*, 
