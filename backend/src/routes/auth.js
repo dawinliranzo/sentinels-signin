@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../utils/db');
-const { authenticate, JWT_SECRET } = require('../middleware/auth');
+const { authenticate, getUserAccess, JWT_SECRET } = require('../middleware/auth');
 const { authenticator } = require('otplib');
 const QRCode = require('qrcode');
 
@@ -76,9 +76,15 @@ router.post('/login', async (req, res) => {
     const orgSettings = orgResult.rows[0]?.settings || {};
     const mfaSetupRequired = !!(orgSettings.mfa_required || user.mfa_required) && !user.mfa_enabled;
 
+    const access = await getUserAccess(user);
+
     res.json({
       token,
-      user: { id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name, role: user.role },
+      user: {
+        id: user.id, email: user.email, first_name: user.first_name, last_name: user.last_name,
+        role: user.role, role_id: user.role_id || null,
+        permissions: access.permissions, role_label: access.role_label,
+      },
       organization: orgResult.rows[0],
       mfa_setup_required: mfaSetupRequired
     });
@@ -143,17 +149,107 @@ router.post('/set-password', async (req, res) => {
 // GET /api/auth/me — current user profile (includes offline-alert preference)
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const result = await db.query(
-      'SELECT id, email, first_name, last_name, role, is_active, notify_offline, mfa_enabled, org_id FROM users WHERE id = $1',
-      [req.user.id]
-    );
+    let result;
+    try {
+      result = await db.query(
+        'SELECT id, email, first_name, last_name, role, role_id, is_active, notify_offline, mfa_enabled, org_id FROM users WHERE id = $1',
+        [req.user.id]
+      );
+    } catch (e) {
+      if (e.code !== '42703') throw e; // role_id not migrated yet
+      result = await db.query(
+        'SELECT id, email, first_name, last_name, role, is_active, notify_offline, mfa_enabled, org_id FROM users WHERE id = $1',
+        [req.user.id]
+      );
+    }
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(result.rows[0]);
+    const access = await getUserAccess(result.rows[0]);
+    // Org names for the switcher banner: current (possibly switched) org + home org
+    const homeOrgId = req.user.home_org_id || req.user.org_id;
+    const orgNames = await db.query(
+      'SELECT id, name FROM organizations WHERE id = ANY($1::uuid[])',
+      [[req.user.org_id, homeOrgId]]
+    );
+    const nameOf = (id) => orgNames.rows.find(o => o.id === id)?.name || null;
+    res.json({
+      ...result.rows[0],
+      org_id: req.user.org_id, // reflects the switched org when switching
+      org_name: nameOf(req.user.org_id),
+      home_org_id: homeOrgId, // the org the user actually belongs to
+      home_org_name: nameOf(homeOrgId),
+      permissions: access.permissions,
+      role_label: access.role_label,
+      switched: !!req.user.switched,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// GET /api/auth/support-orgs — orgs the current user may switch into.
+// Super admins can switch into ANY organization (tech support);
+// other users only orgs they've been explicitly assigned to.
+router.get('/support-orgs', authenticate, async (req, res) => {
+  try {
+    if (req.user.role === 'super_admin') {
+      const r = await db.query(
+        "SELECT id, name FROM organizations WHERE status = 'active' AND id != $1 ORDER BY name",
+        [req.user.home_org_id || req.user.org_id]
+      );
+      return res.json(r.rows);
+    }
+    const r = await db.query(
+      `SELECT o.id, o.name FROM support_assignments sa
+       JOIN organizations o ON o.id = sa.org_id
+       WHERE sa.user_id = $1 AND o.status = 'active' ORDER BY o.name`,
+      [req.user.id]
+    );
+    res.json(r.rows);
+  } catch (err) {
+    if (err.code === '42P01') return res.json([]); // support_assignments not migrated yet
+    console.error(err);
+    res.status(500).json({ error: 'Failed to load support organizations' });
+  }
+});
+
+// POST /api/auth/switch-org — mint a session token scoped to another org.
+// Allowed for super admins (any org) or users with a support assignment to that org.
+router.post('/switch-org', authenticate, async (req, res) => {
+  try {
+    const { org_id } = req.body;
+    if (!org_id) return res.status(400).json({ error: 'org_id required' });
+
+    // Always allowed: returning to your own (home) organization
+    const homeOrgId = req.user.home_org_id || req.user.org_id;
+    let allowed = req.user.role === 'super_admin' || org_id === homeOrgId;
+    if (!allowed) {
+      try {
+        const r = await db.query(
+          'SELECT id FROM support_assignments WHERE user_id = $1 AND org_id = $2',
+          [req.user.id, org_id]
+        );
+        allowed = r.rows.length > 0;
+      } catch (e) {
+        if (e.code !== '42P01') throw e;
+      }
+    }
+    if (!allowed) {
+      return res.status(403).json({ error: 'You do not have tech-support access to that organization' });
+    }
+
+    const orgResult = await db.query("SELECT id, name, status FROM organizations WHERE id = $1", [org_id]);
+    if (orgResult.rows.length === 0 || orgResult.rows[0].status !== 'active') {
+      return res.status(404).json({ error: 'Organization not found or not active' });
+    }
+
+    const token = jwt.sign({ userId: req.user.id, orgId: org_id }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, org_name: orgResult.rows[0].name });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to switch organization' });
   }
 });
 
