@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireFeature } = require('../middleware/auth');
 
-router.use(authenticate, requirePermission('reports'));
+router.use(authenticate, requirePermission('reports'), requireFeature('reports'));
 
 // GET /api/reports/visitor-frequency?from&to
 // Visits per day in range, split visitors vs staff badge-ins
