@@ -47,26 +47,48 @@ router.get('/stats', authenticate, requireRole('super_admin'), async (req, res) 
 // PATCH organization (update plan, status)
 router.patch('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
-    const { plan, status, billing_email, max_users, max_visits_per_month } = req.body;
-    let result;
-    try {
-      result = await db.query(`
-        UPDATE organizations
-        SET plan = COALESCE($1, plan), status = COALESCE($2, status),
-            billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
-            max_visits_per_month = COALESCE($5, max_visits_per_month), updated_at = NOW()
-        WHERE id = $6 RETURNING *
-      `, [plan, status, billing_email, max_users, max_visits_per_month, req.params.id]);
-    } catch (e) {
-      if (e.code !== '42703') throw e; // no updated_at column on this schema — retry without it
-      result = await db.query(`
-        UPDATE organizations
-        SET plan = COALESCE($1, plan), status = COALESCE($2, status),
-            billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
-            max_visits_per_month = COALESCE($5, max_visits_per_month)
-        WHERE id = $6 RETURNING *
-      `, [plan, status, billing_email, max_users, max_visits_per_month, req.params.id]);
+    const { plan, status, billing_email, max_users, max_visits_per_month, features, plan_renews_at } = req.body;
+    const featuresJson = features && typeof features === 'object' ? JSON.stringify(features) : null;
+    const renewsAt = plan_renews_at || null;
+
+    // Three attempts, degrading on 42703 (columns added by later migrations):
+    // full (updated_at) → without updated_at → legacy without features/renews_at
+    const attempts = [
+      {
+        sql: `UPDATE organizations
+              SET plan = COALESCE($1, plan), status = COALESCE($2, status),
+                  billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
+                  max_visits_per_month = COALESCE($5, max_visits_per_month),
+                  features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at),
+                  updated_at = NOW()
+              WHERE id = $8 RETURNING *`,
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, req.params.id],
+      },
+      {
+        sql: `UPDATE organizations
+              SET plan = COALESCE($1, plan), status = COALESCE($2, status),
+                  billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
+                  max_visits_per_month = COALESCE($5, max_visits_per_month),
+                  features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at)
+              WHERE id = $8 RETURNING *`,
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, req.params.id],
+      },
+      {
+        sql: `UPDATE organizations
+              SET plan = COALESCE($1, plan), status = COALESCE($2, status),
+                  billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
+                  max_visits_per_month = COALESCE($5, max_visits_per_month)
+              WHERE id = $6 RETURNING *`,
+        params: [plan, status, billing_email, max_users, max_visits_per_month, req.params.id],
+      },
+    ];
+
+    let result = null;
+    for (const a of attempts) {
+      try { result = await db.query(a.sql, a.params); break; }
+      catch (e) { if (e.code !== '42703') throw e; }
     }
+    if (!result) throw new Error('All update attempts failed');
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Organization not found' });
