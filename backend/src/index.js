@@ -23,6 +23,7 @@ const accessRequestRoutes = require('./routes/accessRequests');
 const complianceRoutes = require('./routes/compliance');
 const reportsRoutes = require('./routes/reports');
 const rolesRoutes = require('./routes/roles');
+const { router: backupsRoutes, startNightlyJob } = require('./routes/backups');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -90,6 +91,7 @@ app.use('/api/access-requests', accessRequestRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/roles', rolesRoutes);
+app.use('/api/backups', backupsRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
