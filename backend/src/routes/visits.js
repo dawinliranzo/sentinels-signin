@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { checkVisitCap } = require('../utils/limits');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
@@ -115,6 +116,11 @@ router.post('/staff-checkin', async (req, res) => {
         notes: host.notes || null,
         visit: out.rows[0]
       });
+    }
+
+    const cap = await checkVisitCap(org_id);
+    if (!cap.allowed) {
+      return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact your organization administrator to upgrade the plan.`, code: 'VISIT_CAP' });
     }
 
     const date = new Date();
@@ -348,6 +354,11 @@ router.post('/check-in', async (req, res) => {
       console.error('Duplicate check failed (continuing):', dupErr);
     }
     // ─── END DUPLICATE GUARD ───
+
+    const cap = await checkVisitCap(org_id);
+    if (!cap.allowed) {
+      return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact the front desk — the organization needs to upgrade its plan.`, code: 'VISIT_CAP' });
+    }
 
     const date = new Date();
     const badgeNum = `${date.getFullYear().toString().substr(2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random() * 9000)}`;
