@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireFeature, loadOrg } = require('../middleware/auth');
+const { hasFeature } = require('../utils/plans');
 const { sendSMS } = require('../utils/notifications');
 
 // GET /api/settings — this organization's settings (any logged-in user)
@@ -15,12 +16,21 @@ router.get('/', authenticate, requirePermission('settings'), async (req, res) =>
   }
 });
 
-// PATCH /api/settings — replace this organization's settings (admins only)
+// PATCH /api/settings — replace this organization's settings (admins only).
+// Custom registration fields are a paid feature — if the plan doesn't include
+// them, silently drop that key instead of failing the whole save.
 router.patch('/', authenticate, requirePermission('settings'), async (req, res) => {
   try {
+    const body = { ...(req.body || {}) };
+    if ('custom_fields' in body) {
+      const org = await loadOrg(req);
+      if (org && !hasFeature(org, 'custom_fields')) {
+        delete body.custom_fields;
+      }
+    }
     const r = await db.query(
       'UPDATE organizations SET settings = $1 WHERE id = $2 RETURNING settings',
-      [JSON.stringify(req.body || {}), req.user.org_id]
+      [JSON.stringify(body), req.user.org_id]
     );
     res.json(r.rows[0].settings);
   } catch (err) {
@@ -30,7 +40,7 @@ router.patch('/', authenticate, requirePermission('settings'), async (req, res) 
 });
 
 // POST /api/settings/test-sms — send a test text to verify Twilio configuration (admins only)
-router.post('/test-sms', authenticate, requirePermission('settings'), async (req, res) => {
+router.post('/test-sms', authenticate, requirePermission('settings'), requireFeature('sms'), async (req, res) => {
   try {
     const phone = (req.body.phone || '').trim();
     if (!phone) {
