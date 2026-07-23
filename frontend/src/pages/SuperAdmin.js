@@ -50,6 +50,15 @@ export default function SuperAdmin() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
+  // Create-organization modal (manual provisioning for offline/paid signups)
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', plan: 'pro', admin_first_name: '', admin_last_name: '', admin_email: '', billing_email: '', trial_days: 14 });
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createdResult, setCreatedResult] = useState(null); // { organization, admin_email, temp_password }
+  // Invite user into the org being managed
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ first_name: '', last_name: '', email: '', role: 'receptionist' });
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   // Modals / panels
   const [viewOrg, setViewOrg] = useState(null);
@@ -69,7 +78,7 @@ export default function SuperAdmin() {
   const [supportForm, setSupportForm] = useState({ email: '', first_name: 'Sentinels', last_name: 'Support' });
   const [showSupport, setShowSupport] = useState(false);
   // Plan & billing editing inside the manage modal
-  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '', max_users: '', max_visits_per_month: '', plan_renews_at: '' });
+  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '', max_users: '', max_visits_per_month: '', max_devices: '', plan_renews_at: '' });
   const [savingPlan, setSavingPlan] = useState(false);
   // Feature overrides for the org being managed
   const [featureOverrides, setFeatureOverrides] = useState({});
@@ -133,6 +142,7 @@ export default function SuperAdmin() {
       billing_email: o.billing_email || '',
       max_users: o.max_users ?? '',
       max_visits_per_month: o.max_visits_per_month ?? '',
+      max_devices: o.max_devices ?? '',
       plan_renews_at: o.plan_renews_at ? o.plan_renews_at.slice(0, 10) : '',
     });
     setPlanEdit(toEdit(org));
@@ -174,6 +184,7 @@ export default function SuperAdmin() {
         ...planEdit,
         max_users: planEdit.max_users === '' ? null : Number(planEdit.max_users),
         max_visits_per_month: planEdit.max_visits_per_month === '' ? null : Number(planEdit.max_visits_per_month),
+        max_devices: planEdit.max_devices === '' ? null : Number(planEdit.max_devices),
         plan_renews_at: planEdit.plan_renews_at || null,
       });
       toast('Plan & limits updated');
@@ -366,6 +377,44 @@ export default function SuperAdmin() {
     }
   };
 
+  const createOrganization = async () => {
+    if (!createForm.name.trim() || !createForm.admin_email.trim() || !createForm.admin_first_name.trim() || !createForm.admin_last_name.trim()) {
+      return toast('Organization name and admin name/email are required', 'error');
+    }
+    setCreateBusy(true);
+    try {
+      const r = await api.post('/super-admin/organizations', {
+        ...createForm,
+        billing_email: createForm.billing_email || createForm.admin_email,
+      });
+      setCreatedResult(r.data);
+      fetchData();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to create organization', 'error');
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const inviteUser = async () => {
+    if (!inviteForm.email.trim() || !inviteForm.first_name.trim() || !inviteForm.last_name.trim()) {
+      return toast('Name and email are required', 'error');
+    }
+    setInviteBusy(true);
+    try {
+      const r = await api.post(`/super-admin/organizations/${viewOrg.id}/invite`, inviteForm);
+      setTempPassword({ email: r.data.email, password: r.data.temp_password });
+      setInviteForm({ first_name: '', last_name: '', email: '', role: 'receptionist' });
+      setShowInvite(false);
+      openView(viewOrg);
+      toast('User invited — credentials were emailed to them');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to invite user', 'error');
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
   if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   const planCounts = { free: 0, pro: 0, enterprise: 0 };
@@ -462,6 +511,16 @@ export default function SuperAdmin() {
           <option value="pro">Pro</option>
           <option value="enterprise">Enterprise</option>
         </select>
+        <button
+          onClick={() => { setCreatedResult(null); setCreateForm({ name: '', plan: 'pro', admin_first_name: '', admin_last_name: '', admin_email: '', billing_email: '', trial_days: 14 }); setShowCreate(true); }}
+          style={{
+            padding: '12px 20px', borderRadius: 12, background: '#0D7377', border: 'none',
+            color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap'
+          }}
+        >
+          + New Organization
+        </button>
       </div>
 
       {/* Organizations Table */}
@@ -699,6 +758,12 @@ export default function SuperAdmin() {
                     placeholder={String(PLAN_LIMITS[planEdit.plan]?.max_visits_per_month)}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                 </div>
+                <div style={{ flex: '1 1 100px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Max Devices</label>
+                  <input type="number" min="1" value={planEdit.max_devices} onChange={(e) => setPlanEdit({ ...planEdit, max_devices: e.target.value })}
+                    placeholder={String(PLAN_LIMITS[planEdit.plan]?.max_devices)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
                 <div style={{ flex: '1 1 140px' }}>
                   <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Renews On</label>
                   <input type="date" value={planEdit.plan_renews_at} onChange={(e) => setPlanEdit({ ...planEdit, plan_renews_at: e.target.value })}
@@ -717,7 +782,7 @@ export default function SuperAdmin() {
                 </button>
               </div>
               <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>
-                Blank limit fields follow the plan defaults ({PLANS[planEdit.plan]?.perks}). Device limit follows the plan: {PLAN_LIMITS[planEdit.plan]?.max_devices} device(s). Limits are enforced immediately — invites, device pairing and check-ins stop at the cap.
+                Blank limit fields follow the plan defaults ({PLANS[planEdit.plan]?.perks}). Limits are enforced immediately — invites, device pairing and check-ins stop at the cap.
               </div>
             </div>
 
@@ -827,7 +892,42 @@ export default function SuperAdmin() {
             {/* Users */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Users size={16} color="#0D7377" /> Users ({viewOrgUsers.length})
+              <button onClick={() => setShowInvite(!showInvite)}
+                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                {showInvite ? '− Cancel' : '+ Invite User'}
+              </button>
             </h3>
+            {showInvite && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12, background: '#F0FDFA', borderRadius: 10, marginBottom: 12, border: '1px solid #99F6E4' }}>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>First name</label>
+                  <input type="text" value={inviteForm.first_name} onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Last name</label>
+                  <input type="text" value={inviteForm.last_name} onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '2 1 180px' }}>
+                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Email</label>
+                  <input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '0 1 130px' }}>
+                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Role</label>
+                  <select value={inviteForm.role} onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13, background: '#fff' }}>
+                    <option value="receptionist">Receptionist</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <button onClick={inviteUser} disabled={inviteBusy}
+                  style={{ padding: '9px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: inviteBusy ? 'not-allowed' : 'pointer', opacity: inviteBusy ? 0.7 : 1 }}>
+                  {inviteBusy ? 'Inviting…' : 'Send Invite'}
+                </button>
+              </div>
+            )}
             {loadingDetail ? (
               <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>Loading users...</p>
             ) : (
@@ -975,6 +1075,116 @@ export default function SuperAdmin() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE ORGANIZATION MODAL */}
+      {showCreate && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, padding: 20
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 520,
+            maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0F172A' }}>New Organization</h2>
+              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+                <X size={22} />
+              </button>
+            </div>
+
+            {createdResult ? (
+              <div>
+                <div style={{ padding: 16, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, color: '#065F46', fontSize: 15, marginBottom: 6 }}>
+                    ✓ {createdResult.organization.name} is live ({PLANS[createdResult.organization.plan]?.label} plan)
+                  </div>
+                  <div style={{ fontSize: 13, color: '#065F46', marginBottom: 12 }}>
+                    Admin account created for <b>{createdResult.admin_email}</b> — credentials were emailed. You can also copy them here (shown once):
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <code style={{ fontSize: 18, fontWeight: 700, background: '#fff', padding: '6px 14px', borderRadius: 8, border: '1px solid #A7F3D0' }}>{createdResult.temp_password}</code>
+                    <button onClick={() => navigator.clipboard.writeText(createdResult.temp_password)}
+                      style={{ padding: '8px 12px', borderRadius: 8, background: '#059669', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      Copy
+                    </button>
+                  </div>
+                  {createdResult.trial_ends_at && (
+                    <div style={{ fontSize: 12, color: '#047857', marginTop: 10 }}>Free trial ends {new Date(createdResult.trial_ends_at).toLocaleDateString()}.</div>
+                  )}
+                </div>
+                <button onClick={() => setShowCreate(false)}
+                  style={{ width: '100%', padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div>
+                <p style={{ color: '#64748B', fontSize: 13, marginBottom: 18 }}>
+                  Manually provision a customer — creates the organization and its first admin, and emails them their login.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Organization name *</label>
+                    <input type="text" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                      placeholder="Acme Corp" style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Plan</label>
+                      <select value={createForm.plan} onChange={(e) => setCreateForm({ ...createForm, plan: e.target.value })}
+                        style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
+                        <option value="free">Free (trial)</option>
+                        <option value="pro">Pro ($49/mo)</option>
+                        <option value="enterprise">Enterprise ($149/mo)</option>
+                      </select>
+                    </div>
+                    {createForm.plan === 'free' && (
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Trial days</label>
+                        <input type="number" min="1" max="90" value={createForm.trial_days} onChange={(e) => setCreateForm({ ...createForm, trial_days: e.target.value })}
+                          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Admin first name *</label>
+                      <input type="text" value={createForm.admin_first_name} onChange={(e) => setCreateForm({ ...createForm, admin_first_name: e.target.value })}
+                        style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Admin last name *</label>
+                      <input type="text" value={createForm.admin_last_name} onChange={(e) => setCreateForm({ ...createForm, admin_last_name: e.target.value })}
+                        style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Admin email * (their login)</label>
+                    <input type="email" value={createForm.admin_email} onChange={(e) => setCreateForm({ ...createForm, admin_email: e.target.value })}
+                      placeholder="admin@acme.com" style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Billing email (optional — defaults to admin email)</label>
+                    <input type="email" value={createForm.billing_email} onChange={(e) => setCreateForm({ ...createForm, billing_email: e.target.value })}
+                      style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 22 }}>
+                  <button onClick={() => setShowCreate(false)}
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={createOrganization} disabled={createBusy}
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, cursor: createBusy ? 'not-allowed' : 'pointer', opacity: createBusy ? 0.7 : 1 }}>
+                    {createBusy ? 'Creating…' : 'Create Organization'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
