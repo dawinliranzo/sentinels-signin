@@ -12,7 +12,7 @@ async function loadOrg(req) {
   if (req.org !== undefined) return req.org;
   try {
     const r = await db.query(
-      'SELECT id, name, plan, status, trial_ends_at, features, max_users, max_visits_per_month, plan_renews_at FROM organizations WHERE id = $1',
+      'SELECT id, name, plan, status, trial_ends_at, features, max_users, max_visits_per_month, max_devices, plan_renews_at FROM organizations WHERE id = $1',
       [req.user.org_id]
     );
     req.org = r.rows[0] || null;
