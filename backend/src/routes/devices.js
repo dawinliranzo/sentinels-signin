@@ -2,7 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, loadOrg } = require('../middleware/auth');
+const { checkDeviceCap } = require('../utils/limits');
 
 // Unambiguous pairing-code alphabet (no 0/O, 1/I/L)
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -59,6 +60,15 @@ router.post('/', authenticate, requirePermission('devices'), async (req, res) =>
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Device name is required' });
     if (name.length > 120) return res.status(400).json({ error: 'Name too long' });
+
+    // Plan limit: kiosk devices
+    const cap = await checkDeviceCap(await loadOrg(req));
+    if (!cap.allowed) {
+      return res.status(403).json({
+        error: `Your plan allows ${cap.cap} kiosk device(s) and you have ${cap.used}. Remove one first, or contact Sentinels to upgrade.`,
+        code: 'DEVICE_CAP'
+      });
+    }
 
     let created = null;
     for (let attempt = 0; attempt < 5 && !created; attempt++) {
