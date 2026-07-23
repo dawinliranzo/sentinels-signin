@@ -4,6 +4,143 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../utils/db');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { sendEmail } = require('../utils/notifications');
+const { getOrgLimits } = require('../utils/plans');
+
+const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const makeTempPassword = () =>
+  Array.from(crypto.randomBytes(8)).map((b) => TEMP_ALPHABET[b % TEMP_ALPHABET.length]).join('');
+const escHtml = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Create a user in any org with a temporary password, email the credentials,
+// and return the temp password so the super admin can also copy it.
+async function provisionUser({ orgId, orgName, email, firstName, lastName, role }) {
+  const tempPassword = makeTempPassword();
+  const hashed = await bcrypt.hash(tempPassword, 10);
+  try {
+    await db.query(
+      `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, must_change_password)
+       VALUES ($1, $2, $3, $4, $5, $6, true)`,
+      [orgId, email, hashed, firstName, lastName, role]
+    );
+  } catch (e) {
+    if (e.code !== '42703') throw e; // must_change_password not migrated yet
+    await db.query(
+      `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [orgId, email, hashed, firstName, lastName, role]
+    );
+  }
+  const loginUrl = (process.env.FRONTEND_URL || 'https://app.sentinelskiosk.com') + '/login';
+  sendEmail({
+    to: email,
+    subject: `Your Sentinels Sign-In account for ${orgName}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
+        <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
+          <h2 style="margin:0;font-size:19px">Welcome to Sentinels Sign-In</h2>
+        </div>
+        <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
+          <p>Hi ${escHtml(firstName)},</p>
+          <p>An account was created for you in <strong>${escHtml(orgName)}</strong>. Sign in with:</p>
+          <div style="background:#F1F5F9;border-radius:12px;padding:18px;margin:20px 0">
+            <div style="font-size:13px;color:#64748B">Email</div>
+            <div style="font-weight:700;margin-bottom:12px">${escHtml(email)}</div>
+            <div style="font-size:13px;color:#64748B">Temporary password</div>
+            <div style="font-size:24px;font-weight:800;letter-spacing:3px;font-family:monospace">${tempPassword}</div>
+          </div>
+          <p style="text-align:center">
+            <a href="${loginUrl}" style="display:inline-block;background:#0D7377;color:#fff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700">Sign In</a>
+          </p>
+          <p style="color:#64748B;font-size:12.5px;margin-top:22px">You'll be asked to choose your own password at first sign-in.</p>
+        </div>
+      </div>`
+  }).catch(e => console.error('Credentials email failed:', e.message));
+  return tempPassword;
+}
+
+// POST create a new organization + its first admin user (super admin only).
+// Used when a customer signs up offline / pays — you provision them manually.
+router.post('/organizations', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const { name, plan, admin_email, admin_first_name, admin_last_name, billing_email, trial_days } = req.body || {};
+    const cleanEmail = (admin_email || '').trim().toLowerCase();
+    if (!name?.trim()) return res.status(400).json({ error: 'Organization name is required' });
+    if (!cleanEmail || !cleanEmail.includes('@')) return res.status(400).json({ error: 'A valid admin email is required' });
+    if (!admin_first_name?.trim() || !admin_last_name?.trim()) {
+      return res.status(400).json({ error: 'Admin first and last name are required' });
+    }
+    const safePlan = ['free', 'pro', 'enterprise'].includes(plan) ? plan : 'free';
+
+    const dup = await db.query('SELECT id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+    if (dup.rows.length > 0) {
+      return res.status(400).json({ error: 'A user with that email already exists — use Manage → change email or reset password on their organization instead' });
+    }
+
+    const baseSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40) || 'org';
+    const slug = `${baseSlug}-${crypto.randomBytes(2).toString('hex')}`;
+    // Free plan gets a trial window (default 14 days); paid plans are active immediately
+    const trialDays = safePlan === 'free' ? Math.min(Math.max(parseInt(trial_days, 10) || 14, 1), 90) : null;
+    const trialEnds = trialDays ? new Date(Date.now() + trialDays * 864e5) : null;
+
+    const orgResult = await db.query(
+      'INSERT INTO organizations (name, slug, plan, status, billing_email, trial_ends_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, plan',
+      [name.trim(), slug, safePlan, 'active', billing_email || cleanEmail, trialEnds]
+    );
+    const org = orgResult.rows[0];
+
+    const tempPassword = await provisionUser({
+      orgId: org.id, orgName: org.name,
+      email: cleanEmail, firstName: admin_first_name.trim(), lastName: admin_last_name.trim(),
+      role: 'admin',
+    });
+
+    res.json({ success: true, organization: org, admin_email: cleanEmail, temp_password: tempPassword, trial_ends_at: trialEnds });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create organization' });
+  }
+});
+
+// POST invite a user into ANY organization (super admin only) — respects that org's user cap
+router.post('/organizations/:id/invite', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const { email, first_name, last_name, role } = req.body || {};
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) return res.status(400).json({ error: 'A valid email is required' });
+    if (!first_name?.trim() || !last_name?.trim()) {
+      return res.status(400).json({ error: 'First and last name are required' });
+    }
+
+    const orgResult = await db.query('SELECT id, name, plan, max_users FROM organizations WHERE id = $1', [req.params.id]);
+    if (orgResult.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
+    const org = orgResult.rows[0];
+
+    const dup = await db.query('SELECT id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
+    if (dup.rows.length > 0) {
+      return res.status(400).json({ error: 'A user with that email already exists' });
+    }
+
+    // Enforce the org's user cap
+    const cap = getOrgLimits(org).max_users;
+    const count = await db.query('SELECT COUNT(*) as n FROM users WHERE org_id = $1 AND is_active = true', [org.id]);
+    if (Number(count.rows[0].n) >= cap) {
+      return res.status(403).json({ error: `This organization's plan allows ${cap} active users and it already has ${count.rows[0].n}. Raise Max Users first.` });
+    }
+
+    const safeRole = ['admin', 'receptionist'].includes(role) ? role : 'receptionist';
+    const tempPassword = await provisionUser({
+      orgId: org.id, orgName: org.name,
+      email: cleanEmail, firstName: first_name.trim(), lastName: last_name.trim(),
+      role: safeRole,
+    });
+
+    res.json({ success: true, email: cleanEmail, role: safeRole, temp_password: tempPassword });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to invite user' });
+  }
+});
 
 // GET all organizations (super admin only)
 router.get('/organizations', authenticate, requireRole('super_admin'), async (req, res) => {
@@ -47,12 +184,12 @@ router.get('/stats', authenticate, requireRole('super_admin'), async (req, res) 
 // PATCH organization (update plan, status)
 router.patch('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
-    const { plan, status, billing_email, max_users, max_visits_per_month, features, plan_renews_at } = req.body;
+    const { plan, status, billing_email, max_users, max_visits_per_month, max_devices, features, plan_renews_at } = req.body;
     const featuresJson = features && typeof features === 'object' ? JSON.stringify(features) : null;
     const renewsAt = plan_renews_at || null;
 
     // Three attempts, degrading on 42703 (columns added by later migrations):
-    // full (updated_at) → without updated_at → legacy without features/renews_at
+    // full (updated_at) → without updated_at → legacy without features/renews_at/max_devices
     const attempts = [
       {
         sql: `UPDATE organizations
@@ -60,18 +197,19 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
                   billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
                   max_visits_per_month = COALESCE($5, max_visits_per_month),
                   features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at),
-                  updated_at = NOW()
-              WHERE id = $8 RETURNING *`,
-        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, req.params.id],
+                  max_devices = COALESCE($8, max_devices), updated_at = NOW()
+              WHERE id = $9 RETURNING *`,
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id],
       },
       {
         sql: `UPDATE organizations
               SET plan = COALESCE($1, plan), status = COALESCE($2, status),
                   billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
                   max_visits_per_month = COALESCE($5, max_visits_per_month),
-                  features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at)
-              WHERE id = $8 RETURNING *`,
-        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, req.params.id],
+                  features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at),
+                  max_devices = COALESCE($8, max_devices)
+              WHERE id = $9 RETURNING *`,
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id],
       },
       {
         sql: `UPDATE organizations
