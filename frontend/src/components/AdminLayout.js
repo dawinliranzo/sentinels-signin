@@ -70,6 +70,14 @@ export default function AdminLayout() {
     return ['visits', 'prereg'].includes(p); // receptionist fallback
   };
 
+  // Paid-feature gating from the plan (resolved server-side into user.features)
+  const hasFeature = (f) => {
+    if (!user) return true;
+    if (user.switched) return true;
+    if (!Array.isArray(user.features)) return true; // older session — don't hide anything
+    return user.features.includes(f);
+  };
+
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/visits', icon: Users, label: 'Visits', perm: 'visits' },
@@ -77,15 +85,22 @@ export default function AdminLayout() {
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered', perm: 'prereg' },
     { path: '/devices', icon: Monitor, label: 'Devices', perm: 'devices' },
     { path: '/team', icon: UserPlus, label: 'Team', perm: 'team' },
-    { path: '/reports', icon: BarChart3, label: 'Reports', perm: 'reports' },
-    { path: '/compliance', icon: FileCheck, label: 'Compliance', perm: 'compliance' },
+    { path: '/reports', icon: BarChart3, label: 'Reports', perm: 'reports', feature: 'reports' },
+    { path: '/compliance', icon: FileCheck, label: 'Compliance', perm: 'compliance', feature: 'compliance' },
     { path: '/settings', icon: Settings, label: 'Settings', perm: 'settings' },
     { path: '/super-admin', icon: Shield, label: 'Super Admin', requireRole: 'super_admin' },
   ];
 
   const visibleNav = navItems.filter(i =>
-    i.requireRole ? (user?.role === i.requireRole && !user?.switched) : (!i.perm || hasPerm(i.perm))
+    i.requireRole ? (user?.role === i.requireRole && !user?.switched)
+                  : ((!i.perm || hasPerm(i.perm)) && (!i.feature || hasFeature(i.feature)))
   );
+
+  // Trial / suspension banners
+  const trialEnd = user?.trial_ends_at ? new Date(user.trial_ends_at) : null;
+  const trialExpired = user?.org_plan === 'free' && trialEnd && trialEnd < new Date();
+  const trialDaysLeft = user?.org_plan === 'free' && trialEnd && trialEnd >= new Date()
+    ? Math.ceil((trialEnd - Date.now()) / 864e5) : null;
 
   const handleLogout = () => {
     logout();
@@ -271,6 +286,34 @@ export default function AdminLayout() {
         flex: 1, transition: 'margin-left 0.3s ease',
         padding: isMobile ? '64px 16px 16px' : 32, minHeight: '100vh'
       }}>
+        {/* Suspended account banner */}
+        {user?.org_status === 'suspended' && !user?.switched && (
+          <div style={{
+            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#991B1B'
+          }}>
+            <b>This account is suspended.</b> You can view your data but can't make changes. Contact Sentinels at info@sentinelsit.com to reactivate.
+          </div>
+        )}
+
+        {/* Trial banners */}
+        {trialExpired && !user?.switched && user?.org_status !== 'suspended' && (
+          <div style={{
+            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#991B1B'
+          }}>
+            <b>Your trial expired on {trialEnd.toLocaleDateString()}.</b> You can still view everything, but changes are blocked until you upgrade — contact Sentinels at info@sentinelsit.com to pick a plan.
+          </div>
+        )}
+        {trialDaysLeft !== null && trialDaysLeft <= 3 && !trialExpired && !user?.switched && (
+          <div style={{
+            background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#92400E'
+          }}>
+            <b>{trialDaysLeft === 0 ? 'Your trial ends today' : `Your trial ends in ${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''}`}.</b> Contact Sentinels at info@sentinelsit.com to keep your account active.
+          </div>
+        )}
+
         {/* Support-mode banner — always visible while inside a customer org */}
         {user?.switched && (
           <div style={{
