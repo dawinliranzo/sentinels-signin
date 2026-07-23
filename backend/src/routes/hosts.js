@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireFeature } = require('../middleware/auth');
 
 // Turn Postgres "missing column/table" errors into a precise, actionable message
 // that names the ACTUAL missing column instead of guessing (a past version blamed
@@ -89,7 +89,7 @@ router.put('/:id', authenticate, requirePermission('hosts'), async (req, res) =>
 // POST /api/hosts/import — bulk-create hosts from parsed CSV rows.
 // Body: { rows: [{ first_name, last_name, email, phone?, department?, job_title?, notes? }] }
 // Duplicates (same email already a host in this org) are skipped, not failed.
-router.post('/import', authenticate, requirePermission('hosts'), async (req, res) => {
+router.post('/import', authenticate, requirePermission('hosts'), requireFeature('bulk_import'), async (req, res) => {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
     if (rows.length === 0) {
