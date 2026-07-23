@@ -3,7 +3,8 @@ const router = express.Router();
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../utils/db');
-const { authenticate, requireRole, requirePermission } = require('../middleware/auth');
+const { authenticate, requireRole, requirePermission, loadOrg } = require('../middleware/auth');
+const { checkUserCap } = require('../utils/limits');
 const { sendEmail } = require('../utils/notifications');
 
 // All routes: logged-in org admin (or super admin), scoped to their own org
@@ -84,6 +85,15 @@ router.post('/', async (req, res) => {
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: 'A user with this email already exists' });
+    }
+
+    // Plan limit: active users
+    const cap = await checkUserCap(await loadOrg(req));
+    if (!cap.allowed) {
+      return res.status(403).json({
+        error: `Your plan allows up to ${cap.cap} active users and you have ${cap.used}. Deactivate someone first, or contact Sentinels to upgrade.`,
+        code: 'USER_CAP'
+      });
     }
 
     const tempPassword = makeTempPassword();
