@@ -60,7 +60,7 @@ function getOrgLimits(org) {
   return {
     max_users: org?.max_users ?? p.max_users,
     max_visits_per_month: org?.max_visits_per_month ?? p.max_visits_per_month,
-    max_devices: p.max_devices,
+    max_devices: org?.max_devices ?? p.max_devices,
   };
 }
 
