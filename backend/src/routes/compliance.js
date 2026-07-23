@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireFeature } = require('../middleware/auth');
 
 // Compliance records are org-admin territory
-router.use(authenticate, requirePermission('compliance'));
+router.use(authenticate, requirePermission('compliance'), requireFeature('compliance'));
 
 // GET /api/compliance/nda — every signed NDA for this organization, newest first.
 // Light list (no signature image / document blob); fetch one record for those.
