@@ -1,7 +1,72 @@
 const jwt = require('jsonwebtoken');
 const db = require('../utils/db');
+const { hasFeature } = require('../utils/plans');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Load the caller's organization once per request (plan, status, trial, features).
+// Any failure degrades OPEN (request allowed, req.org = null) — authentication
+// must never break because of a secondary lookup. 42703-resilient so it works
+// before and after migration-plans-backups.txt.
+async function loadOrg(req) {
+  if (req.org !== undefined) return req.org;
+  try {
+    const r = await db.query(
+      'SELECT id, name, plan, status, trial_ends_at, features, max_users, max_visits_per_month, plan_renews_at FROM organizations WHERE id = $1',
+      [req.user.org_id]
+    );
+    req.org = r.rows[0] || null;
+  } catch (e) {
+    try {
+      const r = await db.query(
+        'SELECT id, name, plan, status, trial_ends_at, max_users, max_visits_per_month FROM organizations WHERE id = $1',
+        [req.user.org_id]
+      );
+      req.org = r.rows[0] || null;
+    } catch (e2) {
+      console.error('Org lookup failed (degrading open):', e2.message);
+      req.org = null;
+    }
+  }
+  return req.org;
+}
+
+// Blocks WRITES for suspended/cancelled organizations and expired trials.
+// Reads stay open so customers can always view their data.
+async function enforceOrgActive(req) {
+  const org = await loadOrg(req);
+  if (!org || req.method === 'GET') return null; // open
+  if (org.status === 'cancelled') {
+    return { status: 403, body: { error: 'This organization account is cancelled. Contact Sentinels support.', code: 'ORG_CANCELLED' } };
+  }
+  if (org.status === 'suspended') {
+    return { status: 403, body: { error: 'This organization is suspended. Contact Sentinels support to reactivate.', code: 'ORG_SUSPENDED' } };
+  }
+  if (org.plan === 'free' && org.trial_ends_at && new Date(org.trial_ends_at) < new Date()) {
+    return { status: 403, body: { error: 'Your trial has expired. Upgrade to a paid plan to continue making changes.', code: 'TRIAL_EXPIRED' } };
+  }
+  return null;
+}
+
+// Feature gate for paid plan features (reports, compliance, sms, backups...).
+// Degrades open on any error — a plan-check failure never locks customers out.
+const requireFeature = (feature) => {
+  return async (req, res, next) => {
+    try {
+      const org = await loadOrg(req);
+      if (!org) return next();
+      if (hasFeature(org, feature)) return next();
+      return res.status(403).json({
+        error: `This feature is not included in your current plan. Contact Sentinels to upgrade.`,
+        code: 'FEATURE_LOCKED',
+        feature,
+      });
+    } catch (e) {
+      console.error('requireFeature failed (degrading open):', e.message);
+      next();
+    }
+  };
+};
 
 // Permission keys used across the app (nav sections + backend route guards)
 const ALL_PERMISSIONS = ['visits', 'prereg', 'hosts', 'devices', 'team', 'reports', 'compliance', 'settings', 'deliveries'];
@@ -79,6 +144,14 @@ const authenticate = async (req, res, next) => {
       req.user.switched = true;
     }
 
+    // Plan/trial enforcement for writes — degrades open on any failure
+    try {
+      const blocked = await enforceOrgActive(req);
+      if (blocked) return res.status(blocked.status).json(blocked.body);
+    } catch (e) {
+      console.error('enforceOrgActive failed (degrading open):', e.message);
+    }
+
     next();
   } catch (err) {
     // Only token problems should log the user out. A database hiccup is a 500,
@@ -121,4 +194,4 @@ const requirePermission = (perm) => {
   };
 };
 
-module.exports = { authenticate, requireRole, requirePermission, getUserAccess, JWT_SECRET, ALL_PERMISSIONS, RECEPTIONIST_PERMISSIONS };
+module.exports = { authenticate, requireRole, requirePermission, requireFeature, loadOrg, getUserAccess, JWT_SECRET, ALL_PERMISSIONS, RECEPTIONIST_PERMISSIONS };
