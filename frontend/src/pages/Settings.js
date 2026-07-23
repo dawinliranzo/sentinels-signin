@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -46,6 +46,34 @@ export default function Settings() {
   const [testPhone, setTestPhone] = useState('');
   const [smsBusy, setSmsBusy] = useState(false);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
+
+  // Daily backups (plan feature)
+  const [backups, setBackups] = useState([]);
+  const [backupsErr, setBackupsErr] = useState(null);
+
+  useEffect(() => {
+    if ((user?.features || []).includes('backups')) {
+      api.get('/backups')
+        .then(r => setBackups(r.data))
+        .catch(e => setBackupsErr(e.response?.data?.error || 'Could not load backups'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const downloadBackup = async (id) => {
+    try {
+      const r = await api.get(`/backups/${id}/download`, { responseType: 'blob' });
+      const dispo = r.headers['content-disposition'] || '';
+      const name = (dispo.match(/filename="([^"]+)"/) || [])[1] || `backup-${id}.json`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(r.data);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      toast('Failed to download backup', 'error');
+    }
+  };
 
   const sendTestSms = async () => {
     if (!testPhone.trim()) return toast('Enter a phone number first', 'error');
@@ -497,6 +525,43 @@ export default function Settings() {
           )}
         </div>
       </div>
+
+      {/* Daily Backups — included in the plan (Enterprise / add-on) */}
+      {(user?.features || []).includes('backups') && (
+        <div style={{
+          background: '#fff', borderRadius: 16, padding: 24, marginBottom: 20,
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
+        }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <HardDrive size={20} color="#0D7377" /> Daily Backups
+          </h3>
+          <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+            A full snapshot of your organization (users, hosts, visits, devices, settings) is taken every night at 03:00 UTC and kept for 30 days.
+            Download any snapshot for your records. Restores are performed by Sentinels support.
+          </p>
+          {backupsErr && (
+            <div style={{ fontSize: 13, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
+              {backupsErr}
+            </div>
+          )}
+          {backups.length === 0 && !backupsErr ? (
+            <p style={{ fontSize: 13, color: '#94A3B8' }}>No snapshots yet — the first one lands after tonight's 03:00 UTC run.</p>
+          ) : (
+            backups.slice(0, 10).map(b => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 13, color: '#0F172A' }}>{new Date(b.created_at).toLocaleString()}</span>
+                <span style={{ fontSize: 12, color: '#64748B' }}>
+                  {b.kind}{b.counts ? ` · ${b.counts.users ?? 0} users, ${b.counts.hosts ?? 0} hosts, ${b.counts.visits ?? 0} visits` : ''}
+                </span>
+                <button onClick={() => downloadBackup(b.id)}
+                  style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Download
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {dirty && (
         <div style={{
