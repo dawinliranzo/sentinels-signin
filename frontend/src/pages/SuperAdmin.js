@@ -10,10 +10,33 @@ import {
 } from 'lucide-react';
 
 const PLANS = {
-  free: { label: 'Free', price: 0, color: '#94A3B8', perks: 'Up to 5 users · 100 visits/mo' },
-  pro: { label: 'Pro', price: 49, color: '#0D7377', perks: 'More users, more visits' },
-  enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: 'Unlimited · dedicated support' },
+  free: { label: 'Free', price: 0, color: '#94A3B8', perks: '5 users · 100 visits/mo · 1 device' },
+  pro: { label: 'Pro', price: 49, color: '#0D7377', perks: '25 users · 2,000 visits/mo · 5 devices' },
+  enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: '1,000 users · 100k visits/mo · 50 devices' },
 };
+
+// Mirror of backend utils/plans.js — keep in sync
+const PLAN_LIMITS = {
+  free: { max_users: 5, max_visits_per_month: 100, max_devices: 1 },
+  pro: { max_users: 25, max_visits_per_month: 2000, max_devices: 5 },
+  enterprise: { max_users: 1000, max_visits_per_month: 100000, max_devices: 50 },
+};
+const FEATURE_LIST = [
+  { key: 'reports', label: 'Reports & analytics' },
+  { key: 'compliance', label: 'Compliance / NDA records' },
+  { key: 'sms', label: 'SMS notifications' },
+  { key: 'bulk_import', label: 'Bulk host import (CSV)' },
+  { key: 'custom_fields', label: 'Custom registration fields' },
+  { key: 'backups', label: 'Daily backups' },
+];
+const PLAN_FEATURES = {
+  free: [],
+  pro: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields'],
+  enterprise: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields', 'backups'],
+};
+// Effective state of a feature = plan default, unless the org has an override
+const effectiveFeature = (plan, overrides, key) =>
+  overrides && key in overrides ? !!overrides[key] : PLAN_FEATURES[plan]?.includes(key) || false;
 
 export default function SuperAdmin() {
   const user = useStore((s) => s.user);
@@ -46,8 +69,16 @@ export default function SuperAdmin() {
   const [supportForm, setSupportForm] = useState({ email: '', first_name: 'Sentinels', last_name: 'Support' });
   const [showSupport, setShowSupport] = useState(false);
   // Plan & billing editing inside the manage modal
-  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '' });
+  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '', max_users: '', max_visits_per_month: '', plan_renews_at: '' });
   const [savingPlan, setSavingPlan] = useState(false);
+  // Feature overrides for the org being managed
+  const [featureOverrides, setFeatureOverrides] = useState({});
+  const [savingFeatures, setSavingFeatures] = useState(false);
+  // Backups panel (super admin view of the org's snapshots)
+  const [orgBackups, setOrgBackups] = useState([]);
+  const [backupsError, setBackupsError] = useState(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(null); // backup row
   // Tech support access: assign existing members of YOUR org to a customer org
   const [candidates, setCandidates] = useState([]);
   const [supportList, setSupportList] = useState([]);
@@ -94,7 +125,18 @@ export default function SuperAdmin() {
     setSupportList([]);
     setSupportPick('');
     setSupportError(null);
-    setPlanEdit({ plan: org.plan || 'free', billing_email: org.billing_email || '' });
+    setOrgBackups([]);
+    setBackupsError(null);
+    setConfirmRestore(null);
+    const toEdit = (o) => ({
+      plan: o.plan || 'free',
+      billing_email: o.billing_email || '',
+      max_users: o.max_users ?? '',
+      max_visits_per_month: o.max_visits_per_month ?? '',
+      plan_renews_at: o.plan_renews_at ? o.plan_renews_at.slice(0, 10) : '',
+    });
+    setPlanEdit(toEdit(org));
+    setFeatureOverrides(org.features || {});
     setLoadingDetail(true);
     try {
       const res = await api.get(`/super-admin/organizations/${org.id}`);
@@ -102,13 +144,21 @@ export default function SuperAdmin() {
       setViewOrgUsers(res.data.users || []);
       setViewOrgHosts(res.data.hosts || []);
       setViewOrgUsage(res.data.usage || null);
-      setPlanEdit({ plan: res.data.organization.plan || 'free', billing_email: res.data.organization.billing_email || '' });
+      setPlanEdit(toEdit(res.data.organization));
+      setFeatureOverrides(res.data.organization.features || {});
       // Who from your team already has support access to this org?
       try {
         const sa = await api.get(`/super-admin/organizations/${org.id}/support-access`);
         setSupportList(sa.data);
       } catch (e) {
         setSupportError(e.response?.data?.error || null);
+      }
+      // This org's backup snapshots
+      try {
+        const bk = await api.get(`/backups/super?org_id=${org.id}`);
+        setOrgBackups(bk.data);
+      } catch (e) {
+        setBackupsError(e.response?.data?.error || null);
       }
     } catch (err) {
       toast('Failed to load organization details', 'error');
@@ -120,14 +170,81 @@ export default function SuperAdmin() {
   const savePlanEdit = async () => {
     setSavingPlan(true);
     try {
-      await api.patch(`/super-admin/organizations/${viewOrg.id}`, planEdit);
-      toast('Plan & billing updated');
+      await api.patch(`/super-admin/organizations/${viewOrg.id}`, {
+        ...planEdit,
+        max_users: planEdit.max_users === '' ? null : Number(planEdit.max_users),
+        max_visits_per_month: planEdit.max_visits_per_month === '' ? null : Number(planEdit.max_visits_per_month),
+        plan_renews_at: planEdit.plan_renews_at || null,
+      });
+      toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
       fetchData();
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to update plan', 'error');
     } finally {
       setSavingPlan(false);
+    }
+  };
+
+  // Toggle one feature: write an override (true/false) so it differs from the plan default
+  const toggleFeature = (key) => {
+    const current = effectiveFeature(planEdit.plan, featureOverrides, key);
+    setFeatureOverrides({ ...featureOverrides, [key]: !current });
+  };
+
+  const saveFeatures = async () => {
+    setSavingFeatures(true);
+    try {
+      await api.patch(`/super-admin/organizations/${viewOrg.id}`, { features: featureOverrides });
+      toast('Feature access updated — applies to that organization immediately');
+      setViewOrg({ ...viewOrg, features: featureOverrides });
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update features', 'error');
+    } finally {
+      setSavingFeatures(false);
+    }
+  };
+
+  const generateBackup = async () => {
+    setBackupBusy(true);
+    try {
+      await api.post('/backups/super/generate', { org_id: viewOrg.id });
+      const bk = await api.get(`/backups/super?org_id=${viewOrg.id}`);
+      setOrgBackups(bk.data);
+      toast('Snapshot created');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to generate snapshot', 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const downloadBackup = async (id, superPath) => {
+    try {
+      const r = await api.get(`/backups/${superPath ? 'super/' : ''}${id}/download`, { responseType: 'blob' });
+      const dispo = r.headers['content-disposition'] || '';
+      const name = (dispo.match(/filename="([^"]+)"/) || [])[1] || `backup-${id}.json`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(r.data);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      toast('Failed to download backup', 'error');
+    }
+  };
+
+  const restoreBackup = async () => {
+    setBackupBusy(true);
+    try {
+      await api.post(`/backups/super/${confirmRestore.id}/restore`);
+      toast('Organization restored from snapshot — their data now matches the backup');
+      setConfirmRestore(null);
+      openView(viewOrg);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Restore failed', 'error');
+    } finally {
+      setBackupBusy(false);
     }
   };
 
@@ -381,6 +498,18 @@ export default function SuperAdmin() {
                   <span style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: `${PLANS[org.plan]?.color}15`, color: PLANS[org.plan]?.color }}>
                     {PLANS[org.plan]?.label} (${PLANS[org.plan]?.price}/mo)
                   </span>
+                  {org.plan === 'free' && org.trial_ends_at && (
+                    <div style={{ fontSize: 11, marginTop: 4, fontWeight: 600, color: new Date(org.trial_ends_at) < new Date() ? '#991B1B' : '#B45309' }}>
+                      {new Date(org.trial_ends_at) < new Date()
+                        ? `Trial expired ${new Date(org.trial_ends_at).toLocaleDateString()}`
+                        : `Trial ends ${new Date(org.trial_ends_at).toLocaleDateString()} (${Math.max(0, Math.ceil((new Date(org.trial_ends_at) - Date.now()) / 864e5))}d left)`}
+                    </div>
+                  )}
+                  {org.plan !== 'free' && org.plan_renews_at && (
+                    <div style={{ fontSize: 11, marginTop: 4, color: new Date(org.plan_renews_at) < new Date() ? '#991B1B' : '#64748B', fontWeight: 600 }}>
+                      {new Date(org.plan_renews_at) < new Date() ? 'Renewal overdue: ' : 'Renews: '}{new Date(org.plan_renews_at).toLocaleDateString()}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '16px 20px', fontSize: 14, color: '#334155' }}>{org.users_count}</td>
                 <td style={{ padding: '16px 20px', fontSize: 14, color: '#334155' }}>{org.visits_this_month}</td>
@@ -543,29 +672,142 @@ export default function SuperAdmin() {
               ))}
             </div>
 
-            {/* Plan & Billing — editable */}
+            {/* Plan, limits & billing — editable */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CreditCard size={16} color="#0D7377" /> Plan & Billing
+              <CreditCard size={16} color="#0D7377" /> Plan, Limits & Billing
             </h3>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16, padding: 14, background: '#F8FAFC', borderRadius: 12 }}>
-              <div style={{ flex: '1 1 140px' }}>
-                <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Plan</label>
-                <select value={planEdit.plan} onChange={(e) => setPlanEdit({ ...planEdit, plan: e.target.value })}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
-                  <option value="free">Free ($0/mo)</option>
-                  <option value="pro">Pro ($49/mo)</option>
-                  <option value="enterprise">Enterprise ($149/mo)</option>
-                </select>
+            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+                <div style={{ flex: '1 1 130px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Plan</label>
+                  <select value={planEdit.plan} onChange={(e) => setPlanEdit({ ...planEdit, plan: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                    <option value="free">Free ($0/mo)</option>
+                    <option value="pro">Pro ($49/mo)</option>
+                    <option value="enterprise">Enterprise ($149/mo)</option>
+                  </select>
+                </div>
+                <div style={{ flex: '1 1 110px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Max Users</label>
+                  <input type="number" min="1" value={planEdit.max_users} onChange={(e) => setPlanEdit({ ...planEdit, max_users: e.target.value })}
+                    placeholder={String(PLAN_LIMITS[planEdit.plan]?.max_users)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '1 1 120px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Max Visits/Mo</label>
+                  <input type="number" min="1" value={planEdit.max_visits_per_month} onChange={(e) => setPlanEdit({ ...planEdit, max_visits_per_month: e.target.value })}
+                    placeholder={String(PLAN_LIMITS[planEdit.plan]?.max_visits_per_month)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '1 1 140px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Renews On</label>
+                  <input type="date" value={planEdit.plan_renews_at} onChange={(e) => setPlanEdit({ ...planEdit, plan_renews_at: e.target.value })}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
               </div>
-              <div style={{ flex: '2 1 220px' }}>
-                <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Billing Email</label>
-                <input type="email" value={planEdit.billing_email} onChange={(e) => setPlanEdit({ ...planEdit, billing_email: e.target.value })}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '2 1 220px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Billing Email</label>
+                  <input type="email" value={planEdit.billing_email} onChange={(e) => setPlanEdit({ ...planEdit, billing_email: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
+                <button onClick={savePlanEdit} disabled={savingPlan}
+                  style={{ padding: '10px 18px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
+                  {savingPlan ? 'Saving…' : 'Save Plan & Limits'}
+                </button>
               </div>
-              <button onClick={savePlanEdit} disabled={savingPlan}
-                style={{ padding: '10px 18px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
-                {savingPlan ? 'Saving…' : 'Save'}
+              <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>
+                Blank limit fields follow the plan defaults ({PLANS[planEdit.plan]?.perks}). Device limit follows the plan: {PLAN_LIMITS[planEdit.plan]?.max_devices} device(s). Limits are enforced immediately — invites, device pairing and check-ins stop at the cap.
+              </div>
+            </div>
+
+            {/* Feature access — per-org overrides on top of the plan */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Shield size={16} color="#0D7377" /> Feature Access
+            </h3>
+            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8, marginBottom: 12 }}>
+                {FEATURE_LIST.map(f => {
+                  const on = effectiveFeature(planEdit.plan, featureOverrides, f.key);
+                  const planDefault = PLAN_FEATURES[planEdit.plan]?.includes(f.key);
+                  return (
+                    <label key={f.key} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer',
+                      padding: '9px 11px', borderRadius: 8,
+                      background: on ? '#F0FDFA' : '#fff',
+                      border: on ? '1px solid #5EEAD4' : '1px solid #E2E8F0'
+                    }}>
+                      <input type="checkbox" checked={on} onChange={() => toggleFeature(f.key)} />
+                      <span style={{ flex: 1 }}>{f.label}</span>
+                      {!planDefault && on && <span style={{ fontSize: 10, fontWeight: 700, color: '#B45309', background: '#FEF3C7', padding: '1px 6px', borderRadius: 8 }}>ADD-ON</span>}
+                      {planDefault && !on && <span style={{ fontSize: 10, fontWeight: 700, color: '#991B1B', background: '#FEF2F2', padding: '1px 6px', borderRadius: 8 }}>REMOVED</span>}
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontSize: 11, color: '#94A3B8' }}>
+                  The {PLANS[planEdit.plan]?.label} plan includes: {PLAN_FEATURES[planEdit.plan]?.length ? PLAN_FEATURES[planEdit.plan].join(', ') : 'no paid features'}. Checking a box grants or removes that feature for this customer only.
+                </div>
+                <button onClick={saveFeatures} disabled={savingFeatures}
+                  style={{ padding: '9px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingFeatures ? 'not-allowed' : 'pointer', opacity: savingFeatures ? 0.7 : 1 }}>
+                  {savingFeatures ? 'Saving…' : 'Save Features'}
+                </button>
+              </div>
+            </div>
+
+            {/* Backups — nightly snapshots for orgs with the backups feature */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={16} color="#0D7377" /> Backups
+              <button onClick={generateBackup} disabled={backupBusy}
+                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: backupBusy ? 'not-allowed' : 'pointer' }}>
+                {backupBusy ? 'Working…' : 'Snapshot Now'}
               </button>
+            </h3>
+            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 24 }}>
+              {backupsError && (
+                <div style={{ fontSize: 12, color: '#991B1B', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>{backupsError}</div>
+              )}
+              {!effectiveFeature(planEdit.plan, featureOverrides, 'backups') && (
+                <div style={{ fontSize: 12, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+                  Nightly backups are OFF for this org (the backups feature is not enabled above). Snapshots you create manually still appear here.
+                </div>
+              )}
+              {orgBackups.length === 0 && !backupsError ? (
+                <div style={{ fontSize: 12, color: '#94A3B8' }}>No snapshots yet — nightly ones appear after 03:00 UTC once the feature is enabled.</div>
+              ) : (
+                orgBackups.slice(0, 8).map(b => (
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 10px', background: '#fff', borderRadius: 8, marginBottom: 6, border: '1px solid #E2E8F0' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{new Date(b.created_at).toLocaleString()}</span>
+                    <span style={{ fontSize: 11, color: '#64748B' }}>
+                      {b.kind}{b.counts ? ` · ${b.counts.users ?? 0} users, ${b.counts.hosts ?? 0} hosts, ${b.counts.visits ?? 0} visits` : ''} · {Math.round((b.size_bytes || 0) / 1024)} KB
+                    </span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      <button onClick={() => downloadBackup(b.id, true)}
+                        style={{ padding: '5px 10px', borderRadius: 6, background: '#F1F5F9', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#334155' }}>
+                        Download
+                      </button>
+                      {confirmRestore?.id === b.id ? (
+                        <>
+                          <button onClick={restoreBackup} disabled={backupBusy}
+                            style={{ padding: '5px 10px', borderRadius: 6, background: '#DC2626', border: 'none', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                            {backupBusy ? 'Restoring…' : 'Confirm restore (replaces ALL current data)'}
+                          </button>
+                          <button onClick={() => setConfirmRestore(null)}
+                            style={{ padding: '5px 10px', borderRadius: 6, background: '#F1F5F9', border: 'none', fontSize: 11, cursor: 'pointer' }}>
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => setConfirmRestore(b)}
+                          style={{ padding: '5px 10px', borderRadius: 6, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                          Restore
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
