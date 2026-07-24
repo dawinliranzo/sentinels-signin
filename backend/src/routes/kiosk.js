@@ -59,15 +59,15 @@ async function notifyAdmins(orgId, orgName, isRecovery) {
         to: admin.email,
         subject: `Kiosk back online — ${orgName}`,
         html: `<p>Hi ${admin.first_name},</p>
-               <p>Good news: your Sentinels Sign-In kiosk is <strong>back online</strong> — heartbeats are being received again.</p>
-               <p>— Sentinels Sign-In</p>`
+               <p>Good news: your Sentinels Kiosk kiosk is <strong>back online</strong> — heartbeats are being received again.</p>
+               <p>— Sentinels Kiosk</p>`
       });
     } else {
       await sendEmail({
         to: admin.email,
         subject: `Kiosk offline — ${orgName}`,
         html: `<p>Hi ${admin.first_name},</p>
-               <p>Your Sentinels Sign-In kiosk has <strong>not checked in for over 10 minutes</strong>. Visitors may be unable to sign in right now.</p>
+               <p>Your Sentinels Kiosk kiosk has <strong>not checked in for over 10 minutes</strong>. Visitors may be unable to sign in right now.</p>
                <p>Please check:</p>
                <ul>
                  <li>The kiosk device is powered on</li>
@@ -75,7 +75,7 @@ async function notifyAdmins(orgId, orgName, isRecovery) {
                  <li>The browser is open on the kiosk page</li>
                </ul>
                <p>You'll receive another email when it comes back online.</p>
-               <p>— Sentinels Sign-In</p>`
+               <p>— Sentinels Kiosk</p>`
       });
     }
   }
