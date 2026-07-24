@@ -30,6 +30,43 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Per-field validation — the kiosk is public, so garbage in = garbage in the visitor log
+  const [fieldErrors, setFieldErrors] = useState({});
+  const NAME_RE = /^[\p{L}][\p{L}\s.'-]{0,99}$/u;
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const PHONE_RE = /^[+()\-\.\s\d]{7,20}$/;
+
+  const updateField = (key, value) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+  };
+  const errText = (key) => fieldErrors[key] ? (
+    <div style={{ color: '#FCA5A5', fontSize: 13, marginTop: 6 }}>{fieldErrors[key]}</div>
+  ) : null;
+  const errBorder = (key) => fieldErrors[key] ? { border: '2px solid rgba(239,68,68,0.8)' } : {};
+
+  const validateStep1 = () => {
+    const e = {};
+    const fn = formData.first_name.trim(), ln = formData.last_name.trim();
+    if (fn.length < 2 || !NAME_RE.test(fn)) e.first_name = 'Letters only, at least 2 characters';
+    if (ln.length < 2 || !NAME_RE.test(ln)) e.last_name = 'Letters only, at least 2 characters';
+    const em = formData.email.trim();
+    if (em && !EMAIL_RE.test(em)) e.email = "That email doesn't look valid — fix it or leave it empty";
+    const ph = formData.phone.trim();
+    if (ph && (!PHONE_RE.test(ph) || (ph.match(/\d/g) || []).length < 7)) e.phone = "That phone number doesn't look valid — fix it or leave it empty";
+    setFieldErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const validateStep2 = () => {
+    const e = {};
+    if (formData.purpose.trim().length > 300) e.purpose = 'Please keep it under 300 characters';
+    const vp = formData.vehicle_plate.trim();
+    if (vp && !/^[A-Za-z0-9\s-]{2,20}$/.test(vp)) e.vehicle_plate = 'Letters, numbers and dashes only';
+    setFieldErrors(e);
+    return Object.keys(e).length === 0;
+  };
   const [done, setDone] = useState(false);
 
   // NDA signing (org-configurable)
@@ -178,6 +215,7 @@ export default function KioskSignIn() {
   });
 
   const handleSubmit = async () => {
+    if (!validateStep2()) return;
     setLoading(true);
     setErrorMsg('');
     try {
@@ -204,6 +242,7 @@ export default function KioskSignIn() {
 
   // Entering the NDA step: pre-fill the typed name from the form
   const goToNdaStep = () => {
+    if (!validateStep2()) return;
     setErrorMsg('');
     if (!ndaName.trim()) {
       setNdaName(`${formData.first_name} ${formData.last_name}`.trim());
@@ -380,17 +419,19 @@ export default function KioskSignIn() {
               <label style={labelStyle}><User size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />First Name</label>
               <input
                 type="text" value={formData.first_name}
-                onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                style={inputStyle} placeholder="John"
+                onChange={(e) => updateField('first_name', e.target.value)}
+                style={{ ...inputStyle, ...errBorder('first_name') }} placeholder="John"
               />
+              {errText('first_name')}
             </div>
             <div>
               <label style={labelStyle}>Last Name</label>
               <input
                 type="text" value={formData.last_name}
-                onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                style={inputStyle} placeholder="Doe"
+                onChange={(e) => updateField('last_name', e.target.value)}
+                style={{ ...inputStyle, ...errBorder('last_name') }} placeholder="Doe"
               />
+              {errText('last_name')}
             </div>
           </div>
 
@@ -398,18 +439,20 @@ export default function KioskSignIn() {
             <label style={labelStyle}><Mail size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Email</label>
             <input
               type="email" value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              style={inputStyle} placeholder="john@company.com"
+              onChange={(e) => updateField('email', e.target.value)}
+              style={{ ...inputStyle, ...errBorder('email') }} placeholder="john@company.com"
             />
+            {errText('email')}
           </div>
 
           <div>
             <label style={labelStyle}><Phone size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Phone</label>
             <input
               type="tel" value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              style={inputStyle} placeholder="(555) 123-4567"
+              onChange={(e) => updateField('phone', e.target.value)}
+              style={{ ...inputStyle, ...errBorder('phone') }} placeholder="(555) 123-4567"
             />
+            {errText('phone')}
           </div>
 
           <div>
@@ -457,7 +500,7 @@ export default function KioskSignIn() {
           )}
 
           <button
-            onClick={() => { setErrorMsg(''); setStep(2); }}
+            onClick={() => { setErrorMsg(''); if (validateStep1()) setStep(2); }}
             disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
@@ -580,10 +623,11 @@ export default function KioskSignIn() {
             <label style={labelStyle}><FileText size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Purpose of Visit</label>
             <textarea
               value={formData.purpose}
-              onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
-              style={{ ...inputStyle, minHeight: 100, resize: 'none' }}
+              onChange={(e) => updateField('purpose', e.target.value)}
+              style={{ ...inputStyle, minHeight: 100, resize: 'none', ...errBorder('purpose') }}
               placeholder="Meeting, interview, delivery, etc."
             />
+            {errText('purpose')}
           </div>
 
           {/* Org-defined custom registration fields */}
@@ -627,9 +671,10 @@ export default function KioskSignIn() {
             <label style={labelStyle}><Car size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Vehicle Plate (optional)</label>
             <input
               type="text" value={formData.vehicle_plate}
-              onChange={(e) => setFormData({ ...formData, vehicle_plate: e.target.value })}
-              style={inputStyle} placeholder="ABC-1234"
+              onChange={(e) => updateField('vehicle_plate', e.target.value)}
+              style={{ ...inputStyle, ...errBorder('vehicle_plate') }} placeholder="ABC-1234"
             />
+            {errText('vehicle_plate')}
           </div>
 
           {errorMsg && (
