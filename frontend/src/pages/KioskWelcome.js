@@ -51,15 +51,19 @@ export default function KioskWelcome() {
     }
   }, [orgId]);
 
-  // Load org kiosk config (NDA requirement, branding) once we know the org
+  // Load org kiosk config (NDA requirement, branding) once we know the org,
+  // then refresh every 5 minutes so an always-on kiosk picks up changes
   useEffect(() => {
     if (!orgId) return;
-    api.get(`/kiosk/config/${orgId}`).then(r => {
+    const loadConfig = () => api.get(`/kiosk/config/${orgId}`).then(r => {
       setNdaRequired(!!r.data.nda_required);
       ndaRequiredRef.current = !!r.data.nda_required;
       setNdaText(r.data.nda_text || '');
       setLogoData(r.data.logo_data || '');
     }).catch(() => {});
+    loadConfig();
+    const t = setInterval(loadConfig, 5 * 60 * 1000);
+    return () => clearInterval(t);
   }, [orgId]);
 
   // ─── DEVICE PAIRING (declared before any early returns that reference them) ───
