@@ -74,13 +74,12 @@ export default function Visits() {
     () => api.get('/flags').then(r => r.data),
     { retry: false, refetchInterval: 60000 }
   );
-  // A flag matches a visit row: email flags by email; name-only flags by exact name pair
+  // A flag matches a visit row when EITHER identity matches (email or exact name pair)
   const flagFor = (v) => (flags || []).find(f => {
     if (!f.is_active) return false;
-    if (f.visitor_email) {
-      return v.visitor_email && f.visitor_email.toLowerCase() === v.visitor_email.toLowerCase();
-    }
-    return (f.visitor_first_name || '').toLowerCase() === (v.visitor_first_name || '').toLowerCase()
+    if (f.visitor_email && v.visitor_email && f.visitor_email.toLowerCase() === v.visitor_email.toLowerCase()) return true;
+    return f.visitor_first_name && f.visitor_last_name
+        && (f.visitor_first_name || '').toLowerCase() === (v.visitor_first_name || '').toLowerCase()
         && (f.visitor_last_name || '').toLowerCase() === (v.visitor_last_name || '').toLowerCase();
   });
 
@@ -470,7 +469,7 @@ export default function Visits() {
                   </div>
                   {f.note && <div style={{ fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 1.4 }}>{f.note}</div>}
                   <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>
-                    {f.visitor_email || `name match: ${f.visitor_first_name} ${f.visitor_last_name}`}
+                    {[f.visitor_email, f.visitor_first_name && f.visitor_last_name ? `name: ${f.visitor_first_name} ${f.visitor_last_name}` : null].filter(Boolean).join(' · ') || '—'}
                   </div>
                 </div>
                 <button onClick={() => toggleFlagActive(f)}
