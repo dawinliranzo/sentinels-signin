@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw, Printer, Star } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -31,6 +31,76 @@ export default function PreRegistered() {
   const { data: visitorTypes } = useQuery('visitor-types-list', () =>
     api.get('/visitor-types').then(r => r.data)
   );
+
+  // Frequent visitors — permanent QR badges (FV-XXXXX) for people who visit often
+  const [showFVForm, setShowFVForm] = useState(false);
+  const [fvForm, setFvForm] = useState({ first_name: '', last_name: '', email: '', phone: '', company: '', notes: '' });
+  const [fvBusy, setFvBusy] = useState(false);
+  const [fvBadge, setFvBadge] = useState(null); // row whose QR badge is on screen
+  const [fvConfirmDelete, setFvConfirmDelete] = useState(null);
+
+  const { data: frequentVisitors, refetch: refetchFV } = useQuery('frequent-visitors',
+    () => api.get('/frequent-visitors').then(r => r.data),
+    { retry: false }
+  );
+
+  const addFrequentVisitor = async () => {
+    if (!fvForm.first_name.trim() || !fvForm.last_name.trim()) {
+      toast('First and last name are required', 'error');
+      return;
+    }
+    setFvBusy(true);
+    try {
+      await api.post('/frequent-visitors', fvForm);
+      toast('Frequent visitor added');
+      setFvForm({ first_name: '', last_name: '', email: '', phone: '', company: '', notes: '' });
+      setShowFVForm(false);
+      refetchFV();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to add frequent visitor', 'error');
+    } finally {
+      setFvBusy(false);
+    }
+  };
+
+  const toggleFV = async (fv) => {
+    try {
+      await api.patch(`/frequent-visitors/${fv.id}`, { is_active: !fv.is_active });
+      refetchFV();
+    } catch (err) {
+      toast('Failed to update badge', 'error');
+    }
+  };
+
+  const deleteFV = async (id) => {
+    try {
+      await api.delete(`/frequent-visitors/${id}`);
+      setFvConfirmDelete(null);
+      refetchFV();
+    } catch (err) {
+      toast('Failed to delete', 'error');
+    }
+  };
+
+  // Print a wallet-sized badge: QR of "FV:<code>" + name + code for manual entry
+  const printFVBadge = (fv) => {
+    const win = window.open('', '_blank', 'width=420,height=560');
+    if (!win) return;
+    const qrEl = document.getElementById(`fv-qr-${fv.id}`);
+    const qrSvg = qrEl ? qrEl.innerHTML : '';
+    win.document.write(`<!DOCTYPE html><html><head><title>Badge ${fv.code}</title>
+      <style>body{font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+      .badge{border:3px solid #0D7377;border-radius:18px;padding:28px 32px;text-align:center;max-width:300px}
+      .name{font-size:22px;font-weight:800;color:#0F172A;margin:14px 0 4px}
+      .code{font-family:monospace;font-size:18px;font-weight:700;color:#0D7377;letter-spacing:2px}
+      .hint{font-size:11px;color:#94A3B8;margin-top:10px}</style></head>
+      <body><div class="badge">${qrSvg}
+        <div class="name">${fv.first_name} ${fv.last_name}</div>
+        <div class="code">${fv.code}</div>
+        <div class="hint">Frequent visitor — scan at the kiosk to sign in or out</div>
+      </div><script>window.onload=function(){window.print()}<\/script></body></html>`);
+    win.document.close();
+  };
 
   const { data: orgSettings } = useQuery('org-settings', () =>
     api.get('/settings').then(r => r.data)
@@ -234,7 +304,7 @@ export default function PreRegistered() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: '#fff', borderRadius: 20, padding: 32, width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}>
             <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{editingId ? 'Edit' : 'Pre-Register'} Visitor</h2>
             <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>Fields marked with <span style={{ color: '#EF4444' }}>*</span> are required</p>
@@ -315,7 +385,7 @@ export default function PreRegistered() {
 
       {/* QR Modal */}
       {showQR && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: '#fff', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}>
             <h3 style={{ marginBottom: 16 }}>QR Code for {showQR.first_name} {showQR.last_name}</h3>
             <div style={{ padding: 20, background: '#F8FAFC', borderRadius: 16, marginBottom: 16 }}>
@@ -329,6 +399,159 @@ export default function PreRegistered() {
               </button>
             </div>
             <button onClick={() => setShowQR(null)} style={{ padding: '12px 32px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Frequent Visitors — permanent QR badges for regulars ─── */}
+      <div style={{ marginTop: 36 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Star size={20} color="#F59E0B" /> Frequent Visitors
+            </h2>
+            <p style={{ color: '#64748B', marginTop: 4, fontSize: 14 }}>
+              People who visit often get a permanent badge with a unique ID. One scan signs them in, the next signs them out — no typing.
+            </p>
+          </div>
+          <button onClick={() => setShowFVForm(!showFVForm)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, background: '#F59E0B', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+            <Plus size={16} /> Add Frequent Visitor
+          </button>
+        </div>
+
+        {showFVForm && (
+          <div style={{ background: '#fff', borderRadius: 16, padding: 20, marginBottom: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
+              <input type="text" placeholder="First name *" value={fvForm.first_name} onChange={(e) => setFvForm({ ...fvForm, first_name: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+              <input type="text" placeholder="Last name *" value={fvForm.last_name} onChange={(e) => setFvForm({ ...fvForm, last_name: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+              <input type="email" placeholder="Email (recommended)" value={fvForm.email} onChange={(e) => setFvForm({ ...fvForm, email: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+              <input type="text" placeholder="Phone" value={fvForm.phone} onChange={(e) => setFvForm({ ...fvForm, phone: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+              <input type="text" placeholder="Company" value={fvForm.company} onChange={(e) => setFvForm({ ...fvForm, company: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+              <input type="text" placeholder="Notes (staff only)" value={fvForm.notes} onChange={(e) => setFvForm({ ...fvForm, notes: e.target.value })}
+                style={{ padding: '11px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14 }} />
+            </div>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 12 }}>
+              Email links the badge to their visits and to any watchlist flag — add it whenever you have it.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={addFrequentVisitor} disabled={fvBusy}
+                style={{ padding: '11px 24px', borderRadius: 10, background: fvBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {fvBusy ? 'Adding…' : 'Add & Generate Badge'}
+              </button>
+              <button onClick={() => setShowFVForm(false)}
+                style={{ padding: '11px 20px', borderRadius: 10, background: '#F1F5F9', border: 'none', color: '#475569', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ background: '#fff', borderRadius: 20, overflow: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+          {(frequentVisitors || []).length === 0 ? (
+            <p style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 14 }}>No frequent visitors yet — add couriers, cleaning crews, or anyone who comes often.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  {['Badge ID', 'Name', 'Contact', 'Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(frequentVisitors || []).map(fv => (
+                  <tr key={fv.id} style={{ borderTop: '1px solid #E2E8F0', opacity: fv.is_active ? 1 : 0.55 }}>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#B45309', background: '#FEF3C7', padding: '4px 10px', borderRadius: 6 }}>
+                        {fv.code}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>{fv.first_name} {fv.last_name}</div>
+                      {fv.company && <div style={{ fontSize: 12, color: '#64748B' }}>{fv.company}</div>}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontSize: 13, color: '#64748B' }}>
+                      {fv.email || '—'}{fv.phone ? ` · ${fv.phone}` : ''}
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span style={{
+                        fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20,
+                        background: fv.is_active ? '#DCFCE7' : '#F1F5F9',
+                        color: fv.is_active ? '#166534' : '#64748B'
+                      }}>
+                        {fv.is_active ? 'Active' : 'Deactivated'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* hidden QR used by the print view */}
+                        <span id={`fv-qr-${fv.id}`} style={{ display: 'none' }}>
+                          <QRCodeSVG value={`FV:${fv.code}`} size={220} level="H" includeMargin={true} />
+                        </span>
+                        <button onClick={() => setFvBadge(fv)} title="Show QR badge"
+                          style={{ padding: '8px 10px', borderRadius: 8, background: '#F0FDFA', border: 'none', cursor: 'pointer' }}>
+                          <QrCode size={15} color="#0D7377" />
+                        </button>
+                        <button onClick={() => printFVBadge(fv)} title="Print badge"
+                          style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                          <Printer size={15} color="#475569" />
+                        </button>
+                        <button onClick={() => toggleFV(fv)}
+                          style={{ padding: '8px 12px', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+                          {fv.is_active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                        {fvConfirmDelete === fv.id ? (
+                          <>
+                            <button onClick={() => deleteFV(fv.id)}
+                              style={{ padding: '8px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                              Confirm?
+                            </button>
+                            <button onClick={() => setFvConfirmDelete(null)}
+                              style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer', color: '#64748B' }}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={() => setFvConfirmDelete(fv.id)} title="Delete"
+                            style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                            <Trash2 size={14} color="#DC2626" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* FV badge modal */}
+      {fvBadge && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}
+          onClick={() => setFvBadge(null)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 32, textAlign: 'center', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 4 }}>{fvBadge.first_name} {fvBadge.last_name}</h3>
+            <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#B45309', fontSize: 16, marginBottom: 16 }}>{fvBadge.code}</div>
+            <div style={{ padding: 20, background: '#F8FAFC', borderRadius: 16, marginBottom: 16 }}>
+              <QRCodeSVG value={`FV:${fvBadge.code}`} size={200} level="H" includeMargin={true} />
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Scan at the kiosk to sign in — scan again to sign out.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={() => printFVBadge(fvBadge)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                <Printer size={16} /> Print Badge
+              </button>
+              <button onClick={() => setFvBadge(null)} style={{ padding: '12px 24px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
+            </div>
           </div>
         </div>
       )}
