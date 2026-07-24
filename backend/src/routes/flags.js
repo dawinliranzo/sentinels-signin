@@ -6,22 +6,34 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 // Visitor flags = private staff notes about a visitor (side notes like
 // "not welcome" or "be careful with this person"). NEVER exposed to the
 // public kiosk screens — only flag severity reaches the check-in response.
-// Requires migration-visitor-alerts.txt.
+//
+// A flag identifies a visitor EITHER by email (matches the email typed at the
+// kiosk) OR, when no email is on file, by exact first+last name pair — because
+// kiosk visitors don't always give an email and must still be blockable.
+//
+// Requires migration-visitor-alerts.txt + migration-visitor-alerts-v2.txt.
 
-// Look up active flags for a visitor email inside an org.
+// Look up active flags matching a visitor. Pass whatever the visitor gave —
+// email, first name, last name (any may be empty).
 // Tolerates the table being missing (migration not run) → no flags.
-async function getFlagsForVisitor(orgId, email) {
-  if (!email) return [];
+async function getFlagsForVisitor(orgId, email, firstName, lastName) {
   try {
     const r = await db.query(
-      `SELECT id, visitor_email, visitor_name, note, severity
+      `SELECT id, visitor_email, visitor_first_name, visitor_last_name, visitor_name, note, severity
        FROM visitor_flags
-       WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2) AND is_active = true`,
-      [orgId, email]
+       WHERE org_id = $1 AND is_active = true AND (
+         (visitor_email IS NOT NULL AND visitor_email <> ''
+            AND LOWER(visitor_email) = LOWER($2))
+         OR
+         ((visitor_email IS NULL OR visitor_email = '')
+            AND LOWER(visitor_first_name) = LOWER($3)
+            AND LOWER(visitor_last_name)  = LOWER($4))
+       )`,
+      [orgId, (email || '').trim(), (firstName || '').trim(), (lastName || '').trim()]
     );
     return r.rows;
   } catch (e) {
-    if (e.code === '42P01') return []; // migration not run yet
+    if (e.code === '42P01' || e.code === '42703') return []; // migration not run yet
     throw e;
   }
 }
@@ -32,7 +44,8 @@ router.use(authenticate);
 router.get('/', requirePermission('visits'), async (req, res) => {
   try {
     const r = await db.query(
-      `SELECT f.id, f.visitor_email, f.visitor_name, f.note, f.severity, f.is_active, f.created_at,
+      `SELECT f.id, f.visitor_email, f.visitor_first_name, f.visitor_last_name, f.visitor_name,
+              f.note, f.severity, f.is_active, f.created_at,
               u.first_name AS created_by_first_name, u.last_name AS created_by_last_name
        FROM visitor_flags f
        LEFT JOIN users u ON u.id = f.created_by
@@ -44,35 +57,68 @@ router.get('/', requirePermission('visits'), async (req, res) => {
     );
     res.json(r.rows);
   } catch (e) {
-    if (e.code === '42P01') return res.status(500).json({ error: 'Visitor flags table is missing — run migration-visitor-alerts.txt in Render PSQL' });
+    if (e.code === '42P01' || e.code === '42703') return res.status(500).json({ error: 'Visitor flags need the migrations — run migration-visitor-alerts.txt and migration-visitor-alerts-v2.txt in Render PSQL' });
     console.error(e);
     res.status(500).json({ error: 'Failed to load visitor flags' });
   }
 });
 
-// POST /api/flags — add or update a flag for a visitor email (upsert)
+// POST /api/flags — add or update a flag. Identifies the visitor by email
+// OR by first+last name when no email is known.
 router.post('/', requirePermission('visits'), async (req, res) => {
   try {
-    const { visitor_email, visitor_name, note, severity = 'warning' } = req.body;
+    const { visitor_email, visitor_name, visitor_first_name, visitor_last_name, note, severity = 'warning' } = req.body;
     const email = (visitor_email || '').trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Visitor email is required' });
+    const firstName = (visitor_first_name || '').trim();
+    const lastName = (visitor_last_name || '').trim();
+
+    if (!email && (!firstName || !lastName)) {
+      return res.status(400).json({ error: 'Provide the visitor\'s email, or their first and last name' });
+    }
+    if (email && !email.includes('@')) {
+      return res.status(400).json({ error: 'That email doesn\'t look valid' });
     }
     if (!['info', 'warning', 'blacklist'].includes(severity)) {
       return res.status(400).json({ error: 'Severity must be info, warning or blacklist' });
     }
-    const r = await db.query(
-      `INSERT INTO visitor_flags (org_id, visitor_email, visitor_name, note, severity, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (org_id, visitor_email)
-       DO UPDATE SET visitor_name = EXCLUDED.visitor_name, note = EXCLUDED.note,
-                     severity = EXCLUDED.severity, is_active = true
-       RETURNING *`,
-      [req.user.org_id, email, (visitor_name || '').trim() || null, (note || '').trim() || null, severity, req.user.id]
-    );
-    res.status(201).json(r.rows[0]);
+
+    const displayName = (visitor_name || '').trim() || [firstName, lastName].filter(Boolean).join(' ') || email;
+
+    // Manual upsert (the unique indexes are partial, so ON CONFLICT can't target them).
+    // Email flag → match by email; name flag → match by name pair.
+    const match = email
+      ? await db.query(
+          'SELECT id FROM visitor_flags WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)',
+          [req.user.org_id, email]
+        )
+      : await db.query(
+          `SELECT id FROM visitor_flags WHERE org_id = $1
+             AND (visitor_email IS NULL OR visitor_email = '')
+             AND LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)`,
+          [req.user.org_id, firstName, lastName]
+        );
+
+    let row;
+    if (match.rows.length > 0) {
+      const u = await db.query(
+        `UPDATE visitor_flags SET visitor_name = $1, note = $2, severity = $3, is_active = true
+         WHERE id = $4 RETURNING *`,
+        [displayName, (note || '').trim() || null, severity, match.rows[0].id]
+      );
+      row = u.rows[0];
+    } else {
+      const i = await db.query(
+        `INSERT INTO visitor_flags (org_id, visitor_email, visitor_first_name, visitor_last_name, visitor_name, note, severity, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [req.user.org_id, email || null, email ? null : firstName, email ? null : lastName,
+         displayName, (note || '').trim() || null, severity, req.user.id]
+      );
+      row = i.rows[0];
+    }
+    res.status(201).json(row);
   } catch (e) {
-    if (e.code === '42P01') return res.status(500).json({ error: 'Visitor flags table is missing — run migration-visitor-alerts.txt in Render PSQL' });
+    if (e.code === '42P01' || e.code === '42703') return res.status(500).json({ error: 'Visitor flags need the migrations — run migration-visitor-alerts.txt and migration-visitor-alerts-v2.txt in Render PSQL' });
+    if (e.code === '23505') return res.status(409).json({ error: 'That visitor is already flagged' });
     console.error(e);
     res.status(500).json({ error: 'Failed to save visitor flag' });
   }
