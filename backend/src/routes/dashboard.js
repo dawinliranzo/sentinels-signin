@@ -49,13 +49,23 @@ router.get('/stats', authenticate, async (req, res) => {
       [orgId]
     );
 
+    // Overstay threshold (hours) from org settings — the dashboard warns about
+    // visitors who have been on site longer than this
+    let overstayHours = 8;
+    try {
+      const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [orgId]);
+      const v = parseFloat(orgRes.rows[0]?.settings?.overstay_hours);
+      if (!isNaN(v) && v > 0) overstayHours = v;
+    } catch (e) { /* keep default */ }
+
     res.json({
       active_visitors: parseInt(activeResult.rows[0].count),
       today_visits: parseInt(todayResult.rows[0].count),
       weekly_visits: parseInt(weeklyResult.rows[0].count),
       active_hosts: parseInt(activeHostsResult.rows[0].count),
       recent_visits: recentResult.rows,
-      hourly_breakdown: hourlyResult.rows
+      hourly_breakdown: hourlyResult.rows,
+      overstay_hours: overstayHours
     });
   } catch (err) {
     console.error(err);
