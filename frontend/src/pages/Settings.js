@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -17,6 +17,7 @@ const DEFAULTS = (orgName) => ({
   require_prereg_date: false,
   nda_text: '',
   badge_label: '',
+  overstay_hours: 8,
   logo_data: '',
   custom_fields: [],
 });
@@ -50,6 +51,10 @@ export default function Settings() {
   // Daily backups (plan feature)
   const [backups, setBackups] = useState([]);
   const [backupsErr, setBackupsErr] = useState(null);
+  // Self-restore flow: pick a snapshot, type RESTORE, everything is replaced
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [restoreText, setRestoreText] = useState('');
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   useEffect(() => {
     if ((user?.features || []).includes('backups')) {
@@ -72,6 +77,21 @@ export default function Settings() {
       URL.revokeObjectURL(a.href);
     } catch {
       toast('Failed to download backup', 'error');
+    }
+  };
+
+  const restoreBackup = async () => {
+    if (!restoreTarget || restoreText !== 'RESTORE') return;
+    setRestoreBusy(true);
+    try {
+      await api.post(`/backups/${restoreTarget.id}/restore`);
+      toast('Backup restored — reloading…');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) {
+      toast(e.response?.data?.error || 'Restore failed', 'error');
+      setRestoreBusy(false);
+      setRestoreTarget(null);
+      setRestoreText('');
     }
   };
 
@@ -258,6 +278,15 @@ export default function Settings() {
             <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 6 }}>
               What you call the people who receive visitors — printed at the top of their ID badges.
               Examples: "Sentinels Employee", "Tenant — Building 1". Leave empty for "EMPLOYEE BADGE".
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Overstay warning (hours)</label>
+            <input type="number" min="1" max="72" value={settings.overstay_hours ?? 8}
+              onChange={(e) => setSettings({...settings, overstay_hours: e.target.value === '' ? '' : Number(e.target.value)})}
+              style={{ ...inputStyle, maxWidth: 140 }} />
+            <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 6 }}>
+              The dashboard flags visitors who have been signed in longer than this many hours.
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -537,7 +566,7 @@ export default function Settings() {
           </h3>
           <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
             A full snapshot of your organization (users, hosts, visits, devices, settings) is taken every night at 03:00 UTC and kept for 30 days.
-            Download any snapshot for your records. Restores are performed by Sentinels support.
+            Download any snapshot for your records — or restore one if everything has been lost. A restore replaces ALL current data with the snapshot.
           </p>
           {backupsErr && (
             <div style={{ fontSize: 13, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
@@ -557,9 +586,52 @@ export default function Settings() {
                   style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   Download
                 </button>
+                <button onClick={() => { setRestoreTarget(b); setRestoreText(''); }}
+                  style={{ padding: '7px 14px', borderRadius: 8, background: '#FFF7ED', border: '1px solid #FDBA74', color: '#C2410C', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  Restore…
+                </button>
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Restore confirmation — type RESTORE to proceed */}
+      {restoreTarget && (
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 25px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={22} color="#DC2626" />
+              </div>
+              <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: 0 }}>Restore this backup?</h3>
+            </div>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.6, marginBottom: 6 }}>
+              Snapshot from <strong>{new Date(restoreTarget.created_at).toLocaleString()}</strong>.
+            </p>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.6, marginBottom: 16 }}>
+              This <strong>permanently replaces all current data</strong> — users, hosts, visits, devices and settings — with the snapshot. Anything created after it was taken will be lost.
+            </p>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#991B1B', display: 'block', marginBottom: 6 }}>
+              Type RESTORE to confirm
+            </label>
+            <input type="text" value={restoreText} onChange={(e) => setRestoreText(e.target.value)}
+              placeholder="RESTORE" autoFocus
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #FECACA', fontSize: 14, fontWeight: 700, letterSpacing: 2, marginBottom: 18 }} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setRestoreTarget(null); setRestoreText(''); }} disabled={restoreBusy}
+                style={{ padding: '11px 22px', borderRadius: 10, background: '#F1F5F9', border: 'none', color: '#475569', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={restoreBackup} disabled={restoreText !== 'RESTORE' || restoreBusy}
+                style={{ padding: '11px 22px', borderRadius: 10, background: restoreText === 'RESTORE' && !restoreBusy ? '#DC2626' : '#FECACA', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: restoreText === 'RESTORE' && !restoreBusy ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <RotateCcw size={16} /> {restoreBusy ? 'Restoring…' : 'Restore now'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
