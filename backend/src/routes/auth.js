@@ -323,7 +323,7 @@ router.post('/mfa/setup', authenticate, async (req, res) => {
   try {
     const secret = authenticator.generateSecret();
     await db.query('UPDATE users SET mfa_secret = $1 WHERE id = $2', [secret, req.user.id]);
-    const otpauth = authenticator.keyuri(req.user.email, 'Sentinels Sign-In', secret);
+    const otpauth = authenticator.keyuri(req.user.email, 'Sentinels Kiosk', secret);
     const qr = await QRCode.toDataURL(otpauth, { width: 240, margin: 1 });
     res.json({ secret, qr });
   } catch (err) {
@@ -441,7 +441,7 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
     // Credentials to the requester
     sendEmail({
       to: cleanEmail,
-      subject: 'Your Sentinels Sign-In demo is ready (3-day access)',
+      subject: 'Your Sentinels Kiosk demo is ready (3-day access)',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
           <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
@@ -449,7 +449,7 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
           </div>
           <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
             <p>Hi ${escHtml(first_name)},</p>
-            <p>Your 3-day demo of <strong>Sentinels Sign-In</strong> for <strong>${escHtml(company)}</strong> is active right now. Sign in with:</p>
+            <p>Your 3-day demo of <strong>Sentinels Kiosk</strong> for <strong>${escHtml(company)}</strong> is active right now. Sign in with:</p>
             <div style="background:#F1F5F9;border-radius:12px;padding:18px;margin:20px 0">
               <div style="font-size:13px;color:#64748B">Email</div>
               <div style="font-weight:700;margin-bottom:12px">${escHtml(cleanEmail)}</div>
