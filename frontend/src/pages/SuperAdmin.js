@@ -78,7 +78,7 @@ export default function SuperAdmin() {
   const [supportForm, setSupportForm] = useState({ email: '', first_name: 'Sentinels', last_name: 'Support' });
   const [showSupport, setShowSupport] = useState(false);
   // Plan & billing editing inside the manage modal
-  const [planEdit, setPlanEdit] = useState({ plan: 'free', billing_email: '', max_users: '', max_visits_per_month: '', max_devices: '', plan_renews_at: '' });
+  const [planEdit, setPlanEdit] = useState({ name: '', plan: 'free', billing_email: '', max_users: '', max_visits_per_month: '', max_devices: '', plan_renews_at: '' });
   const [savingPlan, setSavingPlan] = useState(false);
   // Feature overrides for the org being managed
   const [featureOverrides, setFeatureOverrides] = useState({});
@@ -138,6 +138,7 @@ export default function SuperAdmin() {
     setBackupsError(null);
     setConfirmRestore(null);
     const toEdit = (o) => ({
+      name: o.name || '',
       plan: o.plan || 'free',
       billing_email: o.billing_email || '',
       max_users: o.max_users ?? '',
@@ -654,7 +655,7 @@ export default function SuperAdmin() {
 
       {/* STAT DETAIL MODAL (users / visits verification) */}
       {statModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 720, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ fontSize: 20, fontWeight: 700 }}>{statModal === 'users' ? `All Users (${statModalData.length})` : `Recent Visits (${statModalData.length})`}</h2>
@@ -696,8 +697,8 @@ export default function SuperAdmin() {
 
       {/* MANAGE ORGANIZATION MODAL */}
       {viewOrg && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16
         }}>
           <div style={{
@@ -736,6 +737,11 @@ export default function SuperAdmin() {
               <CreditCard size={16} color="#0D7377" /> Plan, Limits & Billing
             </h3>
             <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 16 }}>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Organization Name</label>
+                <input type="text" value={planEdit.name} onChange={(e) => setPlanEdit({ ...planEdit, name: e.target.value })}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+              </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
                 <div style={{ flex: '1 1 130px' }}>
                   <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Plan</label>
@@ -1081,8 +1087,8 @@ export default function SuperAdmin() {
 
       {/* CREATE ORGANIZATION MODAL */}
       {showCreate && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, padding: 20
         }}>
           <div style={{
