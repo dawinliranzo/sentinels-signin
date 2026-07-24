@@ -31,6 +31,7 @@ function initialFilters(params) {
 
 export default function Visits() {
   const [searchParams] = useSearchParams();
+  const openWatchlistFromUrl = searchParams.get('watchlist') === '1';
   const [init] = useState(() => initialFilters(searchParams));
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(init.status);
@@ -40,7 +41,7 @@ export default function Visits() {
   const [confirmOutId, setConfirmOutId] = useState(null); // 2-step checkout, no browser popups
   const [detailVisit, setDetailVisit] = useState(null);
   // Visitor watchlist/blacklist (staff-only side notes)
-  const [showWatchlist, setShowWatchlist] = useState(false);
+  const [showWatchlist, setShowWatchlist] = useState(openWatchlistFromUrl);
   const [flagTarget, setFlagTarget] = useState(null); // { email, name } being flagged
   const [flagForm, setFlagForm] = useState({ severity: 'warning', note: '' });
   const [flagBusy, setFlagBusy] = useState(false);
@@ -73,14 +74,24 @@ export default function Visits() {
     () => api.get('/flags').then(r => r.data),
     { retry: false, refetchInterval: 60000 }
   );
-  const flagFor = (email) => (flags || []).find(f => f.is_active && (f.visitor_email || '').toLowerCase() === (email || '').toLowerCase());
+  // A flag matches a visit row: email flags by email; name-only flags by exact name pair
+  const flagFor = (v) => (flags || []).find(f => {
+    if (!f.is_active) return false;
+    if (f.visitor_email) {
+      return v.visitor_email && f.visitor_email.toLowerCase() === v.visitor_email.toLowerCase();
+    }
+    return (f.visitor_first_name || '').toLowerCase() === (v.visitor_first_name || '').toLowerCase()
+        && (f.visitor_last_name || '').toLowerCase() === (v.visitor_last_name || '').toLowerCase();
+  });
 
   const saveFlag = async () => {
     if (!flagTarget) return;
     setFlagBusy(true);
     try {
       await api.post('/flags', {
-        visitor_email: flagTarget.email,
+        visitor_email: flagTarget.email || undefined,
+        visitor_first_name: flagTarget.first_name,
+        visitor_last_name: flagTarget.last_name,
         visitor_name: flagTarget.name,
         severity: flagForm.severity,
         note: flagForm.note,
@@ -307,18 +318,25 @@ export default function Visits() {
                       style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                       <Eye size={15} color="#64748B" />
                     </button>
-                    {v.visitor_email && (
-                      <button
-                        onClick={() => {
-                          const existing = flagFor(v.visitor_email);
-                          setFlagForm({ severity: existing?.severity || 'warning', note: existing?.note || '' });
-                          setFlagTarget({ email: v.visitor_email, name: `${v.visitor_first_name} ${v.visitor_last_name}` });
-                        }}
-                        title={flagFor(v.visitor_email) ? `Flagged (${flagFor(v.visitor_email).severity}) — edit` : 'Add a staff note / flag this visitor'}
-                        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', background: flagFor(v.visitor_email) ? (flagFor(v.visitor_email).severity === 'blacklist' ? '#FEE2E2' : '#FEF3C7') : '#F1F5F9' }}>
-                        <Flag size={15} color={flagFor(v.visitor_email) ? (flagFor(v.visitor_email).severity === 'blacklist' ? '#DC2626' : '#B45309') : '#64748B'} fill={flagFor(v.visitor_email) ? 'currentColor' : 'none'} />
-                      </button>
-                    )}
+                    {(() => {
+                      const existing = flagFor(v);
+                      return (
+                        <button
+                          onClick={() => {
+                            setFlagForm({ severity: existing?.severity || 'warning', note: existing?.note || '' });
+                            setFlagTarget({
+                              email: v.visitor_email || '',
+                              first_name: v.visitor_first_name,
+                              last_name: v.visitor_last_name,
+                              name: `${v.visitor_first_name} ${v.visitor_last_name}`,
+                            });
+                          }}
+                          title={existing ? `Flagged (${existing.severity}) — edit` : 'Add a staff note / flag this visitor'}
+                          style={{ padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', background: existing ? (existing.severity === 'blacklist' ? '#FEE2E2' : '#FEF3C7') : '#F1F5F9' }}>
+                          <Flag size={15} color={existing ? (existing.severity === 'blacklist' ? '#DC2626' : '#B45309') : '#64748B'} fill={existing ? 'currentColor' : 'none'} />
+                        </button>
+                      );
+                    })()}
                     {v.nda_signed && (
                       <button onClick={() => openNda(v)} title="View signed NDA"
                         style={{
@@ -375,6 +393,9 @@ export default function Visits() {
             <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
               Private side note for the security desk — e.g. "not welcome", "be careful with this visitor".
               It shows on this dashboard only, never on the kiosk. <strong>Blacklist</strong> refuses check-in at the door.
+              {flagTarget.email
+                ? ' This flag matches the email they type at the kiosk.'
+                : ' No email on file — this flag matches the exact first + last name they type at the kiosk.'}
             </p>
             <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Severity</label>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -448,7 +469,9 @@ export default function Visits() {
                     {!f.is_active && <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700 }}>INACTIVE</span>}
                   </div>
                   {f.note && <div style={{ fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 1.4 }}>{f.note}</div>}
-                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>{f.visitor_email}</div>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>
+                    {f.visitor_email || `name match: ${f.visitor_first_name} ${f.visitor_last_name}`}
+                  </div>
                 </div>
                 <button onClick={() => toggleFlagActive(f)}
                   style={{ padding: '8px 14px', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
