@@ -88,18 +88,59 @@ export default function KioskSignIn() {
 
   useEffect(() => {
     if (!orgId) return;
-    api.get(`/kiosk/config/${orgId}`).then(r => {
+    const loadConfig = () => api.get(`/kiosk/config/${orgId}`).then(r => {
       setPhotoRequired(!!r.data.photo_required);
       setNdaRequired(!!r.data.nda_required);
       setNdaText(r.data.nda_text || '');
       const cf = Array.isArray(r.data.custom_fields) ? r.data.custom_fields : [];
       setCustomFields(cf);
-      // pre-fill checkbox defaults
-      const init = {};
-      cf.forEach(f => { if (f.type === 'checkbox') init[f.label] = false; });
-      setCustomData(init);
+      // pre-fill checkbox defaults (keep any values the visitor already typed)
+      setCustomData(prev => {
+        const next = { ...prev };
+        cf.forEach(f => { if (f.type === 'checkbox' && next[f.label] === undefined) next[f.label] = false; });
+        return next;
+      });
     }).catch(() => {});
+    loadConfig();
+    const t = setInterval(loadConfig, 5 * 60 * 1000);
+    return () => clearInterval(t);
   }, [orgId]);
+
+  // ─── IDLE RESET: an abandoned half-filled form leaks the previous visitor's
+  // details (name, email, photo) to the next person. After 60s of no interaction
+  // we warn; at 90s we clear everything and return to the welcome screen.
+  const [idleWarn, setIdleWarn] = useState(false);
+  const idleWarnRef = useRef(null);
+  const idleTimerRef = useRef(null);
+  useEffect(() => {
+    if (!orgId || done) return;
+    const arm = () => {
+      clearTimeout(idleWarnRef.current);
+      clearTimeout(idleTimerRef.current);
+      setIdleWarn(false);
+      idleWarnRef.current = setTimeout(() => setIdleWarn(true), 60000);
+      idleTimerRef.current = setTimeout(() => navigate(`/kiosk?org=${orgId}`), 90000);
+    };
+    arm();
+    window.addEventListener('pointerdown', arm);
+    window.addEventListener('keydown', arm);
+    return () => {
+      clearTimeout(idleWarnRef.current);
+      clearTimeout(idleTimerRef.current);
+      window.removeEventListener('pointerdown', arm);
+      window.removeEventListener('keydown', arm);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, done]);
+
+  // Successful sign-in screen: auto-return to welcome after 10s so the next
+  // person never sees the previous visitor's name/badge
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => navigate(`/kiosk?org=${orgId}`), 10000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -161,13 +202,17 @@ export default function KioskSignIn() {
 
     if (!orgId) return;
 
-    api.get(`/hosts/public/${orgId}`).then(r => {
-      if (r.data && r.data.length > 0) setHosts(r.data);
-    }).catch(() => {});
-
-    api.get(`/visitor-types/public/${orgId}`).then(r => {
-      if (r.data && r.data.length > 0) setVisitorTypes(r.data);
-    }).catch(() => {});
+    const loadLists = () => {
+      api.get(`/hosts/public/${orgId}`).then(r => {
+        if (r.data && r.data.length > 0) setHosts(r.data);
+      }).catch(() => {});
+      api.get(`/visitor-types/public/${orgId}`).then(r => {
+        if (r.data && r.data.length > 0) setVisitorTypes(r.data);
+      }).catch(() => {});
+    };
+    loadLists();
+    const t = setInterval(loadLists, 5 * 60 * 1000);
+    return () => clearInterval(t);
   }, [orgId]);
 
   // Close dropdown when clicking outside
@@ -206,6 +251,16 @@ export default function KioskSignIn() {
   }
 
   const totalSteps = ndaRequired ? 3 : 2;
+
+  const idleBanner = idleWarn && (
+    <div style={{
+      position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 999,
+      background: 'rgba(217,119,6,0.95)', color: '#fff', padding: '14px 26px', borderRadius: 14,
+      fontSize: 16, fontWeight: 700, boxShadow: '0 10px 40px rgba(0,0,0,0.4)', textAlign: 'center'
+    }}>
+      For privacy, this form will clear in 30 seconds — touch anywhere to continue
+    </div>
+  );
 
   // Required custom fields gate step 1's Continue button
   const customRequiredMissing = customFields.some(f => {
@@ -288,6 +343,7 @@ export default function KioskSignIn() {
   if (done && visitResult) {
     return (
       <div style={{ textAlign: 'center', zIndex: 1 }}>
+        {idleBanner}
         <div style={{
           width: 100, height: 100, borderRadius: '50%',
           background: '#2ECC71', display: 'flex',
@@ -359,6 +415,7 @@ export default function KioskSignIn() {
 
   return (
     <div style={{ width: '100%', maxWidth: 600, zIndex: 1 }}>
+      {idleBanner}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
