@@ -646,7 +646,7 @@ router.get('/alerts/today', authenticate, requirePermission('visits'), async (re
            (f.visitor_email IS NOT NULL AND f.visitor_email <> ''
               AND LOWER(f.visitor_email) = LOWER(v.visitor_email))
            OR
-           ((f.visitor_email IS NULL OR f.visitor_email = '')
+           (f.visitor_first_name IS NOT NULL AND f.visitor_last_name IS NOT NULL
               AND LOWER(f.visitor_first_name) = LOWER(v.visitor_first_name)
               AND LOWER(f.visitor_last_name)  = LOWER(v.visitor_last_name))
          )
