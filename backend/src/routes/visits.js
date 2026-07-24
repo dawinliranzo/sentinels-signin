@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { checkVisitCap } = require('../utils/limits');
+const { getFlagsForVisitor } = require('./flags');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
@@ -142,6 +143,78 @@ router.post('/staff-checkin', async (req, res) => {
   } catch (err) {
     console.error('Staff check-in error:', err);
     res.status(500).json({ error: 'Staff check-in failed', details: err.message });
+  }
+});
+
+// PUBLIC: frequent-visitor badge scan — toggles that person's visit in/out.
+// The kiosk sends { org_id, code } from the FV-XXXXX QR (scanned as "FV:FV-XXXXX").
+router.post('/fv-checkin', async (req, res) => {
+  try {
+    const { org_id, code } = req.body;
+    if (!org_id || !code) {
+      return res.status(400).json({ error: 'Organization ID and code are required' });
+    }
+    const cleanCode = String(code).trim().toUpperCase().replace(/^FV:/, '');
+
+    let fvRow;
+    try {
+      const r = await db.query(
+        'SELECT * FROM frequent_visitors WHERE org_id = $1 AND UPPER(code) = $2',
+        [org_id, cleanCode]
+      );
+      fvRow = r.rows[0];
+    } catch (e) {
+      if (e.code === '42P01') return res.status(500).json({ error: 'Frequent visitors table is missing — run migration-visitor-alerts.txt in Render PSQL' });
+      throw e;
+    }
+    if (!fvRow) {
+      return res.status(404).json({ error: 'Badge not recognized. Please use the regular sign-in.' });
+    }
+    if (!fvRow.is_active) {
+      return res.status(403).json({ error: 'This badge has been deactivated. Please see the front desk.' });
+    }
+
+    // Blacklist check (same rule as regular check-in)
+    if (fvRow.email) {
+      const flags = await getFlagsForVisitor(org_id, fvRow.email);
+      if (flags.find(f => f.severity === 'blacklist')) {
+        return res.status(403).json({ error: 'This visitor is not permitted on site. Please see the front desk.', code: 'VISITOR_BLACKLISTED' });
+      }
+    }
+
+    // Toggle: already on site (matched by email, or by name when no email)? → sign out
+    const matchClause = fvRow.email
+      ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, fvRow.email] }
+      : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, fvRow.first_name, fvRow.last_name] };
+    const active = await db.query(
+      `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
+       ORDER BY checked_in_at DESC LIMIT 1`,
+      matchClause.params
+    );
+    if (active.rows.length > 0) {
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
+        [active.rows[0].id]
+      );
+      return res.json({ action: 'checked_out', name: fvRow.first_name, code: fvRow.code, visit: out.rows[0] });
+    }
+
+    const cap = await checkVisitCap(org_id);
+    if (!cap.allowed) {
+      return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact the front desk — the organization needs to upgrade its plan.`, code: 'VISIT_CAP' });
+    }
+
+    const date = new Date();
+    const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const ins = await db.query(
+      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
+      [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum]
+    );
+    res.json({ action: 'checked_in', name: fvRow.first_name, code: fvRow.code, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
+  } catch (err) {
+    console.error('FV check-in error:', err);
+    res.status(500).json({ error: 'Badge scan failed', details: err.message });
   }
 });
 
@@ -360,6 +433,19 @@ router.post('/check-in', async (req, res) => {
       return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact the front desk — the organization needs to upgrade its plan.`, code: 'VISIT_CAP' });
     }
 
+    // ─── VISITOR FLAGS: staff watchlist / blacklist (migration-visitor-alerts) ───
+    // Blacklisted visitors are refused at the door with a neutral message
+    // (never reveal WHY — that's private staff information).
+    const visitorFlags = await getFlagsForVisitor(org_id, email);
+    const blacklisted = visitorFlags.find(f => f.severity === 'blacklist');
+    if (blacklisted) {
+      return res.status(403).json({
+        error: 'This visitor is not permitted on site. Please see the front desk.',
+        code: 'VISITOR_BLACKLISTED'
+      });
+    }
+    // ─── END VISITOR FLAGS ───
+
     const date = new Date();
     const badgeNum = `${date.getFullYear().toString().substr(2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -453,6 +539,9 @@ router.post('/check-in', async (req, res) => {
       success: true,
       visit: visit,
       badge_number: badgeNum,
+      // Only the severity reaches the kiosk so staff get a heads-up —
+      // the note text itself stays private to the admin dashboard.
+      flag_severity: visitorFlags[0]?.severity || null,
       message: 'Check-in successful'
     });
   } catch (err) {
@@ -490,6 +579,48 @@ router.post('/:id/check-out', authenticate, requirePermission('visits'), async (
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Check-out failed' });
+  }
+});
+
+// GET /api/visits/alerts/today — security/secretary alert feed for the dashboard:
+//  - staff: employees who badge-scanned in today and have a photo or staff note on file
+//  - flagged: visitors checked in today who are on the watchlist/blacklist (note included —
+//    this endpoint is staff-only, notes never reach the public kiosk)
+router.get('/alerts/today', authenticate, requirePermission('visits'), async (req, res) => {
+  try {
+    const staff = await db.query(
+      `SELECT v.id AS visit_id, v.checked_in_at, h.first_name, h.last_name,
+              h.photo_data AS photo, h.notes AS note, h.department
+       FROM visits v
+       JOIN hosts h ON h.org_id = v.org_id
+         AND LOWER(h.email) = LOWER(v.visitor_email)
+       WHERE v.org_id = $1 AND v.sign_in_method = 'staff_qr'
+         AND v.checked_in_at >= CURRENT_DATE
+         AND (h.photo_data IS NOT NULL OR (h.notes IS NOT NULL AND h.notes <> ''))
+       ORDER BY v.checked_in_at DESC`,
+      [req.user.org_id]
+    );
+
+    let flagged = { rows: [] };
+    try {
+      flagged = await db.query(
+        `SELECT v.id AS visit_id, v.checked_in_at, v.visitor_first_name, v.visitor_last_name,
+                v.visitor_email, v.visitor_company, f.note, f.severity
+         FROM visits v
+         JOIN visitor_flags f ON f.org_id = v.org_id
+           AND LOWER(f.visitor_email) = LOWER(v.visitor_email) AND f.is_active = true
+         WHERE v.org_id = $1 AND v.checked_in_at >= CURRENT_DATE
+         ORDER BY v.checked_in_at DESC`,
+        [req.user.org_id]
+      );
+    } catch (e) {
+      if (e.code !== '42P01') throw e; // flags migration not run — flagged feed just stays empty
+    }
+
+    res.json({ staff: staff.rows, flagged: flagged.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to load alerts' });
   }
 });
 
