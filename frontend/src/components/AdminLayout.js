@@ -7,7 +7,7 @@ import { toast } from '../utils/toast';
 import Toaster from './Toaster';
 import {
   LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor, UserPlus,
-  Shield, Menu, X, FileCheck, BarChart3, ArrowLeftRight, Undo2
+  Shield, ShieldAlert, Menu, X, FileCheck, BarChart3, ArrowLeftRight, Undo2
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -81,6 +81,7 @@ export default function AdminLayout() {
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/visits', icon: Users, label: 'Visits', perm: 'visits' },
+    { path: '/visits?watchlist=1', icon: ShieldAlert, label: 'Watchlist', perm: 'visits' },
     { path: '/hosts', icon: Users, label: 'Hosts', perm: 'hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered', perm: 'prereg' },
     { path: '/devices', icon: Monitor, label: 'Devices', perm: 'devices' },
@@ -192,7 +193,9 @@ export default function AdminLayout() {
                 // Settings only on plain /settings (no query)
                 const active = item.path.includes('?')
                   ? (location.pathname + location.search) === item.path
-                  : (item.path === '/settings' ? isActive && !location.search : isActive);
+                  : (item.path === '/settings' ? isActive && !location.search
+                     : item.path === '/visits' ? isActive && location.search !== '?watchlist=1'
+                     : isActive);
                 return {
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '12px 16px', borderRadius: 10,
