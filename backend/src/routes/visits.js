@@ -174,12 +174,10 @@ router.post('/fv-checkin', async (req, res) => {
       return res.status(403).json({ error: 'This badge has been deactivated. Please see the front desk.' });
     }
 
-    // Blacklist check (same rule as regular check-in)
-    if (fvRow.email) {
-      const flags = await getFlagsForVisitor(org_id, fvRow.email);
-      if (flags.find(f => f.severity === 'blacklist')) {
-        return res.status(403).json({ error: 'This visitor is not permitted on site. Please see the front desk.', code: 'VISITOR_BLACKLISTED' });
-      }
+    // Blacklist check (same rule as regular check-in — by email OR by name)
+    const fvFlags = await getFlagsForVisitor(org_id, fvRow.email, fvRow.first_name, fvRow.last_name);
+    if (fvFlags.find(f => f.severity === 'blacklist')) {
+      return res.status(403).json({ error: 'This visitor is not permitted on site. Please see the front desk.', code: 'VISITOR_BLACKLISTED' });
     }
 
     // Toggle: already on site (matched by email, or by name when no email)? → sign out
@@ -333,7 +331,7 @@ router.get('/:id/nda', authenticate, requirePermission('visits'), async (req, re
 
 router.post('/check-in', async (req, res) => {
   try {
-    const {
+    let {
       org_id,
       visitor_type_id,
       host_id,
@@ -367,6 +365,43 @@ router.post('/check-in', async (req, res) => {
     // ─── END ORG VALIDATION ───
 
     const orgSettings = orgCheck.rows[0].settings || {};
+
+    // ─── INPUT VALIDATION: the kiosk is public — never trust what people type ───
+    // Names: letters (any language), spaces, hyphens, apostrophes, periods. No digits/symbols.
+    const NAME_RE = /^[\p{L}][\p{L}\s.'-]{0,99}$/u;
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const PHONE_RE = /^[+()\-\.\s\d]{7,20}$/;
+
+    first_name = (first_name || '').trim().replace(/\s+/g, ' ');
+    last_name = (last_name || '').trim().replace(/\s+/g, ' ');
+    email = (email || '').trim().toLowerCase();
+    phone = (phone || '').trim();
+    company = (company || '').trim();
+    purpose = (purpose || '').trim();
+    vehicle_plate = (vehicle_plate || '').trim().toUpperCase();
+
+    if (!NAME_RE.test(first_name) || first_name.length < 2) {
+      return res.status(400).json({ error: 'Please enter a valid first name (letters only, at least 2 characters)' });
+    }
+    if (!NAME_RE.test(last_name) || last_name.length < 2) {
+      return res.status(400).json({ error: 'Please enter a valid last name (letters only, at least 2 characters)' });
+    }
+    if (email && (email.length > 255 || !EMAIL_RE.test(email))) {
+      return res.status(400).json({ error: 'That email address doesn\'t look valid — check it or leave it empty' });
+    }
+    if (phone && (!PHONE_RE.test(phone) || (phone.match(/\d/g) || []).length < 7)) {
+      return res.status(400).json({ error: 'That phone number doesn\'t look valid — check it or leave it empty' });
+    }
+    if (company.length > 150) {
+      return res.status(400).json({ error: 'Company name is too long (150 characters max)' });
+    }
+    if (purpose.length > 300) {
+      return res.status(400).json({ error: 'Purpose of visit is too long (300 characters max)' });
+    }
+    if (vehicle_plate && !/^[A-Z0-9\s-]{2,20}$/.test(vehicle_plate)) {
+      return res.status(400).json({ error: 'Vehicle plate: letters, numbers and dashes only' });
+    }
+    // ─── END INPUT VALIDATION ───
 
     // ─── NDA: when the org requires it, a signature must accompany check-in ───
     if (orgSettings.require_nda) {
@@ -436,7 +471,7 @@ router.post('/check-in', async (req, res) => {
     // ─── VISITOR FLAGS: staff watchlist / blacklist (migration-visitor-alerts) ───
     // Blacklisted visitors are refused at the door with a neutral message
     // (never reveal WHY — that's private staff information).
-    const visitorFlags = await getFlagsForVisitor(org_id, email);
+    const visitorFlags = await getFlagsForVisitor(org_id, email, first_name, last_name);
     const blacklisted = visitorFlags.find(f => f.severity === 'blacklist');
     if (blacklisted) {
       return res.status(403).json({
@@ -607,14 +642,20 @@ router.get('/alerts/today', authenticate, requirePermission('visits'), async (re
         `SELECT v.id AS visit_id, v.checked_in_at, v.visitor_first_name, v.visitor_last_name,
                 v.visitor_email, v.visitor_company, f.note, f.severity
          FROM visits v
-         JOIN visitor_flags f ON f.org_id = v.org_id
-           AND LOWER(f.visitor_email) = LOWER(v.visitor_email) AND f.is_active = true
+         JOIN visitor_flags f ON f.org_id = v.org_id AND f.is_active = true AND (
+           (f.visitor_email IS NOT NULL AND f.visitor_email <> ''
+              AND LOWER(f.visitor_email) = LOWER(v.visitor_email))
+           OR
+           ((f.visitor_email IS NULL OR f.visitor_email = '')
+              AND LOWER(f.visitor_first_name) = LOWER(v.visitor_first_name)
+              AND LOWER(f.visitor_last_name)  = LOWER(v.visitor_last_name))
+         )
          WHERE v.org_id = $1 AND v.checked_in_at >= CURRENT_DATE
          ORDER BY v.checked_in_at DESC`,
         [req.user.org_id]
       );
     } catch (e) {
-      if (e.code !== '42P01') throw e; // flags migration not run — flagged feed just stays empty
+      if (e.code !== '42P01' && e.code !== '42703') throw e; // flags migration not run — flagged feed just stays empty
     }
 
     res.json({ staff: staff.rows, flagged: flagged.rows });
