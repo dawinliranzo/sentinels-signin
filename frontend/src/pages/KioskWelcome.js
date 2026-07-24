@@ -161,11 +161,27 @@ export default function KioskWelcome() {
         token = token.split('/check-in/')[1].split(/[?#/&]/)[0];
       }
 
+      // Frequent-visitor badge QR (permanent FV-XXXXX codes — scan toggles in/out)
+      if (token.startsWith('FV:')) {
+        try {
+          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token });
+          setResult({ name: r.data.name, badge: r.data.badge });
+          setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
+          setTimeout(() => setMode('welcome'), 8000);
+        } catch (err) {
+          setResult({ message: err.response?.data?.error || 'Badge not recognized for this kiosk' });
+          setMode('error');
+        }
+        return;
+      }
+
       // Staff badge QR (printed employee ID cards)
       if (token.startsWith('STAFF:')) {
         try {
           const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
-          setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo, notes: r.data.notes });
+          // Notes intentionally NOT passed through — staff notes are private to the
+          // admin dashboard (Staff Alerts feed), never shown on this public screen.
+          setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
           setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
           setTimeout(() => setMode('welcome'), 8000);
         } catch (err) {
@@ -441,18 +457,9 @@ export default function KioskWelcome() {
         <h1 style={{ fontSize: 44, fontWeight: 800, color: '#fff', margin: '0 0 6px' }}>
           {isIn ? `Welcome, ${result?.name}!` : `Goodbye, ${result?.name}!`}
         </h1>
-        <p style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)', marginBottom: result?.notes ? 20 : 32 }}>
+        <p style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)', marginBottom: 32 }}>
           {isIn ? (result?.badge ? `Badge: ${result.badge}` : "You're checked in") : "You're checked out. Have a great day!"}
         </p>
-        {result?.notes && (
-          <div style={{
-            background: 'rgba(255,193,7,0.15)', border: '2px solid rgba(255,193,7,0.6)',
-            borderRadius: 18, padding: '18px 24px', marginBottom: 28, maxWidth: 480
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#FCD34D', letterSpacing: 1, marginBottom: 6 }}>NOTE FOR THIS PERSON</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: '#FDE68A', lineHeight: 1.4 }}>{result.notes}</div>
-          </div>
-        )}
         <button
           onClick={() => setMode('welcome')}
           style={{
@@ -586,7 +593,7 @@ export default function KioskWelcome() {
       <p style={{
         marginTop: 40, fontSize: 14, color: 'rgba(255,255,255,0.4)'
       }}>
-        Powered by Sentinels Sign-In
+        Powered by Sentinels Kiosk
       </p>
 
       {/* Device pairing */}
