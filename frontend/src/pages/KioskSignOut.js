@@ -44,7 +44,10 @@ export default function KioskSignOut() {
         token = token.split('/check-in/')[1].split(/[?#/&]/)[0];
       }
       try {
-        if (token.startsWith('STAFF:')) {
+        if (token.startsWith('FV:')) {
+          // Frequent-visitor badge: toggles them out (in on the sign-in screen)
+          await api.post('/visits/fv-checkin', { org_id: orgId, code: token });
+        } else if (token.startsWith('STAFF:')) {
           // Employee badge: toggles them out (the endpoint flips in->out)
           await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
         } else {
