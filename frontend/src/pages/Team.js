@@ -104,9 +104,16 @@ export default function Team() {
     setTeamMsg(null);
     setTempPw(null);
     try {
-      const res = await api.post('/users', newUser);
+      const payload = { ...newUser };
+      // Custom roles are selected as "custom:<role id>" — send the id separately
+      // and keep the base role as receptionist
+      if (payload.role.startsWith('custom:')) {
+        payload.custom_role_id = payload.role.slice(7);
+        payload.role = 'receptionist';
+      }
+      const res = await api.post('/users', payload);
       setNewUser({ first_name: '', last_name: '', email: '', role: 'receptionist' });
-      setTempPw({ email: res.data.email, password: res.data.temp_password, emailed: res.data.invite_sent });
+      setTempPw({ email: res.data.email, password: res.data.temp_password, emailed: res.data.invite_sent, emailError: res.data.email_error });
       loadTeam();
     } catch (err) {
       setTeamMsg({ ok: false, text: err.response?.data?.error || 'Failed to create user' });
@@ -123,7 +130,7 @@ export default function Team() {
     try {
       if (confirm.action === 'resetPw') {
         const res = await api.post(`/users/${u.id}/reset-password`);
-        setTempPw({ email: res.data.user_email, password: res.data.temp_password, emailed: res.data.invite_sent });
+        setTempPw({ email: res.data.user_email, password: res.data.temp_password, emailed: res.data.invite_sent, emailError: res.data.email_error });
       } else if (confirm.action === 'toggleActive') {
         await api.patch(`/users/${u.id}/status`, { is_active: !u.is_active });
         toast(`${u.is_active ? 'Deactivated' : 'Reactivated'} ${u.email}`);
@@ -208,6 +215,13 @@ export default function Team() {
           <select value={newUser.role} onChange={(e) => setNewUser({...newUser, role: e.target.value})} style={{ ...inputStyle, background: '#fff' }}>
             <option value="receptionist">Receptionist</option>
             <option value="admin">Admin</option>
+            {roles.length > 0 && (
+              <optgroup label="Custom roles">
+                {roles.map(r => (
+                  <option key={r.id} value={`custom:${r.id}`}>{r.name}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
         <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
@@ -228,7 +242,7 @@ export default function Team() {
           <div style={{ fontSize: 12, color: '#047857', marginBottom: 8 }}>
             {tempPw.emailed
               ? '✓ Also sent to them by email — they\'ll be asked to set a new password on first sign-in'
-              : '⚠ Email not sent (check SENDGRID_API_KEY on Render) — share this password with them manually'}
+              : `⚠ Email NOT delivered${tempPw.emailError ? ` (${tempPw.emailError})` : ''} — share this password manually, and check SendGrid sender verification for noreply@sentinelskiosk.com`}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <code style={{ fontSize: 18, fontWeight: 700, background: '#fff', padding: '6px 14px', borderRadius: 8, border: '1px solid #A7F3D0' }}>{tempPw.password}</code>
