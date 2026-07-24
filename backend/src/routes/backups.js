@@ -108,6 +108,54 @@ function startNightlyJob() {
 // =============== Org-facing endpoints (feature: backups) ===============
 
 // List my org's snapshots
+
+// Wipe an org's data and re-insert a snapshot, inside an open transaction on `client`.
+// Callers must BEGIN before and COMMIT/ROLLBACK after.
+async function restoreOrgFromSnapshot(client, orgId, data) {
+  // Discover child tables dynamically (backups excluded)
+  const tablesRes = await client.query(
+    `SELECT table_name FROM information_schema.columns
+     WHERE column_name = 'org_id' AND table_schema = 'public'
+       AND table_name NOT IN ('organizations', 'org_backups')`
+  );
+  const wipeTables = tablesRes.rows.map(x => x.table_name).filter(n => /^[a-z_][a-z0-9_]*$/.test(n));
+
+  for (const t of wipeTables) {
+    await client.query(`DELETE FROM "${t}" WHERE org_id = $1`, [orgId]);
+  }
+  // Org profile fields (NOT plan/status/billing)
+  if (data.organization.settings !== undefined) {
+    await client.query('UPDATE organizations SET settings = $1, name = $2 WHERE id = $3',
+      [JSON.stringify(data.organization.settings || {}), data.organization.name, orgId]);
+  }
+  // Re-insert snapshot rows (parents first per SNAPSHOT_TABLES order)
+  for (const t of SNAPSHOT_TABLES) {
+    const rows = data.tables[t.table] || [];
+    for (const row of rows) {
+      const cols = Object.keys(row).filter(k => /^[a-z_][a-z0-9_]*$/.test(k));
+      if (cols.length === 0) continue;
+      const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+      try {
+        await client.query(
+          `INSERT INTO ${t.table} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO NOTHING`,
+          cols.map(k => row[k])
+        );
+      } catch (e) {
+        // Column set drifted since the snapshot — drop the offending column and retry once
+        if (e.code === '42703') {
+          const missing = (e.message.match(/column "([^"]+)"/) || [])[1];
+          const cols2 = cols.filter(x => x !== missing);
+          await client.query(
+            `INSERT INTO ${t.table} (${cols2.join(', ')}) VALUES (${cols2.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT (id) DO NOTHING`,
+            cols2.map(k => row[k])
+          );
+        } else throw e;
+      }
+    }
+  }
+}
+
+// =============== Org endpoints ===============
 router.get('/', authenticate, requirePermission('settings'), requireFeature('backups'), async (req, res) => {
   try {
     const r = await db.query(
@@ -135,6 +183,29 @@ router.get('/:id/download', authenticate, requirePermission('settings'), require
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to download backup' });
+  }
+});
+
+// Restore one of my org's snapshots — full wipe-and-replace of the org's data.
+// This is the "everything has been lost" recovery path for customers.
+router.post('/:id/restore', authenticate, requirePermission('settings'), requireFeature('backups'), async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const r = await db.query('SELECT org_id, data FROM org_backups WHERE id = $1 AND org_id = $2', [req.params.id, req.user.org_id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Backup not found' });
+    const { org_id, data } = r.rows[0];
+    if (!data?.organization || !data?.tables) return res.status(400).json({ error: 'Snapshot is malformed' });
+
+    await client.query('BEGIN');
+    await restoreOrgFromSnapshot(client, org_id, data);
+    await client.query('COMMIT');
+    res.json({ success: true, restored: Object.fromEntries(Object.entries(data.tables).map(([k, v]) => [k, v.length])) });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e);
+    res.status(500).json({ error: `Restore failed (nothing was changed): ${e.message}` });
+  } finally {
+    client.release();
   }
 });
 
@@ -209,48 +280,8 @@ router.post('/super/:id/restore', authenticate, requireRole('super_admin'), asyn
       return res.status(400).json({ error: 'You cannot restore your own organization — restore a customer org only' });
     }
 
-    // Discover child tables dynamically (backups excluded)
-    const tablesRes = await db.query(
-      `SELECT table_name FROM information_schema.columns
-       WHERE column_name = 'org_id' AND table_schema = 'public'
-         AND table_name NOT IN ('organizations', 'org_backups')`
-    );
-    const wipeTables = tablesRes.rows.map(x => x.table_name).filter(n => /^[a-z_][a-z0-9_]*$/.test(n));
-
     await client.query('BEGIN');
-    for (const t of wipeTables) {
-      await client.query(`DELETE FROM "${t}" WHERE org_id = $1`, [org_id]);
-    }
-    // Org profile fields (NOT plan/status/billing)
-    if (data.organization.settings !== undefined) {
-      await client.query('UPDATE organizations SET settings = $1, name = $2 WHERE id = $3',
-        [JSON.stringify(data.organization.settings || {}), data.organization.name, org_id]);
-    }
-    // Re-insert snapshot rows (parents first per SNAPSHOT_TABLES order)
-    for (const t of SNAPSHOT_TABLES) {
-      const rows = data.tables[t.table] || [];
-      for (const row of rows) {
-        const cols = Object.keys(row).filter(k => /^[a-z_][a-z0-9_]*$/.test(k));
-        if (cols.length === 0) continue;
-        const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
-        try {
-          await client.query(
-            `INSERT INTO ${t.table} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO NOTHING`,
-            cols.map(k => row[k])
-          );
-        } catch (e) {
-          // Column set drifted since the snapshot — drop the offending column and retry once
-          if (e.code === '42703') {
-            const missing = (e.message.match(/column "([^"]+)"/) || [])[1];
-            const cols2 = cols.filter(x => x !== missing);
-            await client.query(
-              `INSERT INTO ${t.table} (${cols2.join(', ')}) VALUES (${cols2.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT (id) DO NOTHING`,
-              cols2.map(k => row[k])
-            );
-          } else throw e;
-        }
-      }
-    }
+    await restoreOrgFromSnapshot(client, org_id, data);
     await client.query('COMMIT');
     res.json({ success: true, restored: data.tables ? Object.fromEntries(Object.entries(data.tables).map(([k, v]) => [k, v.length])) : {} });
   } catch (e) {
