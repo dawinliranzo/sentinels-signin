@@ -246,7 +246,7 @@ export default function Hosts() {
           <img src="${qrUrl}" style="width:200px;height:200px" />
           <div style="font-size:12px;color:#64748B;margin-top:14px">Scan at the kiosk to check in / out</div>
         </div>
-        <div style="background:#F8FAFC;padding:12px;font-size:11px;color:#94A3B8">Sentinels Sign-In</div>
+        <div style="background:#F8FAFC;padding:12px;font-size:11px;color:#94A3B8">Sentinels Kiosk</div>
       </div>
       <script>window.onload=function(){window.print()}<\/script></body></html>`);
     win.document.close();
@@ -448,8 +448,8 @@ export default function Hosts() {
 
       {/* Modal */}
       {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
         }}>
           <div style={{
@@ -567,8 +567,8 @@ export default function Hosts() {
 
       {/* Print ID Badge Modal */}
       {printHost && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
         }}>
           <div style={{
@@ -645,8 +645,8 @@ export default function Hosts() {
 
       {/* Camera Modal */}
       {cameraOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
         }}>
           <div style={{
