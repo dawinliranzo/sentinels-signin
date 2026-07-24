@@ -34,11 +34,11 @@ async function provisionUser({ orgId, orgName, email, firstName, lastName, role 
   const loginUrl = (process.env.FRONTEND_URL || 'https://app.sentinelskiosk.com') + '/login';
   sendEmail({
     to: email,
-    subject: `Your Sentinels Sign-In account for ${orgName}`,
+    subject: `Your Sentinels Kiosk account for ${orgName}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
         <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
-          <h2 style="margin:0;font-size:19px">Welcome to Sentinels Sign-In</h2>
+          <h2 style="margin:0;font-size:19px">Welcome to Sentinels Kiosk</h2>
         </div>
         <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
           <p>Hi ${escHtml(firstName)},</p>
@@ -184,7 +184,7 @@ router.get('/stats', authenticate, requireRole('super_admin'), async (req, res) 
 // PATCH organization (update plan, status)
 router.patch('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
-    const { plan, status, billing_email, max_users, max_visits_per_month, max_devices, features, plan_renews_at } = req.body;
+    const { name, plan, status, billing_email, max_users, max_visits_per_month, max_devices, features, plan_renews_at } = req.body;
     const featuresJson = features && typeof features === 'object' ? JSON.stringify(features) : null;
     const renewsAt = plan_renews_at || null;
 
@@ -197,9 +197,10 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
                   billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
                   max_visits_per_month = COALESCE($5, max_visits_per_month),
                   features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at),
-                  max_devices = COALESCE($8, max_devices), updated_at = NOW()
+                  max_devices = COALESCE($8, max_devices), updated_at = NOW(),
+                  name = COALESCE($10, name)
               WHERE id = $9 RETURNING *`,
-        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id],
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id, name?.trim() || null],
       },
       {
         sql: `UPDATE organizations
@@ -207,9 +208,10 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
                   billing_email = COALESCE($3, billing_email), max_users = COALESCE($4, max_users),
                   max_visits_per_month = COALESCE($5, max_visits_per_month),
                   features = COALESCE($6, features), plan_renews_at = COALESCE($7, plan_renews_at),
-                  max_devices = COALESCE($8, max_devices)
+                  max_devices = COALESCE($8, max_devices),
+                  name = COALESCE($10, name)
               WHERE id = $9 RETURNING *`,
-        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id],
+        params: [plan, status, billing_email, max_users, max_visits_per_month, featuresJson, renewsAt, max_devices, req.params.id, name?.trim() || null],
       },
       {
         sql: `UPDATE organizations
@@ -314,7 +316,37 @@ router.post('/users/:userId/reset-password', authenticate, requireRole('super_ad
       await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashed, req.params.userId]);
     }
 
-    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email });
+    const u = userResult.rows[0];
+    const loginUrl = (process.env.FRONTEND_URL || 'https://app.sentinelskiosk.com') + '/login';
+    const emailResult = await sendEmail({
+      to: u.email,
+      subject: 'Your Sentinels Kiosk password was reset',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
+          <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
+            <h2 style="margin:0;font-size:19px">Password reset</h2>
+          </div>
+          <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
+            <p>Hi ${escHtml(u.first_name || '')},</p>
+            <p>Your password was reset by an administrator. Sign in with this temporary password:</p>
+            <div style="background:#F1F5F9;border-radius:12px;padding:18px;margin:20px 0;text-align:center">
+              <div style="font-size:24px;font-weight:800;letter-spacing:3px;font-family:monospace">${tempPassword}</div>
+            </div>
+            <p style="text-align:center">
+              <a href="${loginUrl}" style="display:inline-block;background:#0D7377;color:#fff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700">Sign In</a>
+            </p>
+            <p style="color:#64748B;font-size:12.5px;margin-top:22px">You'll be asked to choose your own password after signing in.</p>
+          </div>
+        </div>`
+    });
+
+    res.json({
+      success: true,
+      temp_password: tempPassword,
+      user_email: u.email,
+      email_sent: !!emailResult?.success && !emailResult?.simulated,
+      email_error: emailResult?.error || null,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reset password' });
