@@ -49,7 +49,7 @@ router.post('/test-sms', authenticate, requirePermission('settings'), requireFea
     const org = await db.query('SELECT name FROM organizations WHERE id = $1', [req.user.org_id]);
     const result = await sendSMS({
       to: phone,
-      body: `Sentinels Sign-In: test SMS from ${org.rows[0]?.name || 'your organization'}. Text alerts are working!`,
+      body: `Sentinels Kiosk: test SMS from ${org.rows[0]?.name || 'your organization'}. Text alerts are working!`,
     });
     if (result.simulated) {
       return res.json({ ok: false, simulated: true, message: 'Twilio is not configured on the server yet (missing TWILIO_SID / TWILIO_AUTH_TOKEN / TWILIO_PHONE_NUMBER env vars on Render)' });
