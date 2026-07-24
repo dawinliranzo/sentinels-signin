@@ -98,7 +98,7 @@ export default function Login() {
             S
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#0F172A', marginBottom: 8 }}>
-            Sentinels Sign-In
+            Sentinels Kiosk
           </h1>
           <p style={{ color: '#64748B', fontSize: 15 }}>
             {changeToken ? 'Set your new password to continue' : mfaToken ? 'Enter your authentication code' : 'Sign in to your admin dashboard'}
