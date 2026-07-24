@@ -3,7 +3,8 @@ import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, LogIn, Clock, Building2, TrendingUp,
-  ArrowUpRight, Bell, Calendar, Download, X
+  ArrowUpRight, Bell, Calendar, Download, X,
+  ShieldAlert, UserX, Timer
 } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -145,6 +146,25 @@ export default function Dashboard() {
     api.get('/dashboard/stats').then(r => r.data)
   );
 
+  // Security feeds — refresh every minute so the guard desk stays current
+  const { data: alerts } = useQuery('alerts-today', () =>
+    api.get('/visits/alerts/today').then(r => r.data),
+    { refetchInterval: 60000, retry: false }
+  );
+  const { data: activeVisits } = useQuery('active-visits', () =>
+    api.get('/visits/active').then(r => r.data),
+    { refetchInterval: 60000, retry: false }
+  );
+
+  // Visitors on site longer than the org's overstay threshold (default 8h)
+  const overstayHours = stats?.overstay_hours || 8;
+  const overstaying = (activeVisits || []).filter(v =>
+    (Date.now() - new Date(v.checked_in_at).getTime()) > overstayHours * 3600000
+  );
+  const flaggedToday = alerts?.flagged || [];
+  const staffAlerts = alerts?.staff || [];
+  const hasAlerts = flaggedToday.length > 0 || staffAlerts.length > 0 || overstaying.length > 0;
+
   const statCards = [
     { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: '#0D7377', link: '/visits?status=checked_in' },
     { title: "Today's Visits", value: stats?.today_visits || 0, icon: LogIn, color: '#FF6B35', link: '/visits?range=today' },
@@ -222,6 +242,96 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Security Alerts — watchlist/blacklist arrivals, staff notes, overstays */}
+      {hasAlerts && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <ShieldAlert size={20} color="#DC2626" />
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0 }}>Security Alerts</h3>
+            <span style={{ fontSize: 12, fontWeight: 700, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '3px 12px' }}>
+              {flaggedToday.length + staffAlerts.length + overstaying.length}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+            {/* Flagged visitors on site / arrived today (watchlist + blacklist) */}
+            {flaggedToday.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '2px solid #FECACA' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <UserX size={18} color="#DC2626" />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#991B1B' }}>Flagged Visitors</span>
+                </div>
+                {flaggedToday.slice(0, 5).map((f, i) => (
+                  <div key={i} style={{ padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: f.severity === 'blacklist' ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${f.severity === 'blacklist' ? '#FECACA' : '#FDE68A'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{f.visitor_first_name} {f.visitor_last_name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: f.severity === 'blacklist' ? '#DC2626' : '#B45309' }}>
+                        {f.severity}
+                      </span>
+                    </div>
+                    {f.note && <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.4 }}>{f.note}</div>}
+                    <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>
+                      Arrived {new Date(f.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Staff check-ins with a note or photo (guard needs to see who this is) */}
+            {staffAlerts.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Bell size={18} color="#B45309" />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>Staff Alerts</span>
+                </div>
+                {staffAlerts.slice(0, 5).map((s, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#F8FAFC', alignItems: 'center' }}>
+                    {s.photo ? (
+                      <img src={s.photo} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                        {s.first_name?.[0]}
+                      </div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{s.first_name} {s.last_name}</div>
+                      {s.note && <div style={{ fontSize: 13, color: '#B45309', marginTop: 2, lineHeight: 1.4 }}>{s.note}</div>}
+                      <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>
+                        {new Date(s.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Overstaying visitors */}
+            {overstaying.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '2px solid #FDE68A' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Timer size={18} color="#B45309" />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#92400E' }}>Overstaying (&gt;{overstayHours}h)</span>
+                </div>
+                {overstaying.slice(0, 5).map((v, i) => {
+                  const hrs = Math.floor((Date.now() - new Date(v.checked_in_at).getTime()) / 3600000);
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{v.visitor_first_name} {v.visitor_last_name}</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8' }}>
+                          In since {new Date(v.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#B45309', whiteSpace: 'nowrap' }}>{hrs}h on site</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Two Column Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24 }}>
@@ -320,8 +430,8 @@ export default function Dashboard() {
 
       {/* Export Options Modal */}
       {showExport && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20
         }}>
           <div style={{
@@ -402,8 +512,8 @@ export default function Dashboard() {
 
       {/* Evacuation List Modal */}
       {showEvac && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20
         }}>
           <div style={{
