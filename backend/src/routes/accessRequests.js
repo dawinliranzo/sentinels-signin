@@ -64,14 +64,14 @@ router.post('/', accessRequestLimiter, async (req, res) => {
     // 2) Confirmation to the requester
     await sendEmail({
       to: email.trim(),
-      subject: 'We received your Sentinels Sign-In request ✓',
+      subject: 'We received your Sentinels Kiosk request ✓',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
           <div style="background:#0D7377;color:#fff;padding:18px 24px;border-radius:12px 12px 0 0">
             <h2 style="margin:0;font-size:18px">Thanks, ${n}! 🛡️</h2>
           </div>
           <div style="border:1px solid #E2E8F0;border-top:none;padding:24px;border-radius:0 0 12px 12px;font-size:14px;color:#1E293B">
-            <p>We've received your request for <strong>Sentinels Sign-In</strong> access for <strong>${c}</strong>.</p>
+            <p>We've received your request for <strong>Sentinels Kiosk</strong> access for <strong>${c}</strong>.</p>
             <p>Our team will reach out within <strong>one business day</strong> with your login details and next steps for setting up your kiosk.</p>
             <p style="color:#64748B;font-size:13px;margin-top:24px">Questions in the meantime? Just reply to this email.</p>
             <p style="margin:24px 0 0">— The SentinelsIT Team<br><span style="color:#64748B;font-size:12px">sentinelskiosk.com</span></p>
