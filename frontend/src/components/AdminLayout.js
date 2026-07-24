@@ -136,7 +136,7 @@ export default function AdminLayout() {
           </div>
           {sidebarOpen && (
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2, whiteSpace: 'nowrap' }}>Sentinels Sign-In</div>
+              <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.2, whiteSpace: 'nowrap' }}>Sentinels Kiosk</div>
               <div style={{ fontSize: 11, color: '#94A3B8' }}>Visitor Management</div>
             </div>
           )}
