@@ -155,6 +155,12 @@ export default function Dashboard() {
     api.get('/visits/active').then(r => r.data),
     { refetchInterval: 60000, retry: false }
   );
+  // Watchlist size for the quick-action badge (silently empty if unavailable)
+  const { data: watchlistFlags } = useQuery('watchlist-count', () =>
+    api.get('/flags').then(r => r.data),
+    { refetchInterval: 60000, retry: false }
+  );
+  const activeFlagCount = (watchlistFlags || []).filter(f => f.is_active).length;
 
   // Visitors on site longer than the org's overstay threshold (default 8h)
   const overstayHours = stats?.overstay_hours || 8;
@@ -184,7 +190,24 @@ export default function Dashboard() {
             Overview of your visitor activity
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => navigate('/visits?watchlist=1')}
+            title="View flagged visitors (watchlist & blacklist)"
+            style={{
+              padding: '12px 24px', borderRadius: 12,
+              background: '#fff', border: '2px solid #FECACA', color: '#B91C1C',
+              fontWeight: 600, cursor: 'pointer', fontSize: 14,
+              display: 'flex', alignItems: 'center', gap: 8
+            }}
+          >
+            <ShieldAlert size={18} /> Watchlist
+            {activeFlagCount > 0 && (
+              <span style={{ background: '#DC2626', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 800, padding: '2px 8px' }}>
+                {activeFlagCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => navigate('/pre-registered')}
             style={{
@@ -257,9 +280,15 @@ export default function Dashboard() {
             {/* Flagged visitors on site / arrived today (watchlist + blacklist) */}
             {flaggedToday.length > 0 && (
               <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '2px solid #FECACA' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <UserX size={18} color="#DC2626" />
-                  <span style={{ fontSize: 15, fontWeight: 800, color: '#991B1B' }}>Flagged Visitors</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <UserX size={18} color="#DC2626" />
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#991B1B' }}>Flagged Visitors</span>
+                  </div>
+                  <button onClick={() => navigate('/visits?watchlist=1')}
+                    style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    View all →
+                  </button>
                 </div>
                 {flaggedToday.slice(0, 5).map((f, i) => (
                   <div key={i} style={{ padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: f.severity === 'blacklist' ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${f.severity === 'blacklist' ? '#FECACA' : '#FDE68A'}` }}>
