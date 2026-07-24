@@ -83,6 +83,9 @@ export default function SuperAdmin() {
   // Feature overrides for the org being managed
   const [featureOverrides, setFeatureOverrides] = useState({});
   const [savingFeatures, setSavingFeatures] = useState(false);
+  // Snapshots of the last-saved plan/features — drives the unsaved-changes banner
+  const [planSnapshot, setPlanSnapshot] = useState('');
+  const [featuresSnapshot, setFeaturesSnapshot] = useState('');
   // Backups panel (super admin view of the org's snapshots)
   const [orgBackups, setOrgBackups] = useState([]);
   const [backupsError, setBackupsError] = useState(null);
@@ -148,6 +151,8 @@ export default function SuperAdmin() {
     });
     setPlanEdit(toEdit(org));
     setFeatureOverrides(org.features || {});
+    setPlanSnapshot(JSON.stringify(toEdit(org)));
+    setFeaturesSnapshot(JSON.stringify(org.features || {}));
     setLoadingDetail(true);
     try {
       const res = await api.get(`/super-admin/organizations/${org.id}`);
@@ -157,6 +162,8 @@ export default function SuperAdmin() {
       setViewOrgUsage(res.data.usage || null);
       setPlanEdit(toEdit(res.data.organization));
       setFeatureOverrides(res.data.organization.features || {});
+      setPlanSnapshot(JSON.stringify(toEdit(res.data.organization)));
+      setFeaturesSnapshot(JSON.stringify(res.data.organization.features || {}));
       // Who from your team already has support access to this org?
       try {
         const sa = await api.get(`/super-admin/organizations/${org.id}/support-access`);
@@ -190,6 +197,7 @@ export default function SuperAdmin() {
       });
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
+      setPlanSnapshot(JSON.stringify(planEdit));
       fetchData();
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to update plan', 'error');
@@ -210,12 +218,18 @@ export default function SuperAdmin() {
       await api.patch(`/super-admin/organizations/${viewOrg.id}`, { features: featureOverrides });
       toast('Feature access updated — applies to that organization immediately');
       setViewOrg({ ...viewOrg, features: featureOverrides });
+      setFeaturesSnapshot(JSON.stringify(featureOverrides));
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to update features', 'error');
     } finally {
       setSavingFeatures(false);
     }
   };
+
+  // Any plan/feature edit that hasn't been saved yet?
+  const planDirty = planSnapshot !== '' && JSON.stringify(planEdit) !== planSnapshot;
+  const featuresDirty = featuresSnapshot !== '' && JSON.stringify(featureOverrides) !== featuresSnapshot;
+  const manageDirty = planDirty || featuresDirty;
 
   const generateBackup = async () => {
     setBackupBusy(true);
@@ -712,6 +726,17 @@ export default function SuperAdmin() {
               </button>
             </div>
 
+            {manageDirty && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 18px', borderRadius: 12, marginBottom: 20,
+                background: '#FFFBEB', border: '1px solid #FDE68A',
+                color: '#92400E', fontSize: 14, fontWeight: 600
+              }}>
+                ⚠ You have unsaved changes — they won't apply until you press{planDirty ? ' "Save Plan & Limits"' : ''}{planDirty && featuresDirty ? ' and' : ''}{featuresDirty ? ' "Save Features"' : ''}.
+              </div>
+            )}
+
             {/* Usage — how they're actually using the product */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Activity size={16} color="#0D7377" /> Usage
@@ -783,8 +808,8 @@ export default function SuperAdmin() {
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                 </div>
                 <button onClick={savePlanEdit} disabled={savingPlan}
-                  style={{ padding: '10px 18px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
-                  {savingPlan ? 'Saving…' : 'Save Plan & Limits'}
+                  style={{ padding: '10px 18px', borderRadius: 8, background: planDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
+                  {savingPlan ? 'Saving…' : planDirty ? 'Save Plan & Limits •' : 'Save Plan & Limits'}
                 </button>
               </div>
               <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 8 }}>
@@ -821,8 +846,8 @@ export default function SuperAdmin() {
                   The {PLANS[planEdit.plan]?.label} plan includes: {PLAN_FEATURES[planEdit.plan]?.length ? PLAN_FEATURES[planEdit.plan].join(', ') : 'no paid features'}. Checking a box grants or removes that feature for this customer only.
                 </div>
                 <button onClick={saveFeatures} disabled={savingFeatures}
-                  style={{ padding: '9px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingFeatures ? 'not-allowed' : 'pointer', opacity: savingFeatures ? 0.7 : 1 }}>
-                  {savingFeatures ? 'Saving…' : 'Save Features'}
+                  style={{ padding: '9px 16px', borderRadius: 8, background: featuresDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingFeatures ? 'not-allowed' : 'pointer', opacity: savingFeatures ? 0.7 : 1 }}>
+                  {savingFeatures ? 'Saving…' : featuresDirty ? 'Save Features •' : 'Save Features'}
                 </button>
               </div>
             </div>
