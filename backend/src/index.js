@@ -24,6 +24,8 @@ const complianceRoutes = require('./routes/compliance');
 const reportsRoutes = require('./routes/reports');
 const rolesRoutes = require('./routes/roles');
 const { router: backupsRoutes, startNightlyJob } = require('./routes/backups');
+const { router: flagsRoutes } = require('./routes/flags');
+const { router: frequentVisitorsRoutes } = require('./routes/frequentVisitors');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -68,7 +70,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'Sentinels Sign-In API', version: '1.0.0' });
+  res.json({ status: 'ok', service: 'Sentinels Kiosk API', version: '1.0.0' });
 });
 
 // Routes
@@ -92,6 +94,8 @@ app.use('/api/compliance', complianceRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/backups', backupsRoutes);
+app.use('/api/flags', flagsRoutes);
+app.use('/api/frequent-visitors', frequentVisitorsRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -100,5 +104,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\uD83D\uDE80 Sentinels Sign-In API running on port ${PORT}`);
+  console.log(`\uD83D\uDE80 Sentinels Kiosk API running on port ${PORT}`);
 });
