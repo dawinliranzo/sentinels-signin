@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X } from 'lucide-react';
+import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X, Flag, ShieldAlert, Trash2 } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -39,6 +39,11 @@ export default function Visits() {
   const [ndaView, setNdaView] = useState(null); // { loading, data, error, name }
   const [confirmOutId, setConfirmOutId] = useState(null); // 2-step checkout, no browser popups
   const [detailVisit, setDetailVisit] = useState(null);
+  // Visitor watchlist/blacklist (staff-only side notes)
+  const [showWatchlist, setShowWatchlist] = useState(false);
+  const [flagTarget, setFlagTarget] = useState(null); // { email, name } being flagged
+  const [flagForm, setFlagForm] = useState({ severity: 'warning', note: '' });
+  const [flagBusy, setFlagBusy] = useState(false);
 
   const openNda = async (visit) => {
     setNdaView({ loading: true, data: null, error: null, name: `${visit.visitor_first_name} ${visit.visitor_last_name}` });
@@ -62,6 +67,52 @@ export default function Visits() {
     },
     { keepPreviousData: true }
   );
+
+  const { data: flags, refetch: refetchFlags } = useQuery(
+    'visitor-flags',
+    () => api.get('/flags').then(r => r.data),
+    { retry: false, refetchInterval: 60000 }
+  );
+  const flagFor = (email) => (flags || []).find(f => f.is_active && (f.visitor_email || '').toLowerCase() === (email || '').toLowerCase());
+
+  const saveFlag = async () => {
+    if (!flagTarget) return;
+    setFlagBusy(true);
+    try {
+      await api.post('/flags', {
+        visitor_email: flagTarget.email,
+        visitor_name: flagTarget.name,
+        severity: flagForm.severity,
+        note: flagForm.note,
+      });
+      toast('Visitor flag saved');
+      setFlagTarget(null);
+      setFlagForm({ severity: 'warning', note: '' });
+      refetchFlags();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to save flag', 'error');
+    } finally {
+      setFlagBusy(false);
+    }
+  };
+
+  const removeFlag = async (id) => {
+    try {
+      await api.delete(`/flags/${id}`);
+      refetchFlags();
+    } catch (err) {
+      toast('Failed to remove flag', 'error');
+    }
+  };
+
+  const toggleFlagActive = async (f) => {
+    try {
+      await api.patch(`/flags/${f.id}`, { is_active: !f.is_active });
+      refetchFlags();
+    } catch (err) {
+      toast('Failed to update flag', 'error');
+    }
+  };
 
   const handleCheckOut = async (id) => {
     try {
@@ -100,15 +151,31 @@ export default function Visits() {
           <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Visits</h1>
           <p style={{ color: '#64748B', marginTop: 4 }}>Manage and track all visitor activity</p>
         </div>
-        <button onClick={exportCSV}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '10px 20px', borderRadius: 10,
-            background: '#0D7377', border: 'none', color: '#fff',
-            fontWeight: 600, cursor: 'pointer', fontSize: 14
-          }}>
-          <Download size={18} /> Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={() => setShowWatchlist(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 20px', borderRadius: 10,
+              background: '#fff', border: '2px solid #FECACA', color: '#B91C1C',
+              fontWeight: 600, cursor: 'pointer', fontSize: 14
+            }}>
+            <ShieldAlert size={18} /> Watchlist
+            {(flags || []).filter(f => f.is_active).length > 0 && (
+              <span style={{ background: '#DC2626', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 800, padding: '2px 8px' }}>
+                {(flags || []).filter(f => f.is_active).length}
+              </span>
+            )}
+          </button>
+          <button onClick={exportCSV}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 20px', borderRadius: 10,
+              background: '#0D7377', border: 'none', color: '#fff',
+              fontWeight: 600, cursor: 'pointer', fontSize: 14
+            }}>
+            <Download size={18} /> Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -240,6 +307,18 @@ export default function Visits() {
                       style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                       <Eye size={15} color="#64748B" />
                     </button>
+                    {v.visitor_email && (
+                      <button
+                        onClick={() => {
+                          const existing = flagFor(v.visitor_email);
+                          setFlagForm({ severity: existing?.severity || 'warning', note: existing?.note || '' });
+                          setFlagTarget({ email: v.visitor_email, name: `${v.visitor_first_name} ${v.visitor_last_name}` });
+                        }}
+                        title={flagFor(v.visitor_email) ? `Flagged (${flagFor(v.visitor_email).severity}) — edit` : 'Add a staff note / flag this visitor'}
+                        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', background: flagFor(v.visitor_email) ? (flagFor(v.visitor_email).severity === 'blacklist' ? '#FEE2E2' : '#FEF3C7') : '#F1F5F9' }}>
+                        <Flag size={15} color={flagFor(v.visitor_email) ? (flagFor(v.visitor_email).severity === 'blacklist' ? '#DC2626' : '#B45309') : '#64748B'} fill={flagFor(v.visitor_email) ? 'currentColor' : 'none'} />
+                      </button>
+                    )}
                     {v.nda_signed && (
                       <button onClick={() => openNda(v)} title="View signed NDA"
                         style={{
@@ -284,9 +363,110 @@ export default function Visits() {
         </table>
       </div>
 
+      {/* Flag editor — private staff note for this visitor (never shown on the kiosk) */}
+      {flagTarget && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}
+          onClick={() => setFlagTarget(null)}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 26, width: '100%', maxWidth: 440, boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Flag size={18} color="#B45309" /> Flag {flagTarget.name}
+            </h3>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+              Private side note for the security desk — e.g. "not welcome", "be careful with this visitor".
+              It shows on this dashboard only, never on the kiosk. <strong>Blacklist</strong> refuses check-in at the door.
+            </p>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Severity</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {[['info', '#0D7377', '#F0FDFA', '#99F6E4'], ['warning', '#B45309', '#FFFBEB', '#FDE68A'], ['blacklist', '#DC2626', '#FEF2F2', '#FECACA']].map(([sev, col, bg, brd]) => (
+                <button key={sev} onClick={() => setFlagForm({ ...flagForm, severity: sev })}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', textTransform: 'capitalize',
+                    background: flagForm.severity === sev ? bg : '#F8FAFC',
+                    border: `2px solid ${flagForm.severity === sev ? brd : '#E2E8F0'}`,
+                    color: flagForm.severity === sev ? col : '#64748B'
+                  }}>
+                  {sev}
+                </button>
+              ))}
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Note (staff only)</label>
+            <textarea value={flagForm.note} onChange={(e) => setFlagForm({ ...flagForm, note: e.target.value })}
+              rows={3} placeholder="e.g. Escorted off site last month — do not admit alone"
+              style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, resize: 'vertical', fontFamily: 'inherit', marginBottom: 18 }} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setFlagTarget(null)}
+                style={{ padding: '11px 20px', borderRadius: 10, background: '#F1F5F9', border: 'none', color: '#475569', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveFlag} disabled={flagBusy}
+                style={{ padding: '11px 20px', borderRadius: 10, background: flagBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {flagBusy ? 'Saving…' : 'Save flag'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Watchlist panel — every flagged visitor, with activate/deactivate/remove */}
+      {showWatchlist && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: 16 }}
+          onClick={() => setShowWatchlist(false)}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: 26, width: '100%', maxWidth: 620, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldAlert size={19} color="#DC2626" /> Visitor Watchlist
+              </h3>
+              <button onClick={() => setShowWatchlist(false)} style={{ background: '#F1F5F9', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer' }}>
+                <X size={16} color="#64748B" />
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+              Flagged visitors appear on the dashboard when they check in. Blacklisted visitors are refused at the kiosk.
+              To flag someone new, find any of their visits and tap the flag icon.
+            </p>
+            {(flags || []).length === 0 ? (
+              <p style={{ fontSize: 14, color: '#94A3B8', textAlign: 'center', padding: '24px 0' }}>No flagged visitors yet.</p>
+            ) : (flags || []).map(f => (
+              <div key={f.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                padding: '12px 14px', borderRadius: 12, marginBottom: 8,
+                background: f.is_active ? (f.severity === 'blacklist' ? '#FEF2F2' : '#FFFBEB') : '#F8FAFC',
+                border: `1px solid ${f.is_active ? (f.severity === 'blacklist' ? '#FECACA' : '#FDE68A') : '#E2E8F0'}`,
+                opacity: f.is_active ? 1 : 0.6
+              }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{f.visitor_name || f.visitor_email}</span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', borderRadius: 20, padding: '2px 10px',
+                      background: f.severity === 'blacklist' ? '#DC2626' : f.severity === 'warning' ? '#F59E0B' : '#0D7377', color: '#fff'
+                    }}>
+                      {f.severity}
+                    </span>
+                    {!f.is_active && <span style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700 }}>INACTIVE</span>}
+                  </div>
+                  {f.note && <div style={{ fontSize: 13, color: '#475569', marginTop: 3, lineHeight: 1.4 }}>{f.note}</div>}
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 3 }}>{f.visitor_email}</div>
+                </div>
+                <button onClick={() => toggleFlagActive(f)}
+                  style={{ padding: '8px 14px', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
+                  {f.is_active ? 'Deactivate' : 'Reactivate'}
+                </button>
+                <button onClick={() => removeFlag(f.id)} title="Remove flag"
+                  style={{ padding: '8px 10px', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                  <Trash2 size={14} color="#DC2626" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Visit details modal — everything captured at check-in, incl. custom fields + photo */}
       {detailVisit && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 480, boxShadow: '0 25px 80px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
             <button onClick={() => setDetailVisit(null)} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F5F9', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer' }}>
               <X size={16} />
@@ -335,8 +515,8 @@ export default function Visits() {
 
       {/* Signed NDA viewer */}
       {ndaView && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        <div className="responsive-modal"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
         }}>
           <div style={{
