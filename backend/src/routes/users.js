@@ -21,17 +21,17 @@ const sendInviteEmail = async ({ to, firstName, tempPassword, orgName, isReset }
   const esc = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return sendEmail({
     to,
-    subject: isReset ? 'Your Sentinels Sign-In password was reset' : `You're invited to ${orgName || 'your team'} on Sentinels Sign-In`,
+    subject: isReset ? 'Your Sentinels Kiosk password was reset' : `You're invited to ${orgName || 'your team'} on Sentinels Kiosk`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
         <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
-          <h2 style="margin:0;font-size:19px">${isReset ? 'Password Reset' : 'Welcome to Sentinels Sign-In'} 🛡️</h2>
+          <h2 style="margin:0;font-size:19px">${isReset ? 'Password Reset' : 'Welcome to Sentinels Kiosk'} 🛡️</h2>
         </div>
         <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
           <p>Hi ${esc(firstName) || 'there'},</p>
           <p>${isReset
             ? 'An administrator reset your password. Sign in with the temporary password below — you\'ll be asked to set a new one right away.'
-            : `You've been invited to join <strong>${esc(orgName) || 'your organization'}</strong> on Sentinels Sign-In, the visitor management kiosk. Sign in with the temporary password below — you'll be asked to set your own password right away.`}</p>
+            : `You've been invited to join <strong>${esc(orgName) || 'your organization'}</strong> on Sentinels Kiosk, the visitor management kiosk. Sign in with the temporary password below — you'll be asked to set your own password right away.`}</p>
           <div style="background:#F1F5F9;border-radius:12px;padding:18px;text-align:center;margin:22px 0">
             <div style="font-size:12px;color:#64748B;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Temporary password</div>
             <div style="font-size:28px;font-weight:800;letter-spacing:4px;font-family:monospace;color:#0F172A">${tempPassword}</div>
@@ -75,12 +75,25 @@ router.get('/', async (req, res) => {
 // emails it to them, and forces a password change on first sign-in
 router.post('/', async (req, res) => {
   try {
-    const { email, first_name, last_name, role } = req.body;
+    const { email, first_name, last_name, role, custom_role_id } = req.body;
 
     if (!email || !first_name || !last_name) {
       return res.status(400).json({ error: 'Email, first name and last name are required' });
     }
     const safeRole = role === 'admin' ? 'admin' : 'receptionist';
+
+    // Optional custom role (org_roles) — verify it belongs to this org
+    let roleId = null;
+    if (custom_role_id) {
+      try {
+        const rr = await db.query('SELECT id FROM org_roles WHERE id = $1 AND org_id = $2', [custom_role_id, req.user.org_id]);
+        if (rr.rows.length === 0) return res.status(400).json({ error: 'Custom role not found in your organization' });
+        roleId = custom_role_id;
+      } catch (e) {
+        if (e.code === '42P01') return res.status(400).json({ error: 'Custom roles need the roles migration to be run first' });
+        throw e;
+      }
+    }
 
     const existing = await db.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase()]);
     if (existing.rows.length > 0) {
@@ -98,11 +111,21 @@ router.post('/', async (req, res) => {
 
     const tempPassword = makeTempPassword();
     const hashed = await bcrypt.hash(tempPassword, 10);
-    const result = await db.query(
-      `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, is_active, must_change_password)
-       VALUES ($1, $2, $3, $4, $5, $6, true, true) RETURNING id, email, first_name, last_name, role, is_active`,
-      [req.user.org_id, email.toLowerCase(), hashed, first_name, last_name, safeRole]
-    );
+    let result;
+    try {
+      result = await db.query(
+        `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, role_id, is_active, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, true, true) RETURNING id, email, first_name, last_name, role, is_active`,
+        [req.user.org_id, email.toLowerCase(), hashed, first_name, last_name, safeRole, roleId]
+      );
+    } catch (e) {
+      if (e.code !== '42703') throw e; // role_id not migrated yet
+      result = await db.query(
+        `INSERT INTO users (org_id, email, password_hash, first_name, last_name, role, is_active, must_change_password)
+         VALUES ($1, $2, $3, $4, $5, $6, true, true) RETURNING id, email, first_name, last_name, role, is_active`,
+        [req.user.org_id, email.toLowerCase(), hashed, first_name, last_name, safeRole]
+      );
+    }
 
     const orgRes = await db.query('SELECT name FROM organizations WHERE id = $1', [req.user.org_id]);
     const emailResult = await sendInviteEmail({
@@ -110,7 +133,7 @@ router.post('/', async (req, res) => {
       orgName: orgRes.rows[0]?.name, isReset: false
     });
 
-    res.status(201).json({ ...result.rows[0], temp_password: tempPassword, invite_sent: !emailResult?.simulated });
+    res.status(201).json({ ...result.rows[0], temp_password: tempPassword, invite_sent: !!emailResult?.success && !emailResult?.simulated, email_error: emailResult?.error || null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create user' });
@@ -138,7 +161,7 @@ router.post('/:id/reset-password', async (req, res) => {
       tempPassword, orgName: null, isReset: true
     });
 
-    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email, invite_sent: !emailResult?.simulated });
+    res.json({ success: true, temp_password: tempPassword, user_email: userResult.rows[0].email, invite_sent: !!emailResult?.success && !emailResult?.simulated, email_error: emailResult?.error || null });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reset password' });
