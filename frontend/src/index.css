@@ -1,0 +1,45 @@
+/* Global responsive behavior for the Sentinels Kiosk admin portal */
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img { max-width: 100%; }
+
+/* ─── Small screens (phones / narrow tablets) ─── */
+@media (max-width: 640px) {
+  /* Fixed modals become top-anchored, scrollable sheets so tall content
+     (profile editing, plan forms, visit details) is never clipped off-screen */
+  .responsive-modal {
+    align-items: flex-start !important;
+    overflow-y: auto !important;
+    padding: 12px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .responsive-modal > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+  /* Let the sheet grow with its content instead of trapping a scrollbox
+     inside a scrollbox */
+  .responsive-modal > div[style*="maxHeight"],
+  .responsive-modal > div[style*="max-height"] {
+    max-height: none !important;
+  }
+
+  /* Multi-column grids collapse to one column */
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  h1 { font-size: 24px !important; }
+
+  /* Tables keep their own horizontal scroll — never squash columns */
+  table { font-size: 13px; }
+}
