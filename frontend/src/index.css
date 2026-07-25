@@ -40,6 +40,20 @@ img { max-width: 100%; }
 
   h1 { font-size: 24px !important; }
 
-  /* Tables keep their own horizontal scroll — never squash columns */
-  table { font-size: 13px; }
+  /* Tables become self-scrolling horizontal panels: instead of the table
+     stretching the whole page off-screen (which clipped text in OTHER
+     sections too), the table itself scrolls sideways with touch.
+     Columns keep their natural width — nothing is squashed or cut. */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    font-size: 13px;
+  }
+
+  /* Cards/tiles that hold tables must never exceed the screen */
+  div[style*="overflow: auto"], div[style*="overflowX"] {
+    max-width: 100%;
+  }
 }
