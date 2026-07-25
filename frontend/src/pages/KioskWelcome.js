@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, LogIn, LogOut, QrCode, CheckCircle, XCircle, PenLine } from 'lucide-react';
+import { ArrowRight, LogIn, LogOut, QrCode, CheckCircle, XCircle, PenLine, Nfc } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
+import useRfidTap from '../utils/useRfidTap';
 import SignaturePad from '../components/SignaturePad';
 
 // Same fallback as the backend — used when NDA is on but no custom text is saved yet.
@@ -65,6 +66,21 @@ export default function KioskWelcome() {
     const t = setInterval(loadConfig, 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [orgId]);
+
+  // ─── RFID: USB readers "type" the card UID + Enter — treat a burst as a tap ───
+  const handleRfidTap = async (uid) => {
+    try {
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      // Notes intentionally NOT passed through — private to the admin dashboard.
+      setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
+      setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
+      setTimeout(() => setMode('welcome'), 8000);
+    } catch (err) {
+      setResult({ message: err.response?.data?.error || 'Card not recognized for this kiosk' });
+      setMode('error');
+    }
+  };
+  useRfidTap(handleRfidTap, { enabled: !!orgId && mode === 'welcome' });
 
   // ─── DEVICE PAIRING (declared before any early returns that reference them) ───
   const submitPair = async () => {
@@ -576,6 +592,16 @@ export default function KioskWelcome() {
           <QrCode size={30} />
           Scan QR to Check In
         </button>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          padding: '14px 20px', borderRadius: 14,
+          border: '1px dashed rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.55)',
+          fontSize: 15, fontWeight: 500
+        }}>
+          <Nfc size={20} />
+          …or tap your RFID badge anywhere on this screen
+        </div>
 
         <button
           onClick={() => navigate(`/kiosk/sign-out?org=${orgId}`)}
