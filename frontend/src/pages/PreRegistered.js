@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw, Printer, Star } from 'lucide-react';
+import { Plus, QrCode, Copy, AlertCircle, Pencil, Trash2, RefreshCw, Printer, Star, Nfc, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../utils/api';
+import useRfidTap from '../utils/useRfidTap';
 import { toast } from '../utils/toast';
 
 export default function PreRegistered() {
@@ -79,6 +80,49 @@ export default function PreRegistered() {
       refetchFV();
     } catch (err) {
       toast('Failed to delete', 'error');
+    }
+  };
+
+  // ─── RFID cards for frequent visitors: tap-to-enroll a physical card/fob ───
+  const [fvRfidTarget, setFvRfidTarget] = useState(null); // FV row being managed
+  const [fvRfidUid, setFvRfidUid] = useState('');
+  const [fvRfidBusy, setFvRfidBusy] = useState(false);
+  const [fvRfidMsg, setFvRfidMsg] = useState(null);
+  const [fvRfidConfirmDelete, setFvRfidConfirmDelete] = useState(null);
+
+  const { data: fvRfidCards, refetch: refetchFvRfid } = useQuery('rfid-cards',
+    () => api.get('/rfid-cards').then(r => r.data),
+    { retry: false }
+  );
+  const cardsForFV = (fvRfidCards || []).filter(card => card.card_type === 'frequent' && card.frequent_visitor_id === fvRfidTarget?.id);
+
+  const enrollFvCard = async () => {
+    const uid = fvRfidUid.trim();
+    if (!uid) { setFvRfidMsg({ ok: false, text: 'Tap a card on the reader, or type its UID' }); return; }
+    setFvRfidBusy(true);
+    setFvRfidMsg(null);
+    try {
+      await api.post('/rfid-cards', { uid, card_type: 'frequent', frequent_visitor_id: fvRfidTarget.id });
+      setFvRfidMsg({ ok: true, text: `Card ${uid} enrolled — ${fvRfidTarget.first_name} can now tap in and out` });
+      setFvRfidUid('');
+      refetchFvRfid();
+    } catch (err) {
+      setFvRfidMsg({ ok: false, text: err.response?.data?.error || 'Failed to enroll card' });
+    } finally {
+      setFvRfidBusy(false);
+    }
+  };
+
+  useRfidTap((uid) => { setFvRfidUid(uid); setFvRfidMsg({ ok: true, text: `Card detected: ${uid} — press Enroll to save` }); },
+    { enabled: !!fvRfidTarget });
+
+  const deleteFvCard = async (id) => {
+    try {
+      await api.delete(`/rfid-cards/${id}`);
+      setFvRfidConfirmDelete(null);
+      refetchFvRfid();
+    } catch (err) {
+      setFvRfidMsg({ ok: false, text: err.response?.data?.error || 'Failed to remove card' });
     }
   };
 
@@ -502,6 +546,10 @@ export default function PreRegistered() {
                           style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                           <Printer size={15} color="#475569" />
                         </button>
+                        <button onClick={() => { setFvRfidTarget(fv); setFvRfidUid(''); setFvRfidMsg(null); setFvRfidConfirmDelete(null); }} title="Manage RFID cards"
+                          style={{ padding: '8px 10px', borderRadius: 8, background: '#FEF3C7', border: 'none', cursor: 'pointer' }}>
+                          <Nfc size={15} color="#B45309" />
+                        </button>
                         <button onClick={() => toggleFV(fv)}
                           style={{ padding: '8px 12px', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
                           {fv.is_active ? 'Deactivate' : 'Reactivate'}
@@ -551,6 +599,86 @@ export default function PreRegistered() {
                 <Printer size={16} /> Print Badge
               </button>
               <button onClick={() => setFvBadge(null)} style={{ padding: '12px 24px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FV RFID cards modal — enroll / manage this person's physical cards & fobs */}
+      {fvRfidTarget && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110, padding: 16 }}
+          onClick={() => setFvRfidTarget(null)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Nfc size={20} color="#B45309" /> RFID Cards — {fvRfidTarget.first_name} {fvRfidTarget.last_name}
+              </h3>
+              <button onClick={() => setFvRfidTarget(null)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                <X size={16} color="#64748B" />
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+              An enrolled card works exactly like the {fvRfidTarget.code} QR badge — one tap signs in, the next signs out.
+              Plug a USB RFID reader into this computer, click the field below, and tap the card — or type its UID.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+              <input
+                type="text" value={fvRfidUid} onChange={(e) => setFvRfidUid(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); enrollFvCard(); } }}
+                placeholder="Card UID (e.g. 0015238741)"
+                autoFocus
+                style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 15, fontFamily: 'monospace', fontWeight: 700 }}
+              />
+              <button onClick={enrollFvCard} disabled={fvRfidBusy}
+                style={{ padding: '12px 22px', borderRadius: 10, background: fvRfidBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {fvRfidBusy ? 'Saving…' : 'Enroll'}
+              </button>
+            </div>
+            {fvRfidMsg && (
+              <div style={{
+                fontSize: 13, fontWeight: 600, marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+                background: fvRfidMsg.ok ? '#ECFDF5' : '#FEF2F2',
+                color: fvRfidMsg.ok ? '#065F46' : '#991B1B',
+                border: `1px solid ${fvRfidMsg.ok ? '#A7F3D0' : '#FECACA'}`
+              }}>
+                {fvRfidMsg.text}
+              </div>
+            )}
+
+            <div style={{ marginTop: 8 }}>
+              {cardsForFV.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No cards enrolled for this person yet.</p>
+              ) : cardsForFV.map(card => (
+                <div key={card.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                  background: '#F8FAFC', borderRadius: 10, marginBottom: 8
+                }}>
+                  <Nfc size={16} color={card.is_active ? '#B45309' : '#94A3B8'} />
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#0F172A', flex: 1 }}>
+                    {card.uid}
+                  </span>
+                  {!card.is_active && <span style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8' }}>INACTIVE</span>}
+                  {fvRfidConfirmDelete === card.id ? (
+                    <>
+                      <button onClick={() => deleteFvCard(card.id)}
+                        style={{ padding: '7px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        Confirm?
+                      </button>
+                      <button onClick={() => setFvRfidConfirmDelete(null)}
+                        style={{ padding: '7px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer', color: '#64748B' }}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setFvRfidConfirmDelete(card.id)} title="Remove card"
+                      style={{ padding: '7px 9px', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                      <Trash2 size={14} color="#DC2626" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
