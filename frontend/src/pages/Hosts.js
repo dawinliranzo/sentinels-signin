@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload, FileSpreadsheet, Nfc } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
+import useRfidTap from '../utils/useRfidTap';
 import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
 
@@ -28,6 +29,50 @@ export default function Hosts() {
   }, []);
 
   const badgeTitle = (badgeLabel || 'EMPLOYEE BADGE').toUpperCase();
+
+  // ─── RFID cards: enroll a physical card/fob so this host can tap in/out ───
+  const [rfidHost, setRfidHost] = useState(null); // host whose cards are being managed
+  const [rfidUid, setRfidUid] = useState('');
+  const [rfidBusy, setRfidBusy] = useState(false);
+  const [rfidMsg, setRfidMsg] = useState(null);
+  const [rfidConfirmDelete, setRfidConfirmDelete] = useState(null);
+
+  const { data: allRfidCards, refetch: refetchRfid } = useQuery('rfid-cards',
+    () => api.get('/rfid-cards').then(r => r.data),
+    { retry: false }
+  );
+  const hostCards = (allRfidCards || []).filter(card => card.card_type === 'staff' && card.host_id === rfidHost?.id);
+
+  const enrollCard = async (uidFromTap) => {
+    const uid = (uidFromTap || rfidUid).trim();
+    if (!uid) { setRfidMsg({ ok: false, text: 'Tap a card on the reader, or type its UID' }); return; }
+    setRfidBusy(true);
+    setRfidMsg(null);
+    try {
+      await api.post('/rfid-cards', { uid, card_type: 'staff', host_id: rfidHost.id });
+      setRfidMsg({ ok: true, text: `Card ${uid} enrolled — ${rfidHost.first_name} can now tap in and out` });
+      setRfidUid('');
+      refetchRfid();
+    } catch (err) {
+      setRfidMsg({ ok: false, text: err.response?.data?.error || 'Failed to enroll card' });
+    } finally {
+      setRfidBusy(false);
+    }
+  };
+
+  // Tap-to-enroll: while the card modal is open, a reader burst fills the UID
+  useRfidTap((uid) => { setRfidUid(uid); setRfidMsg({ ok: true, text: `Card detected: ${uid} — press Enroll to save` }); },
+    { enabled: !!rfidHost });
+
+  const deleteCard = async (id) => {
+    try {
+      await api.delete(`/rfid-cards/${id}`);
+      setRfidConfirmDelete(null);
+      refetchRfid();
+    } catch (err) {
+      setRfidMsg({ ok: false, text: err.response?.data?.error || 'Failed to remove card' });
+    }
+  };
   const org = useStore((s) => s.organization);
 
   // ─── CSV bulk import ───
@@ -417,6 +462,10 @@ export default function Hosts() {
                       style={{ padding: 8, borderRadius: 8, background: '#ECFEFF', border: 'none', cursor: 'pointer' }}>
                       <Printer size={16} color="#0D7377" />
                     </button>
+                    <button onClick={() => { setRfidHost(h); setRfidUid(''); setRfidMsg(null); setRfidConfirmDelete(null); }} title="Manage RFID cards"
+                      style={{ padding: 8, borderRadius: 8, background: '#FEF3C7', border: 'none', cursor: 'pointer' }}>
+                      <Nfc size={16} color="#B45309" />
+                    </button>
                     <button onClick={() => { setEditing(h.id); setForm(h); setShowModal(true); }} title="Edit"
                       style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                       <Pencil size={16} color="#64748B" />
@@ -686,6 +735,88 @@ export default function Hosts() {
                   {cameraReady ? 'Capture' : 'Starting camera…'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RFID cards modal — enroll / manage this host's physical cards & fobs */}
+      {rfidHost && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}
+          onClick={() => setRfidHost(null)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 520, boxShadow: '0 25px 80px rgba(0,0,0,0.3)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Nfc size={20} color="#B45309" /> RFID Cards — {rfidHost.first_name} {rfidHost.last_name}
+              </h3>
+              <button onClick={() => setRfidHost(null)} style={{ padding: 8, borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                <X size={16} color="#64748B" />
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+              Enrolled cards let {rfidHost.first_name} tap in and out at the kiosk.
+              Plug a USB RFID reader into this computer, click the field below, and tap the card — or type the UID printed on it.
+            </p>
+
+            {/* Enroll */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+              <input
+                type="text" value={rfidUid} onChange={(e) => setRfidUid(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); enrollCard(); } }}
+                placeholder="Card UID (e.g. 0015238741)"
+                autoFocus
+                style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 15, fontFamily: 'monospace', fontWeight: 700 }}
+              />
+              <button onClick={() => enrollCard()} disabled={rfidBusy}
+                style={{ padding: '12px 22px', borderRadius: 10, background: rfidBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                {rfidBusy ? 'Saving…' : 'Enroll'}
+              </button>
+            </div>
+            {rfidMsg && (
+              <div style={{
+                fontSize: 13, fontWeight: 600, marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+                background: rfidMsg.ok ? '#ECFDF5' : '#FEF2F2',
+                color: rfidMsg.ok ? '#065F46' : '#991B1B',
+                border: `1px solid ${rfidMsg.ok ? '#A7F3D0' : '#FECACA'}`
+              }}>
+                {rfidMsg.text}
+              </div>
+            )}
+
+            {/* Enrolled cards */}
+            <div style={{ marginTop: 8 }}>
+              {hostCards.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No cards enrolled for this host yet.</p>
+              ) : hostCards.map(card => (
+                <div key={card.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+                  background: '#F8FAFC', borderRadius: 10, marginBottom: 8
+                }}>
+                  <Nfc size={16} color={card.is_active ? '#B45309' : '#94A3B8'} />
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 14, color: '#0F172A', flex: 1 }}>
+                    {card.uid}
+                  </span>
+                  {!card.is_active && <span style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8' }}>INACTIVE</span>}
+                  {rfidConfirmDelete === card.id ? (
+                    <>
+                      <button onClick={() => deleteCard(card.id)}
+                        style={{ padding: '7px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        Confirm?
+                      </button>
+                      <button onClick={() => setRfidConfirmDelete(null)}
+                        style={{ padding: '7px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer', color: '#64748B' }}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setRfidConfirmDelete(card.id)} title="Remove card"
+                      style={{ padding: '7px 9px', borderRadius: 8, background: '#fff', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                      <Trash2 size={14} color="#DC2626" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
