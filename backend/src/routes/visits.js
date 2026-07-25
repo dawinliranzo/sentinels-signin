@@ -4,6 +4,7 @@ const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { checkVisitCap } = require('../utils/limits');
 const { getFlagsForVisitor } = require('./flags');
+const { getCardForTap } = require('./rfid');
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
@@ -213,6 +214,95 @@ router.post('/fv-checkin', async (req, res) => {
   } catch (err) {
     console.error('FV check-in error:', err);
     res.status(500).json({ error: 'Badge scan failed', details: err.message });
+  }
+});
+
+// PUBLIC: RFID card tap — a USB keyboard-emulation reader "types" the card UID,
+// the kiosk sends { org_id, uid }. The card maps to a staff member or a frequent
+// visitor; the tap toggles them in/out exactly like their QR badges do.
+router.post('/rfid-tap', async (req, res) => {
+  try {
+    const { org_id, uid } = req.body;
+    if (!org_id || !uid) {
+      return res.status(400).json({ error: 'Organization ID and card UID are required' });
+    }
+    const resolved = await getCardForTap(org_id, String(uid).trim());
+    if (!resolved) {
+      return res.status(404).json({ error: 'Card not recognized. Please use the regular sign-in.' });
+    }
+    const p = resolved.person;
+    if (!p.is_active) {
+      return res.status(403).json({ error: 'This card has been deactivated. Please see the front desk.' });
+    }
+
+    if (resolved.kind === 'staff') {
+      // ─── Staff toggle (same rules as the STAFF: QR badge) ───
+      const staffEmail = p.email || `host-${p.id}@staff.local`;
+      const active = await db.query(
+        `SELECT * FROM visits WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)
+           AND sign_in_method = 'staff_qr' AND status = 'checked_in'
+         ORDER BY checked_in_at DESC LIMIT 1`,
+        [org_id, staffEmail]
+      );
+      if (active.rows.length > 0) {
+        const out = await db.query(
+          `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
+           WHERE id = $1 RETURNING *`,
+          [active.rows[0].id]
+        );
+        return res.json({ action: 'checked_out', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, notes: p.notes || null, visit: out.rows[0] });
+      }
+      const cap = await checkVisitCap(org_id);
+      if (!cap.allowed) {
+        return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact your organization administrator to upgrade the plan.`, code: 'VISIT_CAP' });
+      }
+      const date = new Date();
+      const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const ins = await db.query(
+        `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
+        [org_id, null, null, p.first_name, p.last_name, staffEmail, p.phone || null, p.department || 'Staff', 'Employee check-in', badgeNum]
+      );
+      return res.json({ action: 'checked_in', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, notes: p.notes || null, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
+    }
+
+    // ─── Frequent-visitor toggle (same rules as the FV: QR badge) ───
+    if (p.email) {
+      const flags = await getFlagsForVisitor(org_id, p.email, p.first_name, p.last_name);
+      if (flags.find(f => f.severity === 'blacklist')) {
+        return res.status(403).json({ error: 'This visitor is not permitted on site. Please see the front desk.', code: 'VISITOR_BLACKLISTED' });
+      }
+    }
+    const matchClause = p.email
+      ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, p.email] }
+      : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, p.first_name, p.last_name] };
+    const active = await db.query(
+      `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
+       ORDER BY checked_in_at DESC LIMIT 1`,
+      matchClause.params
+    );
+    if (active.rows.length > 0) {
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
+        [active.rows[0].id]
+      );
+      return res.json({ action: 'checked_out', card_type: 'frequent', name: p.first_name, code: p.code, visit: out.rows[0] });
+    }
+    const cap = await checkVisitCap(org_id);
+    if (!cap.allowed) {
+      return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact the front desk — the organization needs to upgrade its plan.`, code: 'VISIT_CAP' });
+    }
+    const date = new Date();
+    const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const ins = await db.query(
+      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
+      [org_id, null, null, p.first_name, p.last_name, p.email || null, p.phone || null, p.company || null, 'Frequent visit', badgeNum]
+    );
+    res.json({ action: 'checked_in', card_type: 'frequent', name: p.first_name, code: p.code, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
+  } catch (err) {
+    console.error('RFID tap error:', err);
+    res.status(500).json({ error: 'Card tap failed', details: err.message });
   }
 });
 
