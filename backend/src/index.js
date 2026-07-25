@@ -26,6 +26,7 @@ const rolesRoutes = require('./routes/roles');
 const { router: backupsRoutes, startNightlyJob } = require('./routes/backups');
 const { router: flagsRoutes } = require('./routes/flags');
 const { router: frequentVisitorsRoutes } = require('./routes/frequentVisitors');
+const { router: rfidRoutes } = require('./routes/rfid');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -96,6 +97,7 @@ app.use('/api/roles', rolesRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/flags', flagsRoutes);
 app.use('/api/frequent-visitors', frequentVisitorsRoutes);
+app.use('/api/rfid-cards', rfidRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
