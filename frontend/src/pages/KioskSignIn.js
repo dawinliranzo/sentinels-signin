@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine } from 'lucide-react';
 import api from '../utils/api';
+import useRfidTap from '../utils/useRfidTap';
 import SignaturePad from '../components/SignaturePad';
 
 // Shown when the org requires an NDA but hasn't written their own text yet.
@@ -141,6 +142,70 @@ export default function KioskSignIn() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done]);
+
+  // ─── RFID tap on this screen: staff/FV badges sign in (or out) without
+  // touching the visitor form — whatever was typed stays exactly as it was
+  const [rfidResult, setRfidResult] = useState(null); // { name, action } | { error }
+  const rfidTimerRef = useRef(null);
+  const handleRfidTap = async (uid) => {
+    try {
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      setRfidResult({ name: r.data.name, action: r.data.action, badge: r.data.badge, photo: r.data.photo });
+    } catch (err) {
+      setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
+    }
+    clearTimeout(rfidTimerRef.current);
+    rfidTimerRef.current = setTimeout(() => setRfidResult(null), 6000);
+  };
+  useRfidTap(handleRfidTap, { enabled: !!orgId && !done });
+
+  const rfidOverlay = rfidResult && (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', padding: 24
+    }} onClick={() => setRfidResult(null)}>
+      <div style={{ textAlign: 'center', maxWidth: 480 }}>
+        {rfidResult.error ? (
+          <>
+            <div style={{
+              width: 90, height: 90, borderRadius: '50%', margin: '0 auto 20px',
+              background: 'rgba(239,68,68,0.2)', border: '3px solid rgba(239,68,68,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 40, color: '#FCA5A5'
+            }}>✕</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: '#FCA5A5' }}>{rfidResult.error}</div>
+          </>
+        ) : (
+          <>
+            {rfidResult.photo ? (
+              <img src={rfidResult.photo} alt="" style={{
+                width: 130, height: 130, borderRadius: '50%', objectFit: 'cover', marginBottom: 20,
+                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : '#14FFEC'}`
+              }} />
+            ) : (
+              <div style={{
+                width: 130, height: 130, borderRadius: '50%', margin: '0 auto 20px',
+                background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 52, fontWeight: 800, color: '#fff',
+                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : '#14FFEC'}`
+              }}>
+                {rfidResult.name?.[0] || '?'}
+              </div>
+            )}
+            <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
+              {rfidResult.action === 'checked_in' ? `Welcome, ${rfidResult.name}!` : `Goodbye, ${rfidResult.name}!`}
+            </div>
+            <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }}>
+              {rfidResult.action === 'checked_in'
+                ? (rfidResult.badge ? `Badge: ${rfidResult.badge}` : "You're signed in")
+                : "You're signed out. Have a great day!"}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -416,6 +481,7 @@ export default function KioskSignIn() {
   return (
     <div style={{ width: '100%', maxWidth: 600, zIndex: 1 }}>
       {idleBanner}
+      {rfidOverlay}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
