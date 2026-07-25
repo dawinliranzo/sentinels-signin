@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Search, CheckCircle, User, Clock, QrCode } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
+import useRfidTap from '../utils/useRfidTap';
 
 export default function KioskSignOut() {
   const navigate = useNavigate();
@@ -19,6 +20,22 @@ export default function KioskSignOut() {
 
   // CRITICAL FIX: No fallback to demo org. Must have org ID.
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
+
+  // ─── RFID tap: a staff/FV badge tap signs that person out (the endpoint
+  // toggles, so if they somehow weren't signed in it signs them in and says so)
+  const [rfidResult, setRfidResult] = useState(null); // { name, action } | { error }
+  const rfidTimerRef = useRef(null);
+  const handleRfidTap = async (uid) => {
+    try {
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      setRfidResult({ name: r.data.name, action: r.data.action });
+    } catch (err) {
+      setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
+    }
+    clearTimeout(rfidTimerRef.current);
+    rfidTimerRef.current = setTimeout(() => setRfidResult(null), 5000);
+  };
+  useRfidTap(handleRfidTap, { enabled: !!orgId && !scanMode });
 
   // Store org — but DO NOT list visitors until the visitor types their own name/badge
   useEffect(() => {
@@ -180,6 +197,37 @@ export default function KioskSignOut() {
 
   return (
     <div style={{ width: '100%', maxWidth: 600, zIndex: 1 }}>
+      {/* RFID tap result overlay */}
+      {rfidResult && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 900, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', padding: 24
+        }} onClick={() => setRfidResult(null)}>
+          <div style={{ textAlign: 'center', maxWidth: 480 }}>
+            {rfidResult.error ? (
+              <>
+                <div style={{
+                  width: 90, height: 90, borderRadius: '50%', margin: '0 auto 20px',
+                  background: 'rgba(239,68,68,0.2)', border: '3px solid rgba(239,68,68,0.6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 40, color: '#FCA5A5'
+                }}>✕</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: '#FCA5A5' }}>{rfidResult.error}</div>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={90} color={rfidResult.action === 'checked_out' ? '#14FFEC' : '#2ECC71'} style={{ marginBottom: 20 }} />
+                <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
+                  {rfidResult.action === 'checked_out' ? `Goodbye, ${rfidResult.name}!` : `Welcome, ${rfidResult.name}!`}
+                </div>
+                <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }}>
+                  {rfidResult.action === 'checked_out' ? "You're signed out. Have a great day!" : "You weren't signed in — you're signed in now."}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
           onClick={() => navigate(`/kiosk?org=${orgId}`)}
