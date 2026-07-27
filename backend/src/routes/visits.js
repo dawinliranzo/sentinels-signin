@@ -4,7 +4,82 @@ const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { checkVisitCap } = require('../utils/limits');
 const { getFlagsForVisitor } = require('./flags');
-const { getCardForTap } = require('./rfid');
+const { getCardForTap, getStaffCardGlobal } = require('./rfid');
+
+// ─── SHARED STAFF (parent/child organizations) ─────────────────────────────
+// A badge may be scanned at any kiosk in the same "family": the host's own org,
+// its parent, or a sibling — when the host is marked shared_with_children and
+// the location hasn't un-selected that person.
+// Returns { host, crossOrg } or null when the badge isn't valid at this kiosk.
+async function resolveHostForKiosk(orgId, hostId) {
+  const r = await db.query('SELECT * FROM hosts WHERE id = $1 AND is_active = true', [hostId]);
+  const host = r.rows[0];
+  if (!host) return null;
+  if (host.org_id === orgId) return { host, crossOrg: false };
+
+  // Cross-org: needs the sharing flag + family relationship + location consent
+  if (!host.shared_with_children) return null;
+
+  let family = false;
+  try {
+    const o = await db.query(
+      `SELECT (c.id = p.parent_id OR c.parent_id = p.id OR (c.parent_id IS NOT NULL AND c.parent_id = p.parent_id)) AS family
+       FROM organizations c, organizations p
+       WHERE c.id = $1 AND p.id = $2`,
+      [orgId, host.org_id]
+    );
+    family = !!o.rows[0]?.family;
+  } catch (e) {
+    if (e.code === '42703') return null; // parent_id migration not run
+    throw e;
+  }
+  if (!family) return null;
+
+  // Per-location select/unselect (default allowed when no row exists)
+  try {
+    const a = await db.query(
+      'SELECT allowed FROM org_shared_staff WHERE org_id = $1 AND host_id = $2',
+      [orgId, hostId]
+    );
+    if (a.rows.length > 0 && !a.rows[0].allowed) return null;
+  } catch (e) {
+    if (e.code === '42P01') return null; // sharing migration not run
+    throw e;
+  }
+  return { host, crossOrg: true };
+}
+
+// Does visits.device_id exist yet? Caches true; rechecks while false so the
+// migration is picked up without a redeploy.
+let deviceColumnKnown = null;
+async function hasDeviceColumn() {
+  if (deviceColumnKnown) return true;
+  try {
+    await db.query('SELECT device_id FROM visits LIMIT 0');
+    deviceColumnKnown = true;
+    return true;
+  } catch (e) {
+    if (e.code === '42703') return false;
+    throw e;
+  }
+}
+
+// Resolve the kiosk device a check-in happened at (and prove it's online):
+// validates the device belongs to the org and bumps its last_seen_at.
+// Returns null when no/unknown device — visits simply have no location then.
+async function resolveDevice(orgId, deviceId) {
+  if (!deviceId) return null;
+  try {
+    const r = await db.query(
+      'UPDATE devices SET last_seen_at = NOW() WHERE id = $1 AND org_id = $2 AND is_active = true RETURNING id',
+      [deviceId, orgId]
+    );
+    return r.rows[0]?.id || null;
+  } catch (e) {
+    if (e.code === '42P01' || e.code === '42703') return null;
+    throw e;
+  }
+}
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
@@ -82,19 +157,27 @@ router.post('/public/check-out', async (req, res) => {
 // PUBLIC: staff badge scan — toggles an employee's visit in/out
 router.post('/staff-checkin', async (req, res) => {
   try {
-    const { org_id, host_id } = req.body;
+    const { org_id, host_id, device_id } = req.body;
     if (!org_id || !host_id) {
       return res.status(400).json({ error: 'org_id and host_id are required' });
     }
 
-    const hostRes = await db.query(
-      'SELECT * FROM hosts WHERE id = $1 AND org_id = $2 AND is_active = true',
-      [host_id, org_id]
-    );
-    if (hostRes.rows.length === 0) {
+    let host, crossOrg = false;
+    try {
+      const resolved = await resolveHostForKiosk(org_id, host_id);
+      host = resolved?.host;
+      crossOrg = resolved?.crossOrg || false;
+    } catch (e) {
+      if (e.code !== '42703' && e.code !== '42P01') throw e; // pre-migration: same-org only
+      const hostRes = await db.query(
+        'SELECT * FROM hosts WHERE id = $1 AND org_id = $2 AND is_active = true',
+        [host_id, org_id]
+      );
+      host = hostRes.rows[0];
+    }
+    if (!host) {
       return res.status(404).json({ error: 'Badge not recognized for this kiosk' });
     }
-    const host = hostRes.rows[0];
     const staffEmail = host.email || `host-${host.id}@staff.local`;
 
     // Active staff visit for this employee?
@@ -127,10 +210,17 @@ router.post('/staff-checkin', async (req, res) => {
 
     const date = new Date();
     const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const withDevice = await hasDeviceColumn();
+    const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
     const ins = await db.query(
-      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
-      [org_id, null, null, host.first_name, host.last_name, staffEmail, host.phone || null, host.department || 'Staff', 'Employee check-in', badgeNum]
+      withDevice
+        ? `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at, device_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW(), $11) RETURNING *`
+        : `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
+      withDevice
+        ? [org_id, null, null, host.first_name, host.last_name, staffEmail, host.phone || null, host.department || 'Staff', crossOrg ? 'Employee check-in (other location)' : 'Employee check-in', badgeNum, deviceId]
+        : [org_id, null, null, host.first_name, host.last_name, staffEmail, host.phone || null, host.department || 'Staff', crossOrg ? 'Employee check-in (other location)' : 'Employee check-in', badgeNum]
     );
 
     res.json({
@@ -151,7 +241,7 @@ router.post('/staff-checkin', async (req, res) => {
 // The kiosk sends { org_id, code } from the FV-XXXXX QR (scanned as "FV:FV-XXXXX").
 router.post('/fv-checkin', async (req, res) => {
   try {
-    const { org_id, code } = req.body;
+    const { org_id, code, device_id } = req.body;
     if (!org_id || !code) {
       return res.status(400).json({ error: 'Organization ID and code are required' });
     }
@@ -205,10 +295,17 @@ router.post('/fv-checkin', async (req, res) => {
 
     const date = new Date();
     const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const withDevice = await hasDeviceColumn();
+    const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
     const ins = await db.query(
-      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
-      [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum]
+      withDevice
+        ? `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at, device_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW(), $11) RETURNING *`
+        : `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
+      withDevice
+        ? [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum, deviceId]
+        : [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum]
     );
     res.json({ action: 'checked_in', name: fvRow.first_name, code: fvRow.code, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
   } catch (err) {
@@ -222,11 +319,27 @@ router.post('/fv-checkin', async (req, res) => {
 // visitor; the tap toggles them in/out exactly like their QR badges do.
 router.post('/rfid-tap', async (req, res) => {
   try {
-    const { org_id, uid } = req.body;
+    const { org_id, uid, device_id } = req.body;
     if (!org_id || !uid) {
       return res.status(400).json({ error: 'Organization ID and card UID are required' });
     }
-    const resolved = await getCardForTap(org_id, String(uid).trim());
+    let resolved = await getCardForTap(org_id, String(uid).trim());
+    let crossOrgStaff = null;
+    if (!resolved) {
+      // Maybe a staff card from another location in the same family
+      const globalCard = await getStaffCardGlobal(String(uid).trim());
+      if (globalCard) {
+        try {
+          const fam = await resolveHostForKiosk(org_id, globalCard.id);
+          if (fam) {
+            crossOrgStaff = fam.host;
+            resolved = { kind: 'staff', person: crossOrgStaff };
+          }
+        } catch (e) {
+          if (e.code !== '42703' && e.code !== '42P01') throw e;
+        }
+      }
+    }
     if (!resolved) {
       return res.status(404).json({ error: 'Card not recognized. Please use the regular sign-in.' });
     }
@@ -234,6 +347,7 @@ router.post('/rfid-tap', async (req, res) => {
     if (!p.is_active) {
       return res.status(403).json({ error: 'This card has been deactivated. Please see the front desk.' });
     }
+    const crossOrg = !!crossOrgStaff;
 
     if (resolved.kind === 'staff') {
       // ─── Staff toggle (same rules as the STAFF: QR badge) ───
@@ -258,10 +372,17 @@ router.post('/rfid-tap', async (req, res) => {
       }
       const date = new Date();
       const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const withDevice = await hasDeviceColumn();
+      const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
       const ins = await db.query(
-        `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
-        [org_id, null, null, p.first_name, p.last_name, staffEmail, p.phone || null, p.department || 'Staff', 'Employee check-in', badgeNum]
+        withDevice
+          ? `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at, device_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW(), $11) RETURNING *`
+          : `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'staff_qr', 'checked_in', NOW()) RETURNING *`,
+        withDevice
+          ? [org_id, null, null, p.first_name, p.last_name, staffEmail, p.phone || null, p.department || 'Staff', crossOrg ? 'Employee check-in (other location)' : 'Employee check-in', badgeNum, deviceId]
+          : [org_id, null, null, p.first_name, p.last_name, staffEmail, p.phone || null, p.department || 'Staff', crossOrg ? 'Employee check-in (other location)' : 'Employee check-in', badgeNum]
       );
       return res.json({ action: 'checked_in', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, notes: p.notes || null, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
     }
@@ -294,10 +415,17 @@ router.post('/rfid-tap', async (req, res) => {
     }
     const date = new Date();
     const badgeNum = `${String(date.getFullYear()).slice(2)}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const withDevice = await hasDeviceColumn();
+    const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
     const ins = await db.query(
-      `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
-      [org_id, null, null, p.first_name, p.last_name, p.email || null, p.phone || null, p.company || null, 'Frequent visit', badgeNum]
+      withDevice
+        ? `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at, device_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW(), $11) RETURNING *`
+        : `INSERT INTO visits (org_id, visitor_type_id, host_id, visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company, purpose, badge_number, sign_in_method, status, checked_in_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'qr', 'checked_in', NOW()) RETURNING *`,
+      withDevice
+        ? [org_id, null, null, p.first_name, p.last_name, p.email || null, p.phone || null, p.company || null, 'Frequent visit', badgeNum, deviceId]
+        : [org_id, null, null, p.first_name, p.last_name, p.email || null, p.phone || null, p.company || null, 'Frequent visit', badgeNum]
     );
     res.json({ action: 'checked_in', card_type: 'frequent', name: p.first_name, code: p.code, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
   } catch (err) {
@@ -312,16 +440,37 @@ router.get('/active', authenticate, requirePermission('visits'), async (req, res
     const result = await db.query(`
       SELECT v.*, 
         h.first_name as host_first_name, h.last_name as host_last_name, h.email as host_email, h.phone as host_phone,
-        vt.name as visitor_type_name, vt.badge_color
+        vt.name as visitor_type_name, vt.badge_color,
+        d.name as device_name
       FROM visits v
       LEFT JOIN hosts h ON v.host_id = h.id
       LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id
+      LEFT JOIN devices d ON v.device_id = d.id
       WHERE v.org_id = $1 AND v.status = 'checked_in'
       ORDER BY v.checked_in_at DESC
     `, [req.user.org_id]);
 
     res.json(result.rows);
   } catch (err) {
+    if (err.code === '42703') {
+      // device_id migration not run yet — same query without the device join
+      try {
+        const fallback = await db.query(`
+          SELECT v.*, 
+            h.first_name as host_first_name, h.last_name as host_last_name, h.email as host_email, h.phone as host_phone,
+            vt.name as visitor_type_name, vt.badge_color
+          FROM visits v
+          LEFT JOIN hosts h ON v.host_id = h.id
+          LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id
+          WHERE v.org_id = $1 AND v.status = 'checked_in'
+          ORDER BY v.checked_in_at DESC
+        `, [req.user.org_id]);
+        return res.json(fallback.rows);
+      } catch (e2) {
+        console.error(e2);
+        return res.status(500).json({ error: 'Failed to fetch active visits' });
+      }
+    }
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch active visits' });
   }
@@ -330,13 +479,16 @@ router.get('/active', authenticate, requirePermission('visits'), async (req, res
 router.get('/', authenticate, requirePermission('visits'), async (req, res) => {
   try {
     const { date, status, host_id, search, from, to } = req.query;
+    const withDevice = await hasDeviceColumn();
     let query = `
       SELECT v.*, 
         h.first_name as host_first_name, h.last_name as host_last_name,
-        vt.name as visitor_type_name
+        vt.name as visitor_type_name${withDevice ? `,
+        d.name as device_name` : ''}
       FROM visits v
       LEFT JOIN hosts h ON v.host_id = h.id
-      LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id
+      LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id${withDevice ? `
+      LEFT JOIN devices d ON v.device_id = d.id` : ''}
       WHERE v.org_id = $1
     `;
     const params = [req.user.org_id];
@@ -437,7 +589,8 @@ router.post('/check-in', async (req, res) => {
       pre_reg_id,
       photo_data,
       nda_signature,
-      nda_signed_name
+      nda_signed_name,
+      device_id
     } = req.body;
 
     // ─── ORG VALIDATION ───
@@ -574,14 +727,25 @@ router.post('/check-in', async (req, res) => {
     const date = new Date();
     const badgeNum = `${date.getFullYear().toString().substr(2)}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate().toString().padStart(2,'0')}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const result = await db.query(`
+    const withDevice = await hasDeviceColumn();
+    const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
+    const result = await db.query(withDevice ? `
+      INSERT INTO visits (
+        org_id, pre_reg_id, visitor_type_id, host_id,
+        visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company,
+        purpose, badge_number, vehicle_plate, custom_data, sign_in_method, photo_data, status, device_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'checked_in', $16)
+      RETURNING *
+    ` : `
       INSERT INTO visits (
         org_id, pre_reg_id, visitor_type_id, host_id,
         visitor_first_name, visitor_last_name, visitor_email, visitor_phone, visitor_company,
         purpose, badge_number, vehicle_plate, custom_data, sign_in_method, photo_data, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'checked_in')
       RETURNING *
-    `, [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null]);
+    `, withDevice
+      ? [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null, deviceId]
+      : [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null]);
 
     const visit = result.rows[0];
 
