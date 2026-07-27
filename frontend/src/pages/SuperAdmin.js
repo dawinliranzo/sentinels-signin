@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
+import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -7,7 +8,7 @@ import {
   Building2, Users, CreditCard, TrendingUp, DollarSign,
   Shield, Activity, ArrowUpRight, ArrowDownRight, Search,
   Edit, X, Copy, Check, Wrench, Mail, Trash2
-} from 'lucide-react';
+, Tag } from 'lucide-react';
 
 const PLANS = {
   free: { label: 'Free', price: 0, color: '#94A3B8', perks: '5 users · 100 visits/mo · 1 device' },
@@ -149,6 +150,7 @@ export default function SuperAdmin() {
       max_devices: o.max_devices ?? '',
       plan_renews_at: o.plan_renews_at ? o.plan_renews_at.slice(0, 10) : '',
       parent_id: o.parent_id || '',
+      profile_type: (o.settings && o.settings.profile_type) || 'other',
     });
     setPlanEdit(toEdit(org));
     setFeatureOverrides(org.features || {});
@@ -198,6 +200,7 @@ export default function SuperAdmin() {
         // Only include when actually changed — otherwise a pending migration
         // would block unrelated plan saves with MIGRATION_PENDING
         ...((planEdit.parent_id || '') !== (viewOrg.parent_id || '') ? { parent_id: planEdit.parent_id || null } : {}),
+        profile_type: planEdit.profile_type || 'other',
       });
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
@@ -765,6 +768,21 @@ export default function SuperAdmin() {
                   <div style={{ fontSize: 11, color: '#64748B' }}>{label}</div>
                 </div>
               ))}
+            </div>
+
+            {/* Industry / org profile — drives terminology across the customer's app */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag size={16} color="#0D7377" /> Industry / Profile
+            </h3>
+            <div style={{ padding: 14, background: '#F0FDFA', borderRadius: 12, marginBottom: 16, border: '1px solid #99F6E4' }}>
+              <select value={planEdit.profile_type || 'other'} onChange={(e) => setPlanEdit({ ...planEdit, profile_type: e.target.value })}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #5EEAD4', fontSize: 13, background: '#fff' }}>
+                {PROFILE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: '#0F766E', marginTop: 6, lineHeight: 1.5 }}>
+                Menus and labels in this customer's app adapt: a building manages <strong>tenants</strong>, a business <strong>employees</strong>,
+                a hospital <strong>doctors &amp; staff</strong>. Currently: <strong>{getTerms(planEdit.profile_type).hosts}</strong>. Save with "Save Plan &amp; Limits" below.
+              </div>
             </div>
 
             {/* Organization family — link locations under a parent company */}
