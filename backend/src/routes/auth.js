@@ -176,6 +176,17 @@ router.get('/me', authenticate, async (req, res) => {
     const nameOf = (id) => orgNames.rows.find(o => o.id === id)?.name || null;
     // Plan/feature/trial info for the frontend (upgrade banner, nav gating)
     const org = await loadOrg(req);
+    // Org profile (business / building / hospital …) + family relationship
+    const profileType = (org?.settings && org.settings.profile_type) || 'other';
+    let family = { parent_id: null, parent_name: null, has_children: false };
+    try {
+      const f = await db.query(
+        `SELECT o.parent_id, p.name AS parent_name,
+                EXISTS(SELECT 1 FROM organizations c WHERE c.parent_id = o.id) AS has_children
+         FROM organizations o LEFT JOIN organizations p ON p.id = o.parent_id
+         WHERE o.id = $1`, [req.user.org_id]);
+      if (f.rows[0]) family = f.rows[0];
+    } catch (e) { if (e.code !== '42703' && e.code !== '42P01') throw e; }
     res.json({
       ...result.rows[0],
       org_id: req.user.org_id, // reflects the switched org when switching
@@ -191,6 +202,10 @@ router.get('/me', authenticate, async (req, res) => {
       plan_renews_at: org?.plan_renews_at || null,
       features: org ? getOrgFeatures(org) : [],
       limits: org ? getOrgLimits(org) : null,
+      profile_type: profileType,
+      parent_id: family.parent_id || null,
+      parent_name: family.parent_name || null,
+      has_children: family.has_children === true,
     });
   } catch (err) {
     console.error(err);
