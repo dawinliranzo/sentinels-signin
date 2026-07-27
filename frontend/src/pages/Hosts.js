@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload, FileSpreadsheet, Nfc } from 'lucide-react';
+import { Plus, Search, Mail, Phone, Pencil, Trash2, Bell, Printer, Camera, X, Upload, FileSpreadsheet, Nfc, Share2, Building2 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
 import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
+import { getTerms } from '../utils/terms';
 
 export default function Hosts() {
+  const user = useStore((st) => st.user);
+  const terms = getTerms(user?.profile_type);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
@@ -28,7 +31,7 @@ export default function Hosts() {
     api.get('/settings').then(r => setBadgeLabel((r.data?.badge_label || '').trim())).catch(() => {});
   }, []);
 
-  const badgeTitle = (badgeLabel || 'EMPLOYEE BADGE').toUpperCase();
+  const badgeTitle = (badgeLabel || terms.badgeTitle).toUpperCase();
 
   // ─── RFID cards: enroll a physical card/fob so this host can tap in/out ───
   const [rfidHost, setRfidHost] = useState(null); // host whose cards are being managed
@@ -301,6 +304,31 @@ export default function Hosts() {
     api.get('/hosts').then(r => r.data)
   );
 
+  // Organization family: parent/child relationships + inherited staff
+  const { data: family, refetch: refetchFamily } = useQuery('org-family', () =>
+    api.get('/hosts/family').then(r => r.data)
+  );
+
+  const toggleShare = async (h) => {
+    try {
+      await api.put(`/hosts/${h.id}`, { shared_with_children: !h.shared_with_children });
+      refetch();
+      toast(h.shared_with_children ? `${h.first_name} is no longer shared` : `${h.first_name} is now available at your other locations`);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update sharing', 'error');
+    }
+  };
+
+  const toggleSharedAllowed = async (sh) => {
+    try {
+      await api.put(`/hosts/shared/${sh.id}`, { allowed: !sh.allowed });
+      refetchFamily();
+      toast(sh.allowed ? `${sh.first_name} disabled at this location` : `${sh.first_name} enabled at this location`);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update shared staff', 'error');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -343,8 +371,8 @@ export default function Hosts() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <div style={{ flex: '1 1 280px', minWidth: 220 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>Hosts</h1>
-          <p style={{ color: '#64748B', marginTop: 4, maxWidth: 520 }}>Manage the people who receive visitors — employees, tenants, or staff. The badge label is set in Settings.</p>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A' }}>{terms.hostPageTitle}</h1>
+          <p style={{ color: '#64748B', marginTop: 4, maxWidth: 520 }}>{terms.hostPageSub}. The badge label is set in Settings.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           {[
@@ -373,7 +401,7 @@ export default function Hosts() {
               fontWeight: 600, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap'
             }}
           >
-            <Plus size={16} /> Add Host
+            <Plus size={16} /> {terms.addHost}
           </button>
         </div>
       </div>
@@ -397,6 +425,79 @@ export default function Hosts() {
           {printAllHosts.map(h => (
             <QRCodeCanvas key={h.id} id={`bulk-qr-${h.id}`} value={`STAFF:${h.id}`} size={200} level="M" includeMargin />
           ))}
+        </div>
+      )}
+
+      {/* ── Organization family: shared staff across locations ── */}
+      {family && !family.migrationPending && family.role !== 'standalone' && (
+        <div style={{
+          background: '#fff', borderRadius: 20, padding: 20, marginBottom: 20,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Building2 size={18} color="#0D7377" />
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>
+              {family.role === 'child' ? `Part of ${family.parent?.name}` : 'Your locations'}
+            </span>
+          </div>
+          {family.role === 'parent' && (
+            <div>
+              <p style={{ fontSize: 13, color: '#64748B', margin: '4px 0 10px' }}>
+                This organization is the parent of: <strong>{family.children.map(c => c.name).join(', ')}</strong>.
+                Use the share button on any {terms.hostLower} below to make them available at those locations — they'll sign in with the same badge, QR code, or RFID card.
+              </p>
+            </div>
+          )}
+          {family.role === 'child' && (
+            <div>
+              <p style={{ fontSize: 13, color: '#64748B', margin: '4px 0 10px' }}>
+                {terms.hosts} shared by <strong>{family.parent?.name}</strong> can sign in here with their usual badge, QR code, or RFID card. Disable anyone who should not have access at this location.
+              </p>
+              {family.sharedHosts.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }}>No shared {terms.hostsLower} yet — nothing has been shared from {family.parent?.name}.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {family.sharedHosts.map(sh => (
+                    <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${sh.allowed ? '#99F6E4' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
+                      <div>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{sh.first_name} {sh.last_name}</span>
+                        <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>{sh.job_title || sh.department || ''}</span>
+                      </div>
+                      <button onClick={() => toggleSharedAllowed(sh)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          border: 'none', background: sh.allowed ? '#0D7377' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
+                        }}>
+                        {sh.allowed ? 'Allowed here' : 'Blocked here'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {family.role === 'parent' && family.sharedHosts.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Shared by your locations</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {family.sharedHosts.map(sh => (
+                  <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${sh.allowed ? '#99F6E4' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{sh.first_name} {sh.last_name}</span>
+                      <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>from {sh.owner_org_name}</span>
+                    </div>
+                    <button onClick={() => toggleSharedAllowed(sh)}
+                      style={{
+                        padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: 'none', background: sh.allowed ? '#0D7377' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
+                      }}>
+                      {sh.allowed ? 'Allowed here' : 'Blocked here'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -458,6 +559,16 @@ export default function Hosts() {
                 </td>
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {family && !family.migrationPending && family.role !== 'standalone' && (
+                      <button onClick={() => toggleShare(h)}
+                        title={h.shared_with_children ? 'Shared with your other locations — click to unshare' : 'Share with your other locations'}
+                        style={{
+                          padding: 8, borderRadius: 8, border: 'none', cursor: 'pointer',
+                          background: h.shared_with_children ? '#0D7377' : '#F1F5F9'
+                        }}>
+                        <Share2 size={16} color={h.shared_with_children ? '#fff' : '#64748B'} />
+                      </button>
+                    )}
                     <button onClick={() => { setBadgeFields(defaultBadgeFields); setPrintHost(h); }} title="Print ID badge"
                       style={{ padding: 8, borderRadius: 8, background: '#ECFEFF', border: 'none', cursor: 'pointer' }}>
                       <Printer size={16} color="#0D7377" />
