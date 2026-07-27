@@ -22,6 +22,11 @@ router.get('/', authenticate, requirePermission('settings'), async (req, res) =>
 router.patch('/', authenticate, requirePermission('settings'), async (req, res) => {
   try {
     const body = { ...(req.body || {}) };
+    // Org profile drives terminology across the app — whitelist the known types
+    if ('profile_type' in body) {
+      const allowed = ['business', 'building', 'hospital', 'school', 'other'];
+      if (!allowed.includes(body.profile_type)) delete body.profile_type;
+    }
     if ('custom_fields' in body) {
       const org = await loadOrg(req);
       if (org && !hasFeature(org, 'custom_fields')) {
