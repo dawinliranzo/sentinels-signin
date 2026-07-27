@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Visits from './pages/Visits';
+import Watchlist from './pages/Watchlist';
 import Hosts from './pages/Hosts';
 import PreRegistered from './pages/PreRegistered';
 import Settings from './pages/Settings';
@@ -50,6 +51,7 @@ function App() {
       <Route path="/" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="visits" element={<Visits />} />
+        <Route path="watchlist" element={<Watchlist />} />
         <Route path="hosts" element={<Hosts />} />
         <Route path="pre-registered" element={<PreRegistered />} />
         <Route path="settings" element={<Settings />} />
