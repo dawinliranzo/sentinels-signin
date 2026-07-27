@@ -219,16 +219,16 @@ export default function Visits() {
           <option value="checked_in">Checked In</option>
           <option value="checked_out">Checked Out</option>
         </select>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>From</label>
           <input
             type="datetime-local" value={fromFilter} onChange={(e) => setFromFilter(e.target.value)}
-            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13 }}
+            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13, minWidth: 0, maxWidth: '100%' }}
           />
           <label style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>To</label>
           <input
             type="datetime-local" value={toFilter} onChange={(e) => setToFilter(e.target.value)}
-            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13 }}
+            style={{ padding: '11px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13, minWidth: 0, maxWidth: '100%' }}
           />
           {(fromFilter || toFilter) && (
             <button onClick={() => { setFromFilter(''); setToFilter(''); }}
