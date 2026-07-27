@@ -69,6 +69,52 @@ router.get('/', requirePermission('visits'), async (req, res) => {
   }
 });
 
+// GET /api/flags/hits — the record keeper: every visit that matched a flag,
+// with which flag matched, when, and where (kiosk location). Newest first.
+router.get('/hits', requirePermission('visits'), async (req, res) => {
+  const matchOn = `(
+    (f.visitor_email IS NOT NULL AND f.visitor_email <> ''
+       AND LOWER(f.visitor_email) = LOWER(v.visitor_email))
+    OR
+    (f.visitor_first_name IS NOT NULL AND f.visitor_last_name IS NOT NULL
+       AND LOWER(f.visitor_first_name) = LOWER(v.visitor_first_name)
+       AND LOWER(f.visitor_last_name)  = LOWER(v.visitor_last_name))
+  )`;
+  try {
+    try {
+      const r = await db.query(
+        `SELECT v.id AS visit_id, v.visitor_first_name, v.visitor_last_name, v.visitor_email,
+                v.visitor_company, v.badge_number, v.status, v.checked_in_at, v.checked_out_at,
+                d.name AS device_name,
+                f.id AS flag_id, f.severity, f.note AS flag_note, f.is_active AS flag_active
+         FROM visits v
+         JOIN visitor_flags f ON f.org_id = v.org_id AND ${matchOn}
+         LEFT JOIN devices d ON d.id = v.device_id
+         WHERE v.org_id = $1
+         ORDER BY v.checked_in_at DESC
+         LIMIT 200`, [req.user.org_id]);
+      return res.json(r.rows);
+    } catch (e) {
+      if (e.code !== '42703') throw e; // device_id not migrated yet
+      const r = await db.query(
+        `SELECT v.id AS visit_id, v.visitor_first_name, v.visitor_last_name, v.visitor_email,
+                v.visitor_company, v.badge_number, v.status, v.checked_in_at, v.checked_out_at,
+                NULL AS device_name,
+                f.id AS flag_id, f.severity, f.note AS flag_note, f.is_active AS flag_active
+         FROM visits v
+         JOIN visitor_flags f ON f.org_id = v.org_id AND ${matchOn}
+         WHERE v.org_id = $1
+         ORDER BY v.checked_in_at DESC
+         LIMIT 200`, [req.user.org_id]);
+      return res.json(r.rows);
+    }
+  } catch (e) {
+    if (e.code === '42P01' || e.code === '42703') return res.status(500).json({ error: 'Visitor flags need the migrations — run migration-visitor-alerts.txt and migration-visitor-alerts-v2.txt in Render PSQL' });
+    console.error(e);
+    res.status(500).json({ error: 'Failed to load watchlist records' });
+  }
+});
+
 // POST /api/flags — add or update a flag. Identifies the visitor by email
 // OR by first+last name when no email is known.
 router.post('/', requirePermission('visits'), async (req, res) => {
