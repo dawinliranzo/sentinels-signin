@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
+import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
 import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -203,6 +204,12 @@ export default function Settings() {
     try {
       await api.patch('/settings', settings);
       savedSnapshot.current = JSON.stringify(settings); // no longer dirty
+      // Profile type drives terminology across the app — refresh the session copy
+      try {
+        const me = await api.get('/auth/me');
+        const { token, setAuth } = useStore.getState();
+        setAuth(token, me.data, { id: me.data.org_id, name: me.data.org_name });
+      } catch (_) { /* labels update on next login/refresh */ }
       toast('Settings saved');
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to save settings', 'error');
@@ -237,6 +244,20 @@ export default function Settings() {
             <input type="text" value={settings.org_name}
               onChange={(e) => setSettings({...settings, org_name: e.target.value})}
               style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Organization Profile</label>
+            <select value={settings.profile_type || 'other'}
+              onChange={(e) => setSettings({...settings, profile_type: e.target.value})}
+              style={{ ...inputStyle, background: '#fff' }}>
+              {PROFILE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <p style={{ fontSize: 12, color: '#64748B', marginTop: 6 }}>
+              Menus and labels adapt to your organization: a building manages <strong>tenants</strong>, a business <strong>employees</strong>, a hospital <strong>doctors &amp; staff</strong>.
+              {settings.profile_type && settings.profile_type !== 'other' && (
+                <> Currently shown as: <strong>{getTerms(settings.profile_type).hosts}</strong>.</>
+              )}
+            </p>
           </div>
           <div>
             <label style={labelStyle}>Logo</label>
