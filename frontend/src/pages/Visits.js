@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X, Flag, ShieldAlert, Trash2 } from 'lucide-react';
+import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X, Flag, ShieldAlert, Trash2 , MapPin } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -32,6 +32,12 @@ function initialFilters(params) {
 export default function Visits() {
   const [searchParams] = useSearchParams();
   const openWatchlistFromUrl = searchParams.get('watchlist') === '1';
+
+  // The Watchlist sidebar link changes only the query string — if we're already
+  // on /visits, state must react or the panel never opens
+  useEffect(() => {
+    if (searchParams.get('watchlist') === '1') setShowWatchlist(true);
+  }, [searchParams]);
   const [init] = useState(() => initialFilters(searchParams));
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(init.status);
@@ -136,12 +142,12 @@ export default function Visits() {
 
   const exportCSV = () => {
     if (!visits?.length) return;
-    const headers = ['Name', 'Email', 'Company', 'Host', 'Purpose', 'Badge', 'In', 'Out', 'Status'];
+    const headers = ['Name', 'Email', 'Company', 'Host', 'Purpose', 'Badge', 'Location', 'In', 'Out', 'Status'];
     const rows = visits.map(v => [
       `${v.visitor_first_name} ${v.visitor_last_name}`,
       v.visitor_email, v.visitor_company,
       `${v.host_first_name || ''} ${v.host_last_name || ''}`,
-      v.purpose, v.badge_number,
+      v.purpose, v.badge_number, v.device_name || '',
       v.checked_in_at ? new Date(v.checked_in_at).toLocaleString() : '',
       v.checked_out_at ? new Date(v.checked_out_at).toLocaleString() : '',
       v.status
@@ -241,7 +247,7 @@ export default function Visits() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: '#F8FAFC' }}>
-              {['Visitor', 'Host', 'Badge', 'In', 'Out', 'Status', 'Actions'].map(h => (
+              {['Visitor', 'Host', 'Location', 'Badge', 'In', 'Out', 'Status', 'Actions'].map(h => (
                 <th key={h} style={{ padding: '16px 20px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {h}
                 </th>
@@ -250,9 +256,9 @@ export default function Visits() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>Loading...</td></tr>
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>Loading...</td></tr>
             ) : visits?.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>No visits found</td></tr>
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>No visits found</td></tr>
             ) : visits?.map(v => (
               <tr key={v.id} style={{ borderTop: '1px solid #E2E8F0', transition: 'background 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
@@ -287,6 +293,13 @@ export default function Visits() {
                 </td>
                 <td style={{ padding: '16px 20px', fontSize: 14, color: '#334155' }}>
                   {v.host_first_name} {v.host_last_name}
+                </td>
+                <td style={{ padding: '16px 20px', fontSize: 13, color: '#334155', whiteSpace: 'nowrap' }}>
+                  {v.device_name ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#EFF6FF', color: '#1D4ED8', padding: '3px 10px', borderRadius: 6, fontWeight: 600 }}>
+                      <MapPin size={12} /> {v.device_name}
+                    </span>
+                  ) : '—'}
                 </td>
                 <td style={{ padding: '16px 20px' }}>
                   <span style={{
@@ -517,6 +530,7 @@ export default function Visits() {
                 ['Checked in', detailVisit.checked_in_at ? new Date(detailVisit.checked_in_at).toLocaleString() : null],
                 ['Checked out', detailVisit.checked_out_at ? new Date(detailVisit.checked_out_at).toLocaleString() : null],
                 ['Method', detailVisit.sign_in_method],
+                ['Location', detailVisit.device_name],
               ].filter(([, val]) => val).map(([label, val]) => (
                 <div key={label} style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: 10 }}>
                   <div style={{ fontSize: 11, color: '#64748B', marginBottom: 2 }}>{label}</div>
