@@ -70,7 +70,7 @@ export default function KioskWelcome() {
   // ─── RFID: USB readers "type" the card UID + Enter — treat a burst as a tap ───
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       // Notes intentionally NOT passed through — private to the admin dashboard.
       setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
       setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
@@ -113,6 +113,7 @@ export default function KioskWelcome() {
     try {
       const r = await api.post('/visits/check-in', {
         org_id: visitor.org_id,
+        device_id: localStorage.getItem('kiosk_device_id') || undefined,
         pre_reg_id: visitor.id,
         visitor_type_id: visitor.visitor_type_id,
         host_id: visitor.host_id,
@@ -184,7 +185,7 @@ export default function KioskWelcome() {
       // Frequent-visitor badge QR (permanent FV-XXXXX codes — scan toggles in/out)
       if (token.startsWith('FV:')) {
         try {
-          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token });
+          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
           setResult({ name: r.data.name, badge: r.data.badge });
           setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
           setTimeout(() => setMode('welcome'), 8000);
@@ -198,7 +199,7 @@ export default function KioskWelcome() {
       // Staff badge QR (printed employee ID cards)
       if (token.startsWith('STAFF:')) {
         try {
-          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
+          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), device_id: localStorage.getItem('kiosk_device_id') || undefined, });
           // Notes intentionally NOT passed through — staff notes are private to the
           // admin dashboard (Staff Alerts feed), never shown on this public screen.
           setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
