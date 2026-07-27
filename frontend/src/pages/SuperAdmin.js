@@ -195,7 +195,9 @@ export default function SuperAdmin() {
         max_visits_per_month: planEdit.max_visits_per_month === '' ? null : Number(planEdit.max_visits_per_month),
         max_devices: planEdit.max_devices === '' ? null : Number(planEdit.max_devices),
         plan_renews_at: planEdit.plan_renews_at || null,
-        parent_id: planEdit.parent_id || null,
+        // Only include when actually changed — otherwise a pending migration
+        // would block unrelated plan saves with MIGRATION_PENDING
+        ...((planEdit.parent_id || '') !== (viewOrg.parent_id || '') ? { parent_id: planEdit.parent_id || null } : {}),
       });
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
@@ -765,6 +767,28 @@ export default function SuperAdmin() {
               ))}
             </div>
 
+            {/* Organization family — link locations under a parent company */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Building2 size={16} color="#0D7377" /> Organization Family
+            </h3>
+            <div style={{ padding: 14, background: '#F0F9FF', borderRadius: 12, marginBottom: 16, border: '1px solid #BAE6FD' }}>
+              <label style={{ fontSize: 11, color: '#0369A1', display: 'block', marginBottom: 4, fontWeight: 700 }}>Parent Organization</label>
+              <select value={planEdit.parent_id} onChange={(e) => setPlanEdit({ ...planEdit, parent_id: e.target.value })}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #7DD3FC', fontSize: 13, background: '#fff' }}>
+                <option value="">— None (standalone organization) —</option>
+                {orgs.filter(o => o.id !== viewOrg?.id).map(o => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: '#0369A1', marginTop: 6, lineHeight: 1.5 }}>
+                Child locations inherit staff the parent shares — same badge, QR code, and RFID card work at every location.
+                Save with "Save Plan &amp; Limits" below.
+                {viewOrg.parent_name && planEdit.parent_id === (viewOrg.parent_id || '') && (
+                  <><br />Currently a location of <strong>{viewOrg.parent_name}</strong>.</>
+                )}
+              </div>
+            </div>
+
             {/* Plan, limits & billing — editable */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
               <CreditCard size={16} color="#0D7377" /> Plan, Limits & Billing
@@ -815,17 +839,7 @@ export default function SuperAdmin() {
                   <input type="email" value={planEdit.billing_email} onChange={(e) => setPlanEdit({ ...planEdit, billing_email: e.target.value })}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                 </div>
-                <div style={{ flex: '2 1 200px' }}>
-                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Parent Organization</label>
-                  <select value={planEdit.parent_id} onChange={(e) => setPlanEdit({ ...planEdit, parent_id: e.target.value })}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
-                    <option value="">— None (standalone) —</option>
-                    {orgs.filter(o => o.id !== viewOrg?.id).map(o => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
-                  </select>
-                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3 }}>Child orgs inherit staff shared by the parent (same badge/QR/RFID at every location).</div>
-                </div>
+
                 <button onClick={savePlanEdit} disabled={savingPlan}
                   style={{ padding: '10px 18px', borderRadius: 8, background: planDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
                   {savingPlan ? 'Saving…' : planDirty ? 'Save Plan & Limits •' : 'Save Plan & Limits'}
