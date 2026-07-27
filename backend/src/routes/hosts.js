@@ -86,6 +86,17 @@ router.put('/:id', authenticate, requirePermission('hosts'), async (req, res) =>
     } catch (e) { if (e.code !== '42703' && e.code !== '42P01') throw e; }
   }
 
+  // Toggle-only request (the share button sends just { shared_with_children }):
+  // the full-field update below would NULL out the name fields — skip it.
+  const FIELD_KEYS = ['first_name', 'last_name', 'email', 'phone', 'department', 'job_title',
+    'notify_email', 'notify_sms', 'notes', 'photo_data'];
+  if (!FIELD_KEYS.some((k) => Object.prototype.hasOwnProperty.call(req.body, k))) {
+    const fresh = await db.query('SELECT * FROM hosts WHERE id = $1 AND org_id = $2',
+      [req.params.id, req.user.org_id]);
+    if (fresh.rows.length === 0) return res.status(404).json({ error: 'Host not found' });
+    return res.json(fresh.rows[0]);
+  }
+
     // photo_data is only updated when the key is explicitly sent:
     //  - string  -> set/replace photo
     //  - null    -> remove photo
