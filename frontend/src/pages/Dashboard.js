@@ -192,7 +192,7 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button
-            onClick={() => navigate('/visits?watchlist=1')}
+            onClick={() => navigate('/watchlist')}
             title="View flagged visitors (watchlist & blacklist)"
             style={{
               padding: '12px 24px', borderRadius: 12,
@@ -285,7 +285,7 @@ export default function Dashboard() {
                     <UserX size={18} color="#DC2626" />
                     <span style={{ fontSize: 15, fontWeight: 800, color: '#991B1B' }}>Flagged Visitors</span>
                   </div>
-                  <button onClick={() => navigate('/visits?watchlist=1')}
+                  <button onClick={() => navigate('/watchlist')}
                     style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                     View all →
                   </button>
