@@ -82,7 +82,7 @@ export default function AdminLayout() {
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/visits', icon: Users, label: 'Visits', perm: 'visits' },
-    { path: '/visits?watchlist=1', icon: ShieldAlert, label: 'Watchlist', perm: 'visits' },
+    { path: '/watchlist', icon: ShieldAlert, label: 'Watchlist', perm: 'visits' },
     { path: '/hosts', icon: Users, label: getTerms(user?.profile_type).hosts, perm: 'hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered', perm: 'prereg' },
     { path: '/devices', icon: Monitor, label: 'Devices', perm: 'devices' },
@@ -183,7 +183,7 @@ export default function AdminLayout() {
         )}
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '16px 12px' }}>
+        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto', minHeight: 0 }}>
           {visibleNav.map((item) => (
             <NavLink
               key={item.path}
@@ -194,9 +194,7 @@ export default function AdminLayout() {
                 // Settings only on plain /settings (no query)
                 const active = item.path.includes('?')
                   ? (location.pathname + location.search) === item.path
-                  : (item.path === '/settings' ? isActive && !location.search
-                     : item.path === '/visits' ? isActive && location.search !== '?watchlist=1'
-                     : isActive);
+                  : (item.path === '/settings' ? isActive && !location.search : isActive);
                 return {
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '12px 16px', borderRadius: 10,
@@ -287,7 +285,7 @@ export default function AdminLayout() {
       {/* Main Content */}
       <main style={{
         marginLeft: isMobile ? 0 : (sidebarOpen ? 260 : 80),
-        flex: 1, transition: 'margin-left 0.3s ease',
+        flex: 1, minWidth: 0, transition: 'margin-left 0.3s ease',
         padding: isMobile ? '64px 16px 16px' : 32, minHeight: '100vh'
       }}>
         {/* Suspended account banner */}
