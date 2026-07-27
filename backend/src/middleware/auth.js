@@ -34,6 +34,11 @@ async function loadOrg(req) {
 // Blocks WRITES for suspended/cancelled organizations and expired trials.
 // Reads stay open so customers can always view their data.
 async function enforceOrgActive(req) {
+  // Tech-support sessions (super admin switched into a customer org) are exempt:
+  // support must be able to fix things inside expired or suspended customer orgs —
+  // that's the whole point of the support session. The block applies to the
+  // customer's OWN users, not to Sentinels staff.
+  if (req.user && req.user.switched) return null;
   const org = await loadOrg(req);
   if (!org || req.method === 'GET') return null; // open
   if (org.status === 'cancelled') {
