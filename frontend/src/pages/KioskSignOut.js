@@ -27,7 +27,7 @@ export default function KioskSignOut() {
   const rfidTimerRef = useRef(null);
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       setRfidResult({ name: r.data.name, action: r.data.action });
     } catch (err) {
       setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
@@ -63,10 +63,10 @@ export default function KioskSignOut() {
       try {
         if (token.startsWith('FV:')) {
           // Frequent-visitor badge: toggles them out (in on the sign-in screen)
-          await api.post('/visits/fv-checkin', { org_id: orgId, code: token });
+          await api.post('/visits/fv-checkin', { org_id: orgId, code: token, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
         } else if (token.startsWith('STAFF:')) {
           // Employee badge: toggles them out (the endpoint flips in->out)
-          await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6) });
+          await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), device_id: localStorage.getItem('kiosk_device_id') || undefined, });
         } else {
           // Pre-registration QR: find the person's active visit and check it out
           const v = await api.get(`/pre-registered/validate-qr/${token}`);
