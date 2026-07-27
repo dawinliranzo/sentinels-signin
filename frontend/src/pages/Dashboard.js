@@ -82,10 +82,10 @@ export default function Dashboard() {
         const res = await api.get(`/visits?${params.toString()}`);
         downloadCsv(
           `visits-${exportRange}-${stamp}.csv`,
-          ['First Name', 'Last Name', 'Email', 'Phone', 'Company', 'Purpose', 'Badge', 'Method', 'Status', 'Checked In', 'Checked Out'],
+          ['First Name', 'Last Name', 'Email', 'Phone', 'Company', 'Purpose', 'Badge', 'Method', 'Location', 'Status', 'Checked In', 'Checked Out'],
           res.data.map(v => [
             v.visitor_first_name, v.visitor_last_name, v.visitor_email, v.visitor_phone, v.visitor_company,
-            v.purpose, v.badge_number, v.sign_in_method, v.status,
+            v.purpose, v.badge_number, v.sign_in_method, v.device_name || '', v.status,
             v.checked_in_at ? new Date(v.checked_in_at).toLocaleString() : '',
             v.checked_out_at ? new Date(v.checked_out_at).toLocaleString() : ''
           ])
@@ -129,14 +129,14 @@ export default function Dashboard() {
     const orgName = org?.name || 'Organization';
     const now = new Date().toLocaleString();
     const rows = evacList.map(v =>
-      `<tr><td style="padding:8px;border:1px solid #ccc">${v.visitor_first_name} ${v.visitor_last_name}</td><td style="padding:8px;border:1px solid #ccc">${v.visitor_company || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.host_first_name ? v.host_first_name + ' ' + v.host_last_name : ''}</td><td style="padding:8px;border:1px solid #ccc">${v.badge_number || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}</td></tr>`
+      `<tr><td style="padding:8px;border:1px solid #ccc">${v.visitor_first_name} ${v.visitor_last_name}</td><td style="padding:8px;border:1px solid #ccc">${v.visitor_company || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.host_first_name ? v.host_first_name + ' ' + v.host_last_name : ''}</td><td style="padding:8px;border:1px solid #ccc">${v.badge_number || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.device_name || ''}</td><td style="padding:8px;border:1px solid #ccc">${v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}</td></tr>`
     ).join('');
     const win = window.open('', '_blank', 'width=700,height=600');
     win.document.write(`<!doctype html><html><head><title>Evacuation List</title></head><body style="font-family:Arial;padding:24px">
       <h2 style="margin:0">${orgName} — Evacuation List</h2>
       <p style="color:#555">${now} · ${evacList.length} people on site</p>
       <table style="border-collapse:collapse;width:100%"><thead><tr>
-      <th style="text-align:left;padding:8px;border:1px solid #ccc">Visitor</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Company</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Host</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Badge</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Checked In</th>
+      <th style="text-align:left;padding:8px;border:1px solid #ccc">Visitor</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Company</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Host</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Badge</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Location</th><th style="text-align:left;padding:8px;border:1px solid #ccc">Checked In</th>
       </tr></thead><tbody>${rows}</tbody></table>
       <script>window.onload=function(){window.print()}<\/script></body></html>`);
     win.document.close();
@@ -350,6 +350,7 @@ export default function Dashboard() {
                         <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{v.visitor_first_name} {v.visitor_last_name}</div>
                         <div style={{ fontSize: 12, color: '#94A3B8' }}>
                           In since {new Date(v.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {v.device_name && <span style={{ color: '#1D4ED8', fontWeight: 600 }}> · {v.device_name}</span>}
                         </div>
                       </div>
                       <span style={{ fontSize: 12, fontWeight: 800, color: '#B45309', whiteSpace: 'nowrap' }}>{hrs}h on site</span>
