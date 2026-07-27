@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine } from 'lucide-react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
+import { getTerms } from '../utils/terms';
 import SignaturePad from '../components/SignaturePad';
 
 // Shown when the org requires an NDA but hasn't written their own text yet.
@@ -76,6 +77,9 @@ export default function KioskSignIn() {
   const [ndaSig, setNdaSig] = useState(null);
   const [ndaName, setNdaName] = useState('');
 
+  // Organization profile terminology (tenants / employees / doctors…)
+  const [terms, setTerms] = useState(getTerms('other'));
+
   // Custom registration fields (org-configurable, Settings → Registration Form)
   const [customFields, setCustomFields] = useState([]);
   const [customData, setCustomData] = useState({});
@@ -95,6 +99,7 @@ export default function KioskSignIn() {
       setNdaText(r.data.nda_text || '');
       const cf = Array.isArray(r.data.custom_fields) ? r.data.custom_fields : [];
       setCustomFields(cf);
+      setTerms(getTerms(r.data.profile_type));
       // pre-fill checkbox defaults (keep any values the visitor already typed)
       setCustomData(prev => {
         const next = { ...prev };
@@ -149,7 +154,7 @@ export default function KioskSignIn() {
   const rfidTimerRef = useRef(null);
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       setRfidResult({ name: r.data.name, action: r.data.action, badge: r.data.badge, photo: r.data.photo });
     } catch (err) {
       setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
@@ -341,6 +346,7 @@ export default function KioskSignIn() {
     try {
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
+        device_id: localStorage.getItem('kiosk_device_id') || undefined,
         ...formData,
         sign_in_method: 'kiosk',
         photo_data: photo,
@@ -641,7 +647,7 @@ export default function KioskSignIn() {
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
-            <label style={labelStyle}>I'm here to see...</label>
+            <label style={labelStyle}>{terms.visiting}</label>
 
             {/* Searchable Host Dropdown */}
             <div ref={hostDropdownRef} style={{ position: 'relative' }}>
@@ -665,7 +671,7 @@ export default function KioskSignIn() {
                     }
                   }}
                   onFocus={() => setShowHostDropdown(true)}
-                  placeholder="Search for a host..."
+                  placeholder={`Search ${terms.hostsLower}...`}
                   style={{
                     flex: 1, background: 'transparent', border: 'none',
                     color: '#fff', fontSize: 18, outline: 'none'
@@ -694,7 +700,7 @@ export default function KioskSignIn() {
                 }}>
                   {filteredHosts.length === 0 ? (
                     <div style={{ padding: 20, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-                      No hosts found
+                      No {terms.hostsLower} found
                     </div>
                   ) : (
                     filteredHosts.map(host => (
