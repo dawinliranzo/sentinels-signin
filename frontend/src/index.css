@@ -56,4 +56,20 @@ img { max-width: 100%; }
   div[style*="overflow: auto"], div[style*="overflowX"] {
     max-width: 100%;
   }
+
+  /* Page header rows (title left, buttons right) wrap instead of pushing
+     the actions off the right edge of the screen */
+  div[style*="justify-content: space-between"] {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  /* Grids with wide minimum columns collapse to a single column rather
+     than overflowing the viewport */
+  div[style*="minmax(300px"], div[style*="minmax(320px"], div[style*="minmax(280px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* No field may be wider than the screen */
+  input, select, textarea { max-width: 100%; }
 }
