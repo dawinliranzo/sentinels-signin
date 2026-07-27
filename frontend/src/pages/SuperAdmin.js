@@ -148,6 +148,7 @@ export default function SuperAdmin() {
       max_visits_per_month: o.max_visits_per_month ?? '',
       max_devices: o.max_devices ?? '',
       plan_renews_at: o.plan_renews_at ? o.plan_renews_at.slice(0, 10) : '',
+      parent_id: o.parent_id || '',
     });
     setPlanEdit(toEdit(org));
     setFeatureOverrides(org.features || {});
@@ -194,6 +195,7 @@ export default function SuperAdmin() {
         max_visits_per_month: planEdit.max_visits_per_month === '' ? null : Number(planEdit.max_visits_per_month),
         max_devices: planEdit.max_devices === '' ? null : Number(planEdit.max_devices),
         plan_renews_at: planEdit.plan_renews_at || null,
+        parent_id: planEdit.parent_id || null,
       });
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
@@ -565,6 +567,12 @@ export default function SuperAdmin() {
                     <div>
                       <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>{org.name}</div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>{org.billing_email}</div>
+                      {org.parent_name && (
+                        <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: '#1D4ED8' }}>↳ location of {org.parent_name}</div>
+                      )}
+                      {Number(org.children_count) > 0 && (
+                        <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: '#0D7377' }}>{org.children_count} location{Number(org.children_count) === 1 ? '' : 's'}</div>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -806,6 +814,17 @@ export default function SuperAdmin() {
                   <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Billing Email</label>
                   <input type="email" value={planEdit.billing_email} onChange={(e) => setPlanEdit({ ...planEdit, billing_email: e.target.value })}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                </div>
+                <div style={{ flex: '2 1 200px' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Parent Organization</label>
+                  <select value={planEdit.parent_id} onChange={(e) => setPlanEdit({ ...planEdit, parent_id: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                    <option value="">— None (standalone) —</option>
+                    {orgs.filter(o => o.id !== viewOrg?.id).map(o => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3 }}>Child orgs inherit staff shared by the parent (same badge/QR/RFID at every location).</div>
                 </div>
                 <button onClick={savePlanEdit} disabled={savingPlan}
                   style={{ padding: '10px 18px', borderRadius: 8, background: planDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
