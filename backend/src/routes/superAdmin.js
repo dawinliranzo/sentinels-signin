@@ -248,6 +248,18 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
       return res.status(404).json({ error: 'Organization not found' });
     }
 
+    // Industry / org profile: lives in settings.profile_type, merged (not replaced)
+    if (Object.prototype.hasOwnProperty.call(req.body, 'profile_type')) {
+      const allowed = ['business', 'building', 'hospital', 'school', 'other'];
+      if (allowed.includes(req.body.profile_type)) {
+        await db.query(
+          `UPDATE organizations
+           SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('profile_type', $1::text)
+           WHERE id = $2`, [req.body.profile_type, req.params.id]);
+        result = await db.query('SELECT * FROM organizations WHERE id = $1', [req.params.id]);
+      }
+    }
+
     // Family link: parent_id present in body means set (a UUID) or clear (null)
     if (Object.prototype.hasOwnProperty.call(req.body, 'parent_id')) {
       const newParent = req.body.parent_id || null;
