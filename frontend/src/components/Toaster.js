@@ -24,7 +24,7 @@ export default function Toaster() {
   };
 
   return (
-    <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {toasts.map(t => {
         const { bg, Icon } = styles[t.type] || styles.info;
         return (
