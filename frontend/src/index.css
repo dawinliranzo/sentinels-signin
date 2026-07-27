@@ -70,6 +70,20 @@ img { max-width: 100%; }
     grid-template-columns: 1fr !important;
   }
 
-  /* No field may be wider than the screen */
-  input, select, textarea { max-width: 100%; }
+  /* No field may be wider than the screen — and fields must be allowed to
+     shrink below their default intrinsic width inside flex rows */
+  input, select, textarea { max-width: 100%; min-width: 0; }
+
+  /* Long unbreakable strings (kiosk URLs, pairing codes, tokens, emails)
+     wrap instead of running off the right edge */
+  code, pre, kbd, samp {
+    white-space: normal !important;
+    word-break: break-all;
+  }
+  div, span, p, a, strong, label, h1, h2, h3 {
+    overflow-wrap: anywhere;
+  }
+  /* …but NOT table cells: tables scroll sideways instead, and
+     anywhere-breaking turns headers into vertical letter soup */
+  td, th { overflow-wrap: normal; }
 }
