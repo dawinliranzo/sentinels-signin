@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from 'react-query';
 import { useStore } from '../utils/store';
+import { getTerms } from '../utils/terms';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 import Toaster from './Toaster';
@@ -82,7 +83,7 @@ export default function AdminLayout() {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/visits', icon: Users, label: 'Visits', perm: 'visits' },
     { path: '/visits?watchlist=1', icon: ShieldAlert, label: 'Watchlist', perm: 'visits' },
-    { path: '/hosts', icon: Users, label: 'Hosts', perm: 'hosts' },
+    { path: '/hosts', icon: Users, label: getTerms(user?.profile_type).hosts, perm: 'hosts' },
     { path: '/pre-registered', icon: Calendar, label: 'Pre-Registered', perm: 'prereg' },
     { path: '/devices', icon: Monitor, label: 'Devices', perm: 'devices' },
     { path: '/team', icon: UserPlus, label: 'Team', perm: 'team' },
