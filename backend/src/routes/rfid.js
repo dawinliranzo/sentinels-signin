@@ -168,4 +168,24 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-module.exports = { router, getCardForTap };
+// Global variant for cross-location taps: find a STAFF card by UID in any org,
+// so a shared employee's card works at every kiosk in the family (the visits
+// route then checks the family + per-location consent before honoring it).
+async function getStaffCardGlobal(uid) {
+  try {
+    const r = await db.query(
+      `SELECT c.org_id AS card_org_id, h.id, h.org_id, h.first_name, h.last_name, h.email, h.phone,
+              h.department, h.photo_data, h.notes, h.is_active, h.shared_with_children
+       FROM rfid_cards c
+       JOIN hosts h ON h.id = c.host_id
+       WHERE c.uid = $1 AND c.is_active = true AND c.card_type = 'staff'`,
+      [uid]
+    );
+    return r.rows[0] || null;
+  } catch (e) {
+    if (e.code === '42P01' || e.code === '42703') return null;
+    throw e;
+  }
+}
+
+module.exports = { router, getCardForTap, getStaffCardGlobal };
