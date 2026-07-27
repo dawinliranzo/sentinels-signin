@@ -145,13 +145,27 @@ router.post('/organizations/:id/invite', authenticate, requireRole('super_admin'
 // GET all organizations (super admin only)
 router.get('/organizations', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT o.*, 
-        (SELECT COUNT(*) FROM users WHERE org_id = o.id) as users_count,
-        (SELECT COUNT(*) FROM visits WHERE org_id = o.id AND DATE(checked_in_at) >= DATE_TRUNC('month', CURRENT_DATE)) as visits_this_month
-      FROM organizations o
-      ORDER BY o.created_at DESC
-    `);
+    let result;
+    try {
+      result = await db.query(`
+        SELECT o.*, p.name AS parent_name,
+          (SELECT COUNT(*) FROM organizations c WHERE c.parent_id = o.id) as children_count,
+          (SELECT COUNT(*) FROM users WHERE org_id = o.id) as users_count,
+          (SELECT COUNT(*) FROM visits WHERE org_id = o.id AND DATE(checked_in_at) >= DATE_TRUNC('month', CURRENT_DATE)) as visits_this_month
+        FROM organizations o
+        LEFT JOIN organizations p ON p.id = o.parent_id
+        ORDER BY o.created_at DESC
+      `);
+    } catch (e) {
+      if (e.code !== '42703') throw e;
+      result = await db.query(`
+        SELECT o.*, NULL AS parent_name, 0 AS children_count,
+          (SELECT COUNT(*) FROM users WHERE org_id = o.id) as users_count,
+          (SELECT COUNT(*) FROM visits WHERE org_id = o.id AND DATE(checked_in_at) >= DATE_TRUNC('month', CURRENT_DATE)) as visits_this_month
+        FROM organizations o
+        ORDER BY o.created_at DESC
+      `);
+    }
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -232,6 +246,35 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    // Family link: parent_id present in body means set (a UUID) or clear (null)
+    if (Object.prototype.hasOwnProperty.call(req.body, 'parent_id')) {
+      const newParent = req.body.parent_id || null;
+      if (newParent === req.params.id) {
+        return res.status(400).json({ error: 'An organization cannot be its own parent' });
+      }
+      try {
+        if (newParent) {
+          // Cycle guard: walk up the chain from the proposed parent; reject if we hit this org
+          let cursor = newParent;
+          for (let i = 0; i < 10 && cursor; i++) {
+            const r = await db.query('SELECT id, parent_id FROM organizations WHERE id = $1', [cursor]);
+            if (r.rows.length === 0) return res.status(400).json({ error: 'Parent organization not found' });
+            if (r.rows[0].parent_id === req.params.id) {
+              return res.status(400).json({ error: 'That would create a circular parent relationship' });
+            }
+            cursor = r.rows[0].parent_id;
+          }
+        }
+        const u = await db.query('UPDATE organizations SET parent_id = $1 WHERE id = $2 RETURNING *', [newParent, req.params.id]);
+        return res.json(u.rows[0]);
+      } catch (e) {
+        if (e.code === '42703' || e.code === '42P01') {
+          return res.status(503).json({ error: 'Run the locations/family migration first', code: 'MIGRATION_PENDING' });
+        }
+        throw e;
+      }
     }
 
     res.json(result.rows[0]);
