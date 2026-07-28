@@ -31,8 +31,31 @@ async function loadOrg(req) {
   return req.org;
 }
 
-// Blocks WRITES for suspended/cancelled organizations and expired trials.
-// Reads stay open so customers can always view their data.
+// BILLING: soft paywall ("limited mode") instead of a hard lockout.
+// An org enters limited mode when its payment is not clear:
+//   • free plan past its trial date, or
+//   • paid plan past its plan_renews_at date (lapsed renewal)
+// In limited mode the portal keeps working with LIMITED capabilities:
+// reads, kiosk check-ins/outs, evacuations and account security stay OPEN —
+// only management changes (hosts, team, settings, devices, watchlist…) pause
+// until payment clears. Reads are never blocked; data never becomes garbage.
+// Cancelled/suspended orgs stay HARD-blocked (that's an admin action, not billing).
+const LIMITED_OPEN = [
+  /^\/api\/visits(\/|$)/,       // check-out, badge ops — the visitor log must keep moving
+  /^\/api\/evacuations(\/|$)/,  // safety-critical, never pause
+  /^\/api\/kiosk(\/|$)/,        // kiosk operations
+  /^\/api\/auth(\/|$)/,         // password change / MFA — account hygiene stays possible
+  /^\/api\/notifications(\/|$)/,
+];
+const isBillingLimited = (org) => {
+  if (!org || org.status !== 'active') return false;
+  const now = new Date();
+  if (org.plan === 'free') {
+    return !!(org.trial_ends_at && new Date(org.trial_ends_at) < now);
+  }
+  return !!(org.plan_renews_at && new Date(org.plan_renews_at) < now);
+};
+
 async function enforceOrgActive(req) {
   // Tech-support sessions (super admin switched into a customer org) are exempt:
   // support must be able to fix things inside expired or suspended customer orgs —
@@ -40,15 +63,23 @@ async function enforceOrgActive(req) {
   // customer's OWN users, not to Sentinels staff.
   if (req.user && req.user.switched) return null;
   const org = await loadOrg(req);
-  if (!org || req.method === 'GET') return null; // open
+  if (!org || req.method === 'GET') return null; // reads always open
   if (org.status === 'cancelled') {
     return { status: 403, body: { error: 'This organization account is cancelled. Contact Sentinels support.', code: 'ORG_CANCELLED' } };
   }
   if (org.status === 'suspended') {
     return { status: 403, body: { error: 'This organization is suspended. Contact Sentinels support to reactivate.', code: 'ORG_SUSPENDED' } };
   }
-  if (org.plan === 'free' && org.trial_ends_at && new Date(org.trial_ends_at) < new Date()) {
-    return { status: 403, body: { error: 'Your trial has expired. Upgrade to a paid plan to continue making changes.', code: 'TRIAL_EXPIRED' } };
+  if (isBillingLimited(org)) {
+    const path = (req.originalUrl || req.url || '').split('?')[0];
+    if (LIMITED_OPEN.some(re => re.test(path))) return null; // operational paths stay open
+    const trial = org.plan === 'free';
+    return { status: 403, body: {
+      error: trial
+        ? 'Your trial has ended and this portal is in limited mode: the kiosk and visitor log keep working, but management changes are paused. Contact Sentinels to activate a plan and unlock everything.'
+        : 'Your plan renewal is past due and this portal is in limited mode: the kiosk and visitor log keep working, but management changes are paused. Contact Sentinels to clear the payment and unlock everything.',
+      code: 'BILLING_LIMITED'
+    } };
   }
   return null;
 }
@@ -199,4 +230,4 @@ const requirePermission = (perm) => {
   };
 };
 
-module.exports = { authenticate, requireRole, requirePermission, requireFeature, loadOrg, getUserAccess, JWT_SECRET, ALL_PERMISSIONS, RECEPTIONIST_PERMISSIONS };
+module.exports = { authenticate, requireRole, requirePermission, requireFeature, loadOrg, getUserAccess, isBillingLimited, JWT_SECRET, ALL_PERMISSIONS, RECEPTIONIST_PERMISSIONS };
