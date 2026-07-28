@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
 const { authenticate, requirePermission, requireFeature, loadOrg } = require('../middleware/auth');
-const { hasFeature } = require('../utils/plans');
 const { sendSMS } = require('../utils/notifications');
 
 // GET /api/settings — this organization's settings (any logged-in user)
@@ -17,8 +16,9 @@ router.get('/', authenticate, requirePermission('settings'), async (req, res) =>
 });
 
 // PATCH /api/settings — replace this organization's settings (admins only).
-// Custom registration fields are a paid feature — if the plan doesn't include
-// them, silently drop that key instead of failing the whole save.
+// Registration-form customization (custom_fields + hidden_fields) is core
+// product, available to every plan — earlier versions silently dropped
+// custom_fields for free orgs, which looked like "save does nothing".
 router.patch('/', authenticate, requirePermission('settings'), async (req, res) => {
   try {
     const body = { ...(req.body || {}) };
@@ -27,11 +27,13 @@ router.patch('/', authenticate, requirePermission('settings'), async (req, res) 
       const allowed = ['business', 'building', 'hospital', 'school', 'other'];
       if (!allowed.includes(body.profile_type)) delete body.profile_type;
     }
-    if ('custom_fields' in body) {
-      const org = await loadOrg(req);
-      if (org && !hasFeature(org, 'custom_fields')) {
-        delete body.custom_fields;
-      }
+    // Standard kiosk fields the org chose to hide — whitelist the hideable set
+    // (first/last name, host and visitor type are structural and can never hide)
+    if ('hidden_fields' in body) {
+      const HIDEABLE = ['email', 'phone', 'company', 'purpose', 'vehicle_plate', 'photo'];
+      body.hidden_fields = Array.isArray(body.hidden_fields)
+        ? body.hidden_fields.filter(k => HIDEABLE.includes(k))
+        : [];
     }
     const r = await db.query(
       'UPDATE organizations SET settings = $1 WHERE id = $2 RETURNING settings',
