@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../utils/db');
 const { authenticate, requirePermission, requireFeature } = require('../middleware/auth');
+const { flexAuth } = require('../middleware/apiKey');
 
 // Turn Postgres "missing column/table" errors into a precise, actionable message
 // that names the ACTUAL missing column instead of guessing (a past version blamed
@@ -49,7 +50,7 @@ router.get('/public/:orgId', async (req, res) => {
 });
 
 // AUTHENTICATED ENDPOINTS
-router.get('/', authenticate, requirePermission('hosts'), async (req, res) => {
+router.get('/', flexAuth, requirePermission('hosts'), async (req, res) => {
   try {
     const result = await db.query(
       'SELECT * FROM hosts WHERE org_id = $1 AND is_active = true ORDER BY last_name, first_name',
