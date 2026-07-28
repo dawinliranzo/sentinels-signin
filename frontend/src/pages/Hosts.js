@@ -703,12 +703,23 @@ export default function Hosts() {
                     style={{ width: 20, height: 20 }} />
                   <span style={{ fontSize: 14, color: '#334155' }}>Email notifications</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={form.notify_sms}
-                    onChange={(e) => setForm({...form, notify_sms: e.target.checked})}
-                    style={{ width: 20, height: 20 }} />
-                  <span style={{ fontSize: 14, color: '#334155' }}>SMS notifications</span>
-                </label>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.notify_sms}
+                      onChange={(e) => setForm({...form, notify_sms: e.target.checked})}
+                      style={{ width: 20, height: 20 }} />
+                    <span style={{ fontSize: 14, color: '#334155' }}>SMS arrival alerts</span>
+                  </label>
+                  {form.notify_sms && (
+                    <div style={{ marginTop: 8, marginLeft: 28, padding: '10px 12px', background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 8, fontSize: 12, color: '#0F766E', lineHeight: 1.6 }}>
+                      By enabling SMS alerts you confirm that <strong>{form.first_name || 'this person'} {form.last_name || ''}</strong> has
+                      agreed to receive transactional text messages from Sentinels Kiosk at the number above — only to notify them
+                      when a visitor arrives for them. Message frequency varies. Message &amp; data rates may apply.
+                      They can reply <strong>STOP</strong> to opt out at any time, or <strong>HELP</strong> for help.
+                      Consent is recorded with a timestamp when you save.
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <button type="button" onClick={() => setShowModal(false)}
