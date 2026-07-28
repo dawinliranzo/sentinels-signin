@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
 import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -46,6 +46,7 @@ export default function Settings() {
 
   // Test SMS + custom registration fields editor
   const [testPhone, setTestPhone] = useState('');
+  const [teamsBusy, setTeamsBusy] = useState(false);
   const [smsBusy, setSmsBusy] = useState(false);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
 
@@ -381,6 +382,75 @@ export default function Settings() {
                 {smsBusy ? 'Sending…' : 'Send Test SMS'}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Front Desk & Integrations — check-in popup, ID scan, Teams */}
+      <div style={sectionStyle}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ScanFace size={20} color="#0D7377" /> Front Desk &amp; Integrations
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.checkin_popup !== false}
+              onChange={(e) => setSettings({...settings, checkin_popup: e.target.checked})}
+              style={{ width: 22, height: 22 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#0F172A' }}>Check-in Alerts on the Dashboard</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>
+                Pop up each new arrival's photo and details on the dashboard as they check in — for a secretary, guard, or anyone watching the lobby.
+                With multiple kiosks it shows <strong>which kiosk</strong> they used, so the front desk sees who came in at the door.
+              </div>
+            </div>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.id_scan_enabled === true}
+              onChange={(e) => setSettings({...settings, id_scan_enabled: e.target.checked})}
+              style={{ width: 22, height: 22 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#0F172A' }}>ID Scan at the Kiosk (OCR)</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>
+                Adds a "Scan ID" button to kiosk check-in: the visitor photographs their ID and the name, last name and date of birth
+                are filled in automatically (they confirm before submitting). Useful for hospitals and clinics.
+              </div>
+            </div>
+          </label>
+
+          {/* Microsoft Teams notifications */}
+          <div style={{ marginTop: 8, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Webhook size={16} color="#0D7377" /> Microsoft Teams Notifications
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
+              Post every check-in (visitor, staff, frequent visitor) to a Teams channel. In Teams: channel → ⋯ → Connectors →
+              <strong> Incoming Webhook</strong> → create and copy the URL here.
+            </div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Teams Webhook URL</label>
+            <input type="url" placeholder="https://…webhook.office.com/…" value={settings.teams_webhook_url || ''}
+              onChange={(e) => setSettings({...settings, teams_webhook_url: e.target.value.trim()})}
+              style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 13 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 10 }}>
+              <input type="checkbox" checked={settings.teams_notifications !== false}
+                onChange={(e) => setSettings({...settings, teams_notifications: e.target.checked})}
+                style={{ width: 20, height: 20 }} />
+              <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>Send check-in cards to Teams</span>
+            </label>
+            <button type="button" disabled={teamsBusy || !settings.teams_webhook_url}
+              onClick={async () => {
+                setTeamsBusy(true);
+                try {
+                  await api.patch('/settings', settings);
+                  savedSnapshot.current = JSON.stringify(settings);
+                  await api.post('/settings/test-teams');
+                  toast('Test message sent — check your Teams channel');
+                } catch (err) {
+                  toast(err.response?.data?.error || 'Teams test failed', 'error');
+                } finally { setTeamsBusy(false); }
+              }}
+              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.teams_webhook_url) ? 0.5 : 1 }}>
+              {teamsBusy ? 'Sending…' : 'Save & Send Test Message'}
+            </button>
           </div>
         </div>
       </div>
