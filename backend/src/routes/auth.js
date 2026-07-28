@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../utils/db');
-const { authenticate, getUserAccess, loadOrg, JWT_SECRET } = require('../middleware/auth');
+const { authenticate, getUserAccess, loadOrg, isBillingLimited, JWT_SECRET } = require('../middleware/auth');
 const { getOrgFeatures, getOrgLimits } = require('../utils/plans');
 const { authenticator } = require('otplib');
 const QRCode = require('qrcode');
@@ -204,6 +204,9 @@ router.get('/me', authenticate, async (req, res) => {
       org_status: org?.status || 'active',
       trial_ends_at: org?.trial_ends_at || null,
       plan_renews_at: org?.plan_renews_at || null,
+      // True when payment is not clear (expired trial or lapsed renewal) — the
+      // portal shows a "limited mode" banner and management writes are paused
+      billing_limited: isBillingLimited(org),
       features: org ? getOrgFeatures(org) : [],
       limits: org ? getOrgLimits(org) : null,
       profile_type: profileType,
