@@ -14,6 +14,7 @@ const PROFILES = {
     badgeTitle: 'EMPLOYEE BADGE',
     hostPageTitle: 'Employees',
     hostPageSub: 'People visitors can check in to see',
+    kioskFields: [],
   },
   building: {
     label: 'Building / Property',
@@ -26,6 +27,9 @@ const PROFILES = {
     badgeTitle: 'TENANT BADGE',
     hostPageTitle: 'Tenants',
     hostPageSub: 'Tenants visitors can check in to see',
+    kioskFields: [
+      { key: 'unit', label: 'Apartment / Unit #', type: 'text', required: false, placeholder: 'e.g. 4B' },
+    ],
   },
   hospital: {
     label: 'Hospital / Clinic',
@@ -38,6 +42,9 @@ const PROFILES = {
     badgeTitle: 'STAFF BADGE',
     hostPageTitle: 'Doctors & Staff',
     hostPageSub: 'Doctors and staff visitors can check in to see',
+    kioskFields: [
+      { key: 'dob', label: 'Date of Birth', type: 'date', required: false },
+    ],
   },
   school: {
     label: 'School / Campus',
@@ -50,6 +57,9 @@ const PROFILES = {
     badgeTitle: 'STAFF BADGE',
     hostPageTitle: 'Teachers & Staff',
     hostPageSub: 'Teachers and staff visitors can check in to see',
+    kioskFields: [
+      { key: 'student', label: 'Student name or ID', type: 'text', required: false, placeholder: 'Who are you here for?' },
+    ],
   },
   other: {
     label: 'Other / General',
@@ -62,6 +72,7 @@ const PROFILES = {
     badgeTitle: 'HOST BADGE',
     hostPageTitle: 'Hosts',
     hostPageSub: 'People visitors can check in to see',
+    kioskFields: [],
   },
 };
 
