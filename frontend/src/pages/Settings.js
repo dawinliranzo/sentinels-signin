@@ -596,6 +596,8 @@ export default function Settings() {
             { key: 'purpose', label: 'Purpose of visit' },
             { key: 'vehicle_plate', label: 'Vehicle plate' },
             { key: 'photo', label: 'Photo capture' },
+            { key: 'host', label: 'Host / person visiting' },
+            { key: 'visitor_type', label: 'Visitor type' },
           ].map(({ key, label }) => {
             const shown = !(settings.hidden_fields || []).includes(key);
             return (
@@ -612,7 +614,10 @@ export default function Settings() {
           })}
         </div>
         <p style={{ fontSize: 12, color: '#94A3B8', marginTop: -8, marginBottom: 18 }}>
-          First name, last name, host and visitor type are always asked — a visit can't exist without them.
+          Only first and last name are mandatory — every other field is yours to show or hide.
+          Hiding <strong>Host</strong> means visitors aren't asked who they're visiting and no arrival
+          notifications go out. Hiding <strong>Visitor type</strong> removes the type buttons.
+          The kiosk picks changes up within 30 seconds.
         </p>
 
         <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Your own fields</div>
