@@ -287,7 +287,7 @@ export default function Visits() {
                   </div>
                 </td>
                 <td style={{ padding: '16px 20px', fontSize: 14, color: '#334155' }}>
-                  {v.host_first_name} {v.host_last_name}
+                  {v.host_first_name ? `${v.host_first_name} ${v.host_last_name || ''}`.trim() : <span style={{ color: '#94A3B8' }}>—</span>}
                 </td>
                 <td style={{ padding: '16px 20px', fontSize: 13, color: '#334155', whiteSpace: 'nowrap' }}>
                   {v.device_name ? (
