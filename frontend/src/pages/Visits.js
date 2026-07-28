@@ -278,7 +278,7 @@ export default function Visits() {
                       )}
                       <div>
                         <div onClick={() => setDetailVisit(v)} title="View visit details"
-                          style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                          style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
                           {v.visitor_first_name} {v.visitor_last_name}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748B' }}>{v.visitor_company || 'No company'}</div>
