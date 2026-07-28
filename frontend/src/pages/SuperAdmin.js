@@ -8,7 +8,7 @@ import {
   Building2, Users, CreditCard, TrendingUp, DollarSign,
   Shield, Activity, ArrowUpRight, ArrowDownRight, Search,
   Edit, X, Copy, Check, Wrench, Mail, Trash2
-, Tag } from 'lucide-react';
+, Tag , Calendar } from 'lucide-react';
 
 const PLANS = {
   free: { label: 'Free', price: 0, color: '#94A3B8', perks: '5 users · 100 visits/mo · 1 device' },
@@ -151,6 +151,8 @@ export default function SuperAdmin() {
       plan_renews_at: o.plan_renews_at ? o.plan_renews_at.slice(0, 10) : '',
       parent_id: o.parent_id || '',
       profile_type: (o.settings && o.settings.profile_type) || 'other',
+      trial_ends_at: o.trial_ends_at ? o.trial_ends_at.slice(0, 10) : '',
+      status: o.status || 'active',
     });
     setPlanEdit(toEdit(org));
     setFeatureOverrides(org.features || {});
@@ -201,6 +203,8 @@ export default function SuperAdmin() {
         // would block unrelated plan saves with MIGRATION_PENDING
         ...((planEdit.parent_id || '') !== (viewOrg.parent_id || '') ? { parent_id: planEdit.parent_id || null } : {}),
         profile_type: planEdit.profile_type || 'other',
+        ...((planEdit.trial_ends_at || '') !== ((viewOrg.trial_ends_at || '').slice(0, 10)) ? { trial_ends_at: planEdit.trial_ends_at || null } : {}),
+        ...(planEdit.status !== viewOrg.status ? { status: planEdit.status } : {}),
       });
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
@@ -782,6 +786,50 @@ export default function SuperAdmin() {
               <div style={{ fontSize: 11, color: '#0F766E', marginTop: 6, lineHeight: 1.5 }}>
                 Menus and labels in this customer's app adapt: a building manages <strong>tenants</strong>, a business <strong>employees</strong>,
                 a hospital <strong>doctors &amp; staff</strong>. Currently: <strong>{getTerms(planEdit.profile_type).hosts}</strong>. Save with "Save Plan &amp; Limits" below.
+              </div>
+            </div>
+
+            {/* Trial & status — extend, customize, or reactivate an expired org */}
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Calendar size={16} color="#0D7377" /> Trial &amp; Status
+            </h3>
+            <div style={{ padding: 14, background: '#FFFBEB', borderRadius: 12, marginBottom: 16, border: '1px solid #FDE68A' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <div style={{ flex: '1 1 150px' }}>
+                  <label style={{ fontSize: 11, color: '#92400E', display: 'block', marginBottom: 4, fontWeight: 700 }}>Status</label>
+                  <select value={planEdit.status || 'active'} onChange={(e) => setPlanEdit({ ...planEdit, status: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #FDE68A', fontSize: 13, background: '#fff' }}>
+                    {['trial', 'active', 'suspended', 'cancelled'].map(st => <option key={st} value={st}>{st}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: '1 1 170px' }}>
+                  <label style={{ fontSize: 11, color: '#92400E', display: 'block', marginBottom: 4, fontWeight: 700 }}>Trial Ends On</label>
+                  <input type="date" value={planEdit.trial_ends_at || ''} onChange={(e) => setPlanEdit({ ...planEdit, trial_ends_at: e.target.value })}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #FDE68A', fontSize: 13, background: '#fff', minWidth: 0 }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {[7, 14, 30].map(days => (
+                  <button key={days} type="button"
+                    onClick={() => {
+                      const d = new Date(Date.now() + days * 864e5);
+                      setPlanEdit({ ...planEdit, trial_ends_at: d.toISOString().slice(0, 10), status: planEdit.status === 'active' ? 'active' : 'trial' });
+                    }}
+                    style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid #F59E0B', background: '#fff', color: '#B45309' }}>
+                    +{days} days
+                  </button>
+                ))}
+                <button type="button"
+                  onClick={() => {
+                    const d = new Date(Date.now() + 14 * 864e5);
+                    setPlanEdit({ ...planEdit, trial_ends_at: d.toISOString().slice(0, 10), status: 'trial' });
+                  }}
+                  style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: '#D97706', color: '#fff' }}>
+                  Reactivate trial (14d)
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: '#92400E', marginTop: 8, lineHeight: 1.5 }}>
+                Expired orgs can only read data. Pick a date or a quick action, then press "Save Plan &amp; Limits" below — the org unlocks immediately.
               </div>
             </div>
 
