@@ -72,7 +72,7 @@ export default function Visits() {
       if (search) p.set('search', search);
       return api.get(`/visits?${p.toString()}`).then(r => r.data);
     },
-    { keepPreviousData: true }
+    { keepPreviousData: true, refetchInterval: 20000 } // auto-refresh — new check-ins appear on their own
   );
 
   const { data: flags, refetch: refetchFlags } = useQuery(
@@ -531,6 +531,7 @@ export default function Visits() {
                 ['Checked out', detailVisit.checked_out_at ? new Date(detailVisit.checked_out_at).toLocaleString() : null],
                 ['Method', detailVisit.sign_in_method],
                 ['Location', detailVisit.device_name],
+                ['Date of birth', detailVisit.visitor_dob ? new Date(detailVisit.visitor_dob).toLocaleDateString() : null],
               ].filter(([, val]) => val).map(([label, val]) => (
                 <div key={label} style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: 10 }}>
                   <div style={{ fontSize: 11, color: '#64748B', marginBottom: 2 }}>{label}</div>
