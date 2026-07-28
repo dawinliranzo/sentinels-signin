@@ -8,11 +8,14 @@ import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
 import { getTerms } from '../utils/terms';
 
+const defaultForm = { first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false, photo_data: null, notes: '' };
+
 export default function Hosts() {
   const user = useStore((st) => st.user);
   const terms = getTerms(user?.profile_type);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [viewHost, setViewHost] = useState(null); // profile popup (view → edit)
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', department: '', job_title: '', notify_email: true, notify_sms: false });
   const [printHost, setPrintHost] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -521,10 +524,11 @@ export default function Hosts() {
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     {h.photo_data ? (
-                      <img src={h.photo_data} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                      <img src={h.photo_data} alt="" onClick={() => setViewHost(h)}
+                        style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', cursor: 'pointer', border: '2px solid #E2E8F0' }} />
                     ) : (
-                      <div style={{
-                        width: 40, height: 40, borderRadius: '50%',
+                      <div onClick={() => setViewHost(h)} style={{
+                        width: 40, height: 40, borderRadius: '50%', cursor: 'pointer',
                         background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: 14, color: '#fff'
@@ -533,7 +537,10 @@ export default function Hosts() {
                       </div>
                     )}
                     <div>
-                      <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>{h.first_name} {h.last_name}</div>
+                      <div onClick={() => setViewHost(h)} title="View profile"
+                        style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                        {h.first_name} {h.last_name}
+                      </div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>{h.job_title || 'No title'}</div>
                     </div>
                   </div>
@@ -940,6 +947,63 @@ export default function Hosts() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Host profile popup (click a name) — view → edit ── */}
+      {viewHost && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130, padding: 16 }}
+          onClick={() => setViewHost(null)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, maxHeight: '88vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)', position: 'relative' }}
+            onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setViewHost(null)} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F5F9', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer' }}>
+              <X size={16} />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              {viewHost.photo_data ? (
+                <img src={viewHost.photo_data} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0F2F1' }} />
+              ) : (
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
+                  {viewHost.first_name[0]}{viewHost.last_name[0]}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#0F172A' }}>{viewHost.first_name} {viewHost.last_name}</div>
+                <div style={{ fontSize: 13, color: '#64748B' }}>{viewHost.job_title || ''}</div>
+                <span style={{
+                  display: 'inline-block', marginTop: 6, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase',
+                  background: viewHost.is_active !== false ? '#DCFCE7' : '#F1F5F9',
+                  color: viewHost.is_active !== false ? '#166534' : '#64748B'
+                }}>
+                  {viewHost.is_active !== false ? 'Active' : 'Inactive'}
+                </span>
+                {viewHost.shared_with_children && (
+                  <span style={{ display: 'inline-block', marginTop: 6, marginLeft: 6, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: '#EFF6FF', color: '#1D4ED8', textTransform: 'uppercase' }}>
+                    Shared
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {[
+                ['Department', viewHost.department],
+                ['Email', viewHost.email],
+                ['Phone', viewHost.phone],
+                ['Email alerts', viewHost.notify_email !== false ? 'On' : 'Off'],
+                ['SMS alerts', viewHost.notify_sms ? 'On' : 'Off'],
+                ['Notes', viewHost.notes],
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>{label}</span>
+                  <span style={{ fontSize: 13, color: '#0F172A', fontWeight: 600, textAlign: 'right', maxWidth: 260 }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => { const h = viewHost; setViewHost(null); setEditing(h.id); setForm({ ...defaultForm, ...h }); setShowModal(true); }}
+              style={{ marginTop: 18, width: '100%', padding: '13px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Pencil size={15} /> Edit {terms.hostLower}
+            </button>
           </div>
         </div>
       )}
