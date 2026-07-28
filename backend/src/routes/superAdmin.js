@@ -195,6 +195,22 @@ router.get('/stats', authenticate, requireRole('super_admin'), async (req, res) 
   }
 });
 
+// POST /organizations/:id/reactivate-trial — one-click: extend the trial window
+// by N days (default 14). Works on expired orgs; status is left untouched
+// (trial state is plan='free' + trial_ends_at, not the status column).
+router.post('/organizations/:id/reactivate-trial', authenticate, requireRole('super_admin'), async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 14, 1), 90);
+    const ends = new Date(Date.now() + days * 864e5);
+    const r = await db.query('UPDATE organizations SET trial_ends_at = $1 WHERE id = $2 RETURNING id, name, plan, status, trial_ends_at', [ends, req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error('Reactivate trial error:', err);
+    res.status(500).json({ error: 'Failed to reactivate trial' });
+  }
+});
+
 // PATCH organization (update plan, status)
 router.patch('/organizations/:id', authenticate, requireRole('super_admin'), async (req, res) => {
   try {
