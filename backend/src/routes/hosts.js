@@ -65,10 +65,17 @@ router.post('/', authenticate, requirePermission('hosts'), async (req, res) => {
   try {
     const { first_name, last_name, email, phone, department, job_title, photo_data, notes } = req.body;
     const result = await db.query(
-      `INSERT INTO hosts (org_id, first_name, last_name, email, phone, department, job_title, photo_data, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [req.user.org_id, first_name, last_name, email || null, phone || null, department || null, job_title || null, photo_data || null, notes || null]
+      `INSERT INTO hosts (org_id, first_name, last_name, email, phone, department, job_title, photo_data, notes, notify_email, notify_sms)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [req.user.org_id, first_name, last_name, email || null, phone || null, department || null, job_title || null, photo_data || null, notes || null,
+       req.body.notify_email !== false, req.body.notify_sms === true]
     );
+    // Record when SMS consent was given (A2P compliance). Tolerant before migration.
+    if (req.body.notify_sms === true) {
+      try {
+        await db.query('UPDATE hosts SET sms_consent_at = NOW() WHERE id = $1', [result.rows[0].id]);
+      } catch (e) { if (e.code !== '42703') throw e; }
+    }
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (missingColumnError(err, res)) return;
@@ -84,6 +91,14 @@ router.put('/:id', authenticate, requirePermission('hosts'), async (req, res) =>
       await db.query('UPDATE hosts SET shared_with_children = $1 WHERE id = $2 AND org_id = $3',
         [req.body.shared_with_children === true, req.params.id, req.user.org_id]);
     } catch (e) { if (e.code !== '42703' && e.code !== '42P01') throw e; }
+  }
+
+  // Record when SMS consent was given; keep the original timestamp on re-saves.
+  if (req.body.notify_sms === true) {
+    try {
+      await db.query('UPDATE hosts SET sms_consent_at = COALESCE(sms_consent_at, NOW()) WHERE id = $1 AND org_id = $2',
+        [req.params.id, req.user.org_id]);
+    } catch (e) { if (e.code !== '42703') throw e; }
   }
 
   // Toggle-only request (the share button sends just { shared_with_children }):
