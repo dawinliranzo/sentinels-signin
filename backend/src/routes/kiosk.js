@@ -113,6 +113,7 @@ router.get('/config/:orgId', async (req, res) => {
       nda_text: s.nda_text || '',
       logo_data: s.logo_data || '',
       custom_fields: Array.isArray(s.custom_fields) ? s.custom_fields : [],
+      hidden_fields: Array.isArray(s.hidden_fields) ? s.hidden_fields : [],
       profile_type: s.profile_type || 'other',
       id_scan_enabled: s.id_scan_enabled === true,
     });
