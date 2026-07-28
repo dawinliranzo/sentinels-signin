@@ -69,4 +69,36 @@ router.post('/test-sms', authenticate, requirePermission('settings'), requireFea
   }
 });
 
+// POST /api/settings/test-teams — send a test card to the configured Teams webhook
+router.post('/test-teams', async (req, res) => {
+  try {
+    const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const url = (r.rows[0] && r.rows[0].settings && r.rows[0].settings.teams_webhook_url) || req.body.url;
+    if (!url) return res.status(400).json({ error: 'Save a Teams webhook URL first' });
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        '@type': 'MessageCard',
+        '@context': 'http://schema.org/extensions',
+        themeColor: '0D7377',
+        summary: 'Sentinels Kiosk test',
+        sections: [{
+          activityTitle: 'Sentinels Kiosk is connected',
+          facts: [
+            { name: 'Status', value: 'Check-in notifications will appear in this channel' },
+            { name: 'Time', value: new Date().toLocaleString() },
+          ],
+          markdown: true,
+        }],
+      }),
+    });
+    if (!resp.ok) return res.status(502).json({ error: `Teams rejected the message (HTTP ${resp.status}) — check the webhook URL` });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Teams test failed:', e.message);
+    res.status(502).json({ error: 'Could not reach Teams — check the webhook URL' });
+  }
+});
+
 module.exports = router;
