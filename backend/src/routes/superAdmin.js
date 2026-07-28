@@ -248,6 +248,15 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
       return res.status(404).json({ error: 'Organization not found' });
     }
 
+    // Trial control: set a new end date, or reactivate an expired trial.
+    // Frontend sends trial_ends_at (ISO date) and/or status ('trial'|'active'|...)
+    if (Object.prototype.hasOwnProperty.call(req.body, 'trial_ends_at')) {
+      const t = req.body.trial_ends_at ? new Date(req.body.trial_ends_at) : null;
+      if (t && isNaN(t.getTime())) return res.status(400).json({ error: 'Invalid trial_ends_at date' });
+      await db.query('UPDATE organizations SET trial_ends_at = $1 WHERE id = $2', [t, req.params.id]);
+      result = await db.query('SELECT * FROM organizations WHERE id = $1', [req.params.id]);
+    }
+
     // Industry / org profile: lives in settings.profile_type, merged (not replaced)
     if (Object.prototype.hasOwnProperty.call(req.body, 'profile_type')) {
       const allowed = ['business', 'building', 'hospital', 'school', 'other'];
