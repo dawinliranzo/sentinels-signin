@@ -100,6 +100,7 @@ export default function KioskSignIn() {
   };
   const [ocrNotice, setOcrNotice] = useState('');
   const [idScanEnabled, setIdScanEnabled] = useState(false);
+  const [profileAnswers, setProfileAnswers] = useState({}); // industry-specific fields (unit #, student…)
 
   // Per-field validation — the kiosk is public, so garbage in = garbage in the visitor log
   const [fieldErrors, setFieldErrors] = useState({});
@@ -406,26 +407,79 @@ export default function KioskSignIn() {
     if (!f.required) return false;
     const v = customData[f.label];
     return f.type === 'checkbox' ? !v : !v || !String(v).trim();
-  });
+  }) || (terms.kioskFields || []).some(f => f.required && !String(profileAnswers[f.key] || '').trim());
+
+  // Prints the visitor badge in a sandboxed iframe: org, name, host, badge #, photo.
+  // The kiosk browser's default printer is used — enable silent/kiosk-mode printing
+  // (Chrome --kiosk-printing) on unattended kiosks for zero-dialog printing.
+  const printVisitorBadge = (data) => {
+    try {
+      const frame = document.createElement('iframe');
+      frame.style.position = 'fixed';
+      frame.style.right = '0'; frame.style.bottom = '0';
+      frame.style.width = '0'; frame.style.height = '0'; frame.style.border = '0';
+      document.body.appendChild(frame);
+      const v = data.visit || {};
+      const badgeNo = data.badge_number || v.badge_number || '';
+      const hostName = selectedHost ? `${selectedHost.first_name} ${selectedHost.last_name}` : '';
+      const photoImg = photo ? `<img src="${photo}" style="width:110px;height:110px;border-radius:50%;object-fit:cover;border:3px solid #0D7377" />` : '';
+      const doc = frame.contentWindow.document;
+      doc.open();
+      doc.write(`<!doctype html><html><head><title>Visitor Badge ${badgeNo}</title></head>
+        <body style="margin:0;font-family:Arial,sans-serif">
+          <div style="width:340px;border:3px solid #0D7377;border-radius:16px;overflow:hidden;text-align:center">
+            <div style="background:#0D7377;color:#fff;padding:12px;font-size:20px;font-weight:800;letter-spacing:2px">VISITOR</div>
+            <div style="padding:18px 14px">
+              ${photoImg}
+              <div style="font-size:24px;font-weight:800;color:#0F172A;margin-top:10px">${formData.first_name} ${formData.last_name}</div>
+              ${formData.company ? `<div style="font-size:15px;color:#475569;margin-top:2px">${formData.company}</div>` : ''}
+              ${hostName ? `<div style="font-size:15px;color:#0D7377;font-weight:700;margin-top:8px">Visiting: ${hostName}</div>` : ''}
+              <div style="font-size:13px;color:#64748B;margin-top:8px">${new Date().toLocaleString()}</div>
+            </div>
+            <div style="background:#0F172A;color:#14FFEC;padding:10px;font-size:22px;font-weight:800;font-family:monospace;letter-spacing:3px">${badgeNo}</div>
+          </div>
+        </body></html>`);
+      doc.close();
+      frame.contentWindow.focus();
+      setTimeout(() => {
+        try { frame.contentWindow.print(); } catch (e) { /* print dialog cancelled */ }
+        setTimeout(() => frame.remove(), 2000);
+      }, 350);
+    } catch (e) { /* printing is best-effort */ }
+  };
 
   const handleSubmit = async () => {
     if (!validateStep2()) return;
     setLoading(true);
     setErrorMsg('');
     try {
+      // Industry fields: DOB maps to the visit's visitor_dob column; the rest
+      // ride along as labelled custom_data entries
+      const pf = terms.kioskFields || [];
+      const dobField = pf.find(f => f.key === 'dob');
+      const dobValue = visitorDob || (dobField && profileAnswers.dob) || undefined;
+      const profileCustom = {};
+      pf.forEach(f => {
+        if (f.key !== 'dob' && String(profileAnswers[f.key] || '').trim()) profileCustom[f.label] = profileAnswers[f.key];
+      });
+      const mergedCustom = { ...profileCustom, ...customData };
+
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         device_id: localStorage.getItem('kiosk_device_id') || undefined,
-        ...(visitorDob ? { visitor_dob: visitorDob } : {}),
+        ...(dobValue ? { visitor_dob: dobValue } : {}),
         ...formData,
         sign_in_method: 'kiosk',
         photo_data: photo,
-        custom_data: Object.keys(customData).length > 0 ? customData : undefined,
+        custom_data: Object.keys(mergedCustom).length > 0 ? mergedCustom : undefined,
         nda_signature: ndaRequired ? ndaSig : undefined,
         nda_signed_name: ndaRequired ? ndaName : undefined
       });
       setVisitResult(res.data);
       setDone(true);
+      // Auto-print the visitor badge when this kiosk has a printer linked
+      // (Settings → Front Desk & Integrations + Devices → Link printer)
+      if (res.data.print_badge) printVisitorBadge(res.data);
     } catch (err) {
       if (err.response?.data?.nda_required && ndaRequired) {
         setStep(3); // server still demands the NDA — send them to the signing step
@@ -889,6 +943,20 @@ export default function KioskSignIn() {
             />
             {errText('purpose')}
           </div>
+
+          {/* Industry-specific fields (Organization Profile — e.g. unit # for buildings, DOB for hospitals) */}
+          {(terms.kioskFields || []).map((f) => (
+            <div key={f.key}>
+              <label style={labelStyle}>{f.label}{f.required ? ' *' : ''}</label>
+              <input
+                type={f.type === 'date' ? 'date' : 'text'}
+                value={profileAnswers[f.key] || ''}
+                onChange={(e) => setProfileAnswers({ ...profileAnswers, [f.key]: e.target.value })}
+                style={inputStyle}
+                placeholder={f.placeholder || f.label}
+              />
+            </div>
+          ))}
 
           {/* Org-defined custom registration fields */}
           {customFields.map((f) => (
