@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
 import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -48,6 +48,11 @@ export default function Settings() {
   const [testPhone, setTestPhone] = useState('');
   const [teamsBusy, setTeamsBusy] = useState(false);
   const [smsBusy, setSmsBusy] = useState(false);
+  const [hookBusy, setHookBusy] = useState(false);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [newKeyLabel, setNewKeyLabel] = useState('');
+  const [freshKey, setFreshKey] = useState(null); // full plaintext key — shown once
+  const [keyBusy, setKeyBusy] = useState(false);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
 
   // Daily backups (plan feature)
@@ -196,6 +201,7 @@ export default function Settings() {
         savedSnapshot.current = JSON.stringify(merged);
       }
     }).catch(() => {});
+    api.get('/api-keys').then(r => setApiKeys(r.data || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -416,6 +422,19 @@ export default function Settings() {
               </div>
             </div>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.auto_print_badge === true}
+              onChange={(e) => setSettings({...settings, auto_print_badge: e.target.checked})}
+              style={{ width: 22, height: 22 }} />
+            <div>
+              <div style={{ fontWeight: 600, color: '#0F172A' }}>Auto-print Visitor Badges</div>
+              <div style={{ fontSize: 13, color: '#64748B' }}>
+                Print the visitor's badge automatically right after kiosk check-in. Works with any printer the kiosk computer knows —
+                link it per kiosk in <strong>Devices → Link printer</strong>. For unattended kiosks, run the browser with silent printing
+                (Chrome's <code>--kiosk-printing</code>) so no print dialog appears.
+              </div>
+            </div>
+          </label>
 
           {/* Microsoft Teams notifications */}
           <div style={{ marginTop: 8, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
@@ -451,6 +470,112 @@ export default function Settings() {
               style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.teams_webhook_url) ? 0.5 : 1 }}>
               {teamsBusy ? 'Sending…' : 'Save & Send Test Message'}
             </button>
+          </div>
+
+          {/* Generic outbound webhook (Zapier / Make / custom endpoints) */}
+          <div style={{ marginTop: 4, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Webhook size={16} color="#0D7377" /> Webhook (Zapier, Make, or your own endpoint)
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
+              Every check-in also POSTs a JSON payload (<code>visitor.checkin</code>, <code>staff.checkin</code>, <code>frequent_visitor.checkin</code>)
+              to this URL. In Zapier: create a Zap → <strong>Webhooks → Catch Hook</strong> → paste the URL here.
+            </div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>Webhook URL</label>
+            <input type="url" placeholder="https://hooks.zapier.com/hooks/catch/…" value={settings.generic_webhook_url || ''}
+              onChange={(e) => setSettings({...settings, generic_webhook_url: e.target.value.trim()})}
+              style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 13 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 10 }}>
+              <input type="checkbox" checked={settings.generic_webhook_enabled !== false}
+                onChange={(e) => setSettings({...settings, generic_webhook_enabled: e.target.checked})}
+                style={{ width: 20, height: 20 }} />
+              <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>Send check-in events to this webhook</span>
+            </label>
+            <button type="button" disabled={hookBusy || !settings.generic_webhook_url}
+              onClick={async () => {
+                setHookBusy(true);
+                try {
+                  await api.patch('/settings', settings);
+                  savedSnapshot.current = JSON.stringify(settings);
+                  await api.post('/settings/test-webhook');
+                  toast('Test event sent — check your endpoint / Zap history');
+                } catch (err) {
+                  toast(err.response?.data?.error || 'Webhook test failed', 'error');
+                } finally { setHookBusy(false); }
+              }}
+              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.generic_webhook_url) ? 0.5 : 1 }}>
+              {hookBusy ? 'Sending…' : 'Save & Send Test Event'}
+            </button>
+          </div>
+
+          {/* API keys for custom integrations */}
+          <div style={{ marginTop: 4, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <KeyRound size={16} color="#0D7377" /> API Keys
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
+              Read your data from any system. Endpoints: <code>GET /api/visits</code>, <code>GET /api/visits/active</code>, <code>GET /api/hosts</code>
+              with header <code>x-api-key: sk_live_…</code>. Example:
+              <div style={{ fontFamily: 'monospace', fontSize: 11, background: '#0F172A', color: '#A7F3D0', padding: '8px 10px', borderRadius: 8, marginTop: 6, overflowX: 'auto' }}>
+                curl -H "x-api-key: sk_live_…" https://api.sentinelskiosk.com/api/visits/active
+              </div>
+            </div>
+            {freshKey && (
+              <div style={{ marginBottom: 10, padding: 12, borderRadius: 10, background: '#FFFBEB', border: '2px solid #F59E0B' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>Copy this key now — it will never be shown again:</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <code style={{ flex: 1, fontSize: 12, background: '#fff', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all' }}>{freshKey}</code>
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText(freshKey); toast('Key copied'); }}
+                    style={{ padding: '8px 14px', borderRadius: 8, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input type="text" placeholder="Label, e.g. Access-control sync" value={newKeyLabel}
+                onChange={(e) => setNewKeyLabel(e.target.value)}
+                style={{ ...inputStyle, flex: '1 1 200px' }} />
+              <button type="button" disabled={keyBusy}
+                onClick={async () => {
+                  setKeyBusy(true);
+                  try {
+                    const r = await api.post('/api-keys', { label: newKeyLabel || 'Integration key' });
+                    setFreshKey(r.data.key);
+                    setNewKeyLabel('');
+                    setApiKeys(k => [r.data, ...k]);
+                  } catch (err) {
+                    toast(err.response?.data?.error || 'Failed to create key', 'error');
+                  } finally { setKeyBusy(false); }
+                }}
+                style={{ padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                {keyBusy ? 'Creating…' : 'Generate Key'}
+              </button>
+            </div>
+            {apiKeys.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {apiKeys.map(k => (
+                  <div key={k.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: '#0F172A' }}>{k.label}</span>
+                      <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8, fontFamily: 'monospace' }}>{k.key_prefix}…</span>
+                      <div style={{ fontSize: 11, color: '#94A3B8' }}>
+                        {k.is_active ? 'Active' : 'Revoked'}{k.last_used_at ? ` · last used ${new Date(k.last_used_at).toLocaleDateString()}` : ' · never used'}
+                      </div>
+                    </div>
+                    {k.is_active && (
+                      <button type="button" onClick={async () => {
+                        try { await api.delete(`/api-keys/${k.id}`); setApiKeys(keys => keys.map(x => x.id === k.id ? { ...x, is_active: false } : x)); toast('Key revoked'); }
+                        catch (err) { toast(err.response?.data?.error || 'Failed to revoke', 'error'); }
+                      }}
+                        style={{ padding: '6px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
