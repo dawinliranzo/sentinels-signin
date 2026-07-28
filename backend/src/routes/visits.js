@@ -81,6 +81,57 @@ async function resolveDevice(orgId, deviceId) {
   }
 }
 const { sendEmail, sendSMS } = require('../utils/notifications');
+const { flexAuth } = require('../middleware/apiKey');
+
+// Posts the raw check-in event as JSON to the org's generic webhook URL
+// (Settings → Integrations → Webhook). Works with Zapier/Make catch hooks and
+// any custom endpoint. Fire-and-forget, same as Teams.
+async function notifyGenericWebhook(orgId, event, data) {
+  try {
+    const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [orgId]);
+    const st = (r.rows[0] && r.rows[0].settings) || {};
+    const url = st.generic_webhook_url;
+    if (!url || st.generic_webhook_enabled === false) return;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
+    });
+  } catch (e) {
+    console.log('Generic webhook failed:', e.message);
+  }
+}
+
+// Builds the right payload for the URL flavor: classic Office connectors take
+// MessageCard; newer Teams "Workflow" (Power Automate) URLs take Adaptive Cards.
+function buildTeamsPayload(url, title, facts) {
+  const clean = facts.filter(([, v]) => v);
+  if (/logic\.azure\.com|powerautomate|workflow/i.test(url)) {
+    return {
+      type: 'message',
+      attachments: [{
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        contentUrl: null,
+        content: {
+          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+          type: 'AdaptiveCard',
+          version: '1.4',
+          body: [
+            { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Medium', wrap: true, color: 'Accent' },
+            { type: 'FactSet', facts: clean.map(([t, v]) => ({ title: t, value: String(v) })) },
+          ],
+        },
+      }],
+    };
+  }
+  return {
+    '@type': 'MessageCard',
+    '@context': 'http://schema.org/extensions',
+    themeColor: '0D7377',
+    summary: title,
+    sections: [{ activityTitle: title, facts: clean.map(([name, value]) => ({ name, value: String(value) })), markdown: true }],
+  };
+}
 
 // Posts a check-in card to the org's Microsoft Teams channel when a webhook URL
 // is configured (Settings → Integrations). Fire-and-forget by design: a Teams
@@ -91,18 +142,11 @@ async function notifyTeams(orgId, title, facts) {
     const st = (r.rows[0] && r.rows[0].settings) || {};
     const url = st.teams_webhook_url;
     if (!url || st.teams_notifications === false) return;
-    const body = {
-      '@type': 'MessageCard',
-      '@context': 'http://schema.org/extensions',
-      themeColor: '0D7377',
-      summary: title,
-      sections: [{
-        activityTitle: title,
-        facts: facts.filter(([, v]) => v).map(([name, value]) => ({ name, value: String(value) })),
-        markdown: true,
-      }],
-    };
-    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildTeamsPayload(url, title, facts)),
+    });
   } catch (e) {
     console.log('Teams notification failed:', e.message);
   }
@@ -257,6 +301,15 @@ router.post('/staff-checkin', async (req, res) => {
       badge: ins.rows[0].badge_number,
       visit: ins.rows[0]
     });
+    notifyGenericWebhook(org_id, 'staff.checkin', {
+      visit_id: ins.rows[0].id,
+      host_id: host.id,
+      first_name: host.first_name, last_name: host.last_name,
+      department: host.department,
+      cross_org: crossOrg,
+      badge_number: ins.rows[0].badge_number,
+      checked_in_at: ins.rows[0].checked_in_at,
+    });
     notifyTeams(org_id, `${crossOrg ? 'Staff (other location)' : 'Staff'} checked in: ${host.first_name} ${host.last_name}`, [
       ['Department', host.department],
       ['Badge', ins.rows[0].badge_number],
@@ -338,6 +391,13 @@ router.post('/fv-checkin', async (req, res) => {
         ? [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum, deviceId]
         : [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum]
     );
+    notifyGenericWebhook(org_id, 'frequent_visitor.checkin', {
+      visit_id: ins.rows[0].id,
+      first_name: fvRow.first_name, last_name: fvRow.last_name,
+      company: fvRow.company,
+      badge_number: ins.rows[0].badge_number,
+      checked_in_at: ins.rows[0].checked_in_at,
+    });
     notifyTeams(org_id, `Frequent visitor: ${fvRow.first_name} ${fvRow.last_name}`, [
       ['Company', fvRow.company],
       ['Badge', ins.rows[0].badge_number],
@@ -471,7 +531,7 @@ router.post('/rfid-tap', async (req, res) => {
 });
 
 // AUTHENTICATED ENDPOINTS
-router.get('/active', authenticate, requirePermission('visits'), async (req, res) => {
+router.get('/active', flexAuth, requirePermission('visits'), async (req, res) => {
   try {
     const result = await db.query(`
       SELECT v.*, 
@@ -512,7 +572,7 @@ router.get('/active', authenticate, requirePermission('visits'), async (req, res
   }
 });
 
-router.get('/', authenticate, requirePermission('visits'), async (req, res) => {
+router.get('/', flexAuth, requirePermission('visits'), async (req, res) => {
   try {
     const { date, status, host_id, search, from, to } = req.query;
     const withDevice = await hasDeviceColumn();
@@ -766,12 +826,22 @@ router.post('/check-in', async (req, res) => {
     const withDevice = await hasDeviceColumn();
     const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
     let deviceName = null;
+    let devicePrint = false;
     if (deviceId) {
       try {
-        const dn = await db.query('SELECT name FROM devices WHERE id = $1', [deviceId]);
-        deviceName = dn.rows[0] ? dn.rows[0].name : null;
-      } catch (e) { if (e.code !== '42P01' && e.code !== '42703') throw e; }
+        const dn = await db.query('SELECT name, print_badge FROM devices WHERE id = $1', [deviceId]);
+        if (dn.rows[0]) { deviceName = dn.rows[0].name; devicePrint = dn.rows[0].print_badge === true; }
+      } catch (e) {
+        if (e.code === '42703') {
+          try {
+            const dn = await db.query('SELECT name FROM devices WHERE id = $1', [deviceId]);
+            deviceName = dn.rows[0] ? dn.rows[0].name : null;
+          } catch (e2) { if (e2.code !== '42P01' && e2.code !== '42703') throw e2; }
+        } else if (e.code !== '42P01') throw e;
+      }
     }
+    // Auto-print: org master switch (Settings) AND this kiosk has a printer linked (Devices)
+    const shouldPrintBadge = (orgSettings?.auto_print_badge === true) && devicePrint === true;
     const result = await db.query(withDevice ? `
       INSERT INTO visits (
         org_id, pre_reg_id, visitor_type_id, host_id,
@@ -886,6 +956,18 @@ router.post('/check-in', async (req, res) => {
         if (hr.rows[0]) teamHostName = `${hr.rows[0].first_name} ${hr.rows[0].last_name}`;
       } catch (e) { /* optional detail — never block check-in */ }
     }
+    notifyGenericWebhook(org_id, 'visitor.checkin', {
+      visit_id: visit.id,
+      first_name, last_name,
+      email: email || null,
+      phone: phone || null,
+      company: company || null,
+      purpose: purpose || null,
+      host: teamHostName,
+      badge_number: badgeNum,
+      kiosk: deviceName,
+      checked_in_at: visit.checked_in_at,
+    });
     notifyTeams(org_id, `New visitor: ${first_name} ${last_name}`, [
       ['Host', teamHostName],
       ['Company', company],
@@ -899,6 +981,7 @@ router.post('/check-in', async (req, res) => {
       success: true,
       visit: visit,
       badge_number: badgeNum,
+      print_badge: shouldPrintBadge,
       // Only the severity reaches the kiosk so staff get a heads-up —
       // the note text itself stays private to the admin dashboard.
       flag_severity: visitorFlags[0]?.severity || null,
