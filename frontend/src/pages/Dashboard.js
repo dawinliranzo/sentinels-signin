@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, LogIn, Clock, Building2, TrendingUp,
   ArrowUpRight, Bell, Calendar, Download, X,
-  ShieldAlert, UserX, Timer
+  ShieldAlert, UserX, Timer, MapPin, ScanFace
 } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -142,19 +142,40 @@ export default function Dashboard() {
     win.document.close();
   };
 
+  // Poll every 15s so new check-ins appear without a manual refresh
   const { data: stats, isLoading } = useQuery('dashboard-stats', () =>
-    api.get('/dashboard/stats').then(r => r.data)
+    api.get('/dashboard/stats').then(r => r.data),
+    { refetchInterval: 15000, retry: false }
   );
 
-  // Security feeds — refresh every minute so the guard desk stays current
+  // Security feeds — refresh every 15s so the guard desk stays current
   const { data: alerts } = useQuery('alerts-today', () =>
     api.get('/visits/alerts/today').then(r => r.data),
-    { refetchInterval: 60000, retry: false }
+    { refetchInterval: 30000, retry: false }
   );
   const { data: activeVisits } = useQuery('active-visits', () =>
     api.get('/visits/active').then(r => r.data),
-    { refetchInterval: 60000, retry: false }
+    { refetchInterval: 15000, retry: false }
   );
+
+  // Visit detail modal (click any visitor name/photo anywhere on the dashboard)
+  const [detailVisit, setDetailVisit] = useState(null);
+
+  // New check-in popup for the front desk / guard (Settings → Kiosk → check-in alerts)
+  const [popupVisit, setPopupVisit] = useState(null);
+  const knownIds = useRef(null); // null until the first poll seeds it
+  useEffect(() => {
+    if (!activeVisits) return;
+    const ids = new Set(activeVisits.map(v => v.id));
+    if (knownIds.current === null) {
+      knownIds.current = ids; // first load = baseline, no popup for existing visits
+      return;
+    }
+    if (stats?.checkin_popup === false) { knownIds.current = ids; return; }
+    const fresh = activeVisits.filter(v => !knownIds.current.has(v.id));
+    knownIds.current = ids;
+    if (fresh.length > 0) setPopupVisit(fresh[0]);
+  }, [activeVisits, stats]);
   // Watchlist size for the quick-action badge (silently empty if unavailable)
   const { data: watchlistFlags } = useQuery('watchlist-count', () =>
     api.get('/flags').then(r => r.data),
@@ -347,7 +368,10 @@ export default function Dashboard() {
                   return (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{v.visitor_first_name} {v.visitor_last_name}</div>
+                        <div onClick={() => setDetailVisit(v)} title="View visit details"
+                          style={{ fontWeight: 700, fontSize: 14, color: '#0D7377', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                          {v.visitor_first_name} {v.visitor_last_name}
+                        </div>
                         <div style={{ fontSize: 12, color: '#94A3B8' }}>
                           In since {new Date(v.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {v.device_name && <span style={{ color: '#1D4ED8', fontWeight: 600 }}> · {v.device_name}</span>}
@@ -386,20 +410,28 @@ export default function Dashboard() {
                 display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px',
                 borderRadius: 12, background: '#F8FAFC'
               }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 700, fontSize: 14, color: '#fff'
-                }}>
-                  {visit.visitor_first_name?.[0]}{visit.visitor_last_name?.[0]}
-                </div>
+                {visit.photo_data ? (
+                  <img src={visit.photo_data} alt="" onClick={() => setDetailVisit(visit)}
+                    style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, cursor: 'pointer', border: '2px solid #E2E8F0' }} />
+                ) : (
+                  <div onClick={() => setDetailVisit(visit)} style={{
+                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                    background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, fontSize: 14, color: '#fff'
+                  }}>
+                    {visit.visitor_first_name?.[0]}{visit.visitor_last_name?.[0]}
+                  </div>
+                )}
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>
+                  <div onClick={() => setDetailVisit(visit)}
+                    title="View visit details"
+                    style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
                     {visit.visitor_first_name} {visit.visitor_last_name}
                   </div>
                   <div style={{ fontSize: 13, color: '#64748B' }}>
                     {visit.host_first_name ? `Visiting ${visit.host_first_name} ${visit.host_last_name}` : 'No host assigned'}
+                    {visit.device_name && <span style={{ color: '#1D4ED8', fontWeight: 600 }}> · {visit.device_name}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -563,11 +595,24 @@ export default function Dashboard() {
               <p style={{ color: '#64748B', textAlign: 'center', padding: 32 }}>No one is currently checked in.</p>
             ) : (
               evacList.map(v => (
-                <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: '#0F172A' }}>{v.visitor_first_name} {v.visitor_last_name}</div>
-                    <div style={{ fontSize: 12, color: '#64748B' }}>
-                      {v.visitor_company || 'No company'}{v.host_first_name ? ` · with ${v.host_first_name} ${v.host_last_name}` : ''}
+                <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '12px 16px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {v.photo_data ? (
+                      <img src={v.photo_data} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid #E2E8F0' }} />
+                    ) : (
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0 }}>
+                        {v.visitor_first_name?.[0]}{v.visitor_last_name?.[0]}
+                      </div>
+                    )}
+                    <div>
+                      <div onClick={() => setDetailVisit(v)} title="View visit details"
+                        style={{ fontWeight: 600, fontSize: 15, color: '#0D7377', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                        {v.visitor_first_name} {v.visitor_last_name}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748B' }}>
+                        {v.visitor_company || 'No company'}{v.host_first_name ? ` · with ${v.host_first_name} ${v.host_last_name}` : ''}
+                        {v.device_name ? ` · ${v.device_name}` : ''}
+                      </div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', fontSize: 12, color: '#64748B' }}>
@@ -586,6 +631,100 @@ export default function Dashboard() {
                 Print List
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Visit detail modal (click any visitor name on the dashboard) ── */}
+      {detailVisit && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130, padding: 16 }}
+          onClick={() => setDetailVisit(null)}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 420, maxHeight: '88vh', overflow: 'auto', boxShadow: '0 25px 80px rgba(0,0,0,0.3)', position: 'relative' }}
+            onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setDetailVisit(null)} style={{ position: 'absolute', top: 16, right: 16, background: '#F1F5F9', border: 'none', borderRadius: 8, padding: 8, cursor: 'pointer' }}>
+              <X size={16} />
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+              {detailVisit.photo_data ? (
+                <img src={detailVisit.photo_data} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0F2F1' }} />
+              ) : (
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
+                  {detailVisit.visitor_first_name?.[0]}{detailVisit.visitor_last_name?.[0]}
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#0F172A' }}>{detailVisit.visitor_first_name} {detailVisit.visitor_last_name}</div>
+                <div style={{ fontSize: 13, color: '#64748B' }}>{detailVisit.visitor_company || ''}</div>
+                <span style={{
+                  display: 'inline-block', marginTop: 6, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase',
+                  background: detailVisit.status === 'checked_in' ? '#DCFCE7' : '#F1F5F9',
+                  color: detailVisit.status === 'checked_in' ? '#166534' : '#64748B'
+                }}>
+                  {detailVisit.status === 'checked_in' ? 'On site' : 'Checked out'}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {[
+                ['Visiting', detailVisit.host_first_name ? `${detailVisit.host_first_name} ${detailVisit.host_last_name}` : null],
+                ['Email', detailVisit.visitor_email],
+                ['Phone', detailVisit.visitor_phone],
+                ['Purpose', detailVisit.purpose],
+                ['Badge', detailVisit.badge_number],
+                ['Method', detailVisit.sign_in_method],
+                ['Kiosk / location', detailVisit.device_name],
+                ['Date of birth', detailVisit.visitor_dob ? new Date(detailVisit.visitor_dob).toLocaleDateString() : null],
+                ['Vehicle', detailVisit.vehicle_plate],
+                ['Checked in', detailVisit.checked_in_at ? new Date(detailVisit.checked_in_at).toLocaleString() : null],
+                ['Checked out', detailVisit.checked_out_at ? new Date(detailVisit.checked_out_at).toLocaleString() : null],
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid #F1F5F9' }}>
+                  <span style={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>{label}</span>
+                  <span style={{ fontSize: 13, color: '#0F172A', fontWeight: 600, textAlign: 'right' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── New check-in popup for the front desk / guard ── */}
+      {popupVisit && (
+        <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 24, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 25px 80px rgba(0,0,0,0.4)', textAlign: 'center' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#F0FDFA', color: '#0D7377', fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16 }}>
+              <ScanFace size={14} /> Just checked in
+            </div>
+            {popupVisit.photo_data ? (
+              <img src={popupVisit.photo_data} alt="" style={{ width: 120, height: 120, borderRadius: '50%', objectFit: 'cover', border: '4px solid #E0F2F1', margin: '0 auto 14px', display: 'block' }} />
+            ) : (
+              <div style={{ width: 120, height: 120, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 40, color: '#fff', margin: '0 auto 14px' }}>
+                {popupVisit.visitor_first_name?.[0]}{popupVisit.visitor_last_name?.[0]}
+              </div>
+            )}
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0F172A' }}>{popupVisit.visitor_first_name} {popupVisit.visitor_last_name}</div>
+            {popupVisit.visitor_company && <div style={{ fontSize: 14, color: '#64748B', marginTop: 2 }}>{popupVisit.visitor_company}</div>}
+            <div style={{ marginTop: 16, textAlign: 'left', background: '#F8FAFC', borderRadius: 14, padding: '14px 16px' }}>
+              {[
+                ['Visiting', popupVisit.host_first_name ? `${popupVisit.host_first_name} ${popupVisit.host_last_name}` : null],
+                ['Purpose', popupVisit.purpose],
+                ['Badge', popupVisit.badge_number],
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 14 }}>
+                  <span style={{ color: '#64748B', fontWeight: 600 }}>{label}</span>
+                  <span style={{ color: '#0F172A', fontWeight: 700 }}>{value}</span>
+                </div>
+              ))}
+              {popupVisit.device_name && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, padding: '8px 12px', background: '#EFF6FF', borderRadius: 10, color: '#1D4ED8', fontWeight: 700, fontSize: 14 }}>
+                  <MapPin size={15} /> Signed in at: {popupVisit.device_name}
+                </div>
+              )}
+            </div>
+            <button onClick={() => setPopupVisit(null)}
+              style={{ marginTop: 18, width: '100%', padding: '14px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
+              Got it
+            </button>
           </div>
         </div>
       )}
