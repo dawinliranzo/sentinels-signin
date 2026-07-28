@@ -538,7 +538,7 @@ export default function Hosts() {
                     )}
                     <div>
                       <div onClick={() => setViewHost(h)} title="View profile"
-                        style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                        style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
                         {h.first_name} {h.last_name}
                       </div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>{h.job_title || 'No title'}</div>
