@@ -82,6 +82,32 @@ async function resolveDevice(orgId, deviceId) {
 }
 const { sendEmail, sendSMS } = require('../utils/notifications');
 
+// Posts a check-in card to the org's Microsoft Teams channel when a webhook URL
+// is configured (Settings → Integrations). Fire-and-forget by design: a Teams
+// outage must never delay or break a kiosk check-in.
+async function notifyTeams(orgId, title, facts) {
+  try {
+    const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [orgId]);
+    const st = (r.rows[0] && r.rows[0].settings) || {};
+    const url = st.teams_webhook_url;
+    if (!url || st.teams_notifications === false) return;
+    const body = {
+      '@type': 'MessageCard',
+      '@context': 'http://schema.org/extensions',
+      themeColor: '0D7377',
+      summary: title,
+      sections: [{
+        activityTitle: title,
+        facts: facts.filter(([, v]) => v).map(([name, value]) => ({ name, value: String(value) })),
+        markdown: true,
+      }],
+    };
+    await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (e) {
+    console.log('Teams notification failed:', e.message);
+  }
+}
+
 // Fallback NDA text when the org has turned on NDA signing but hasn't written
 // their own document yet. The kiosk shows the same fallback.
 const DEFAULT_NDA_TEXT = `VISITOR NON-DISCLOSURE AGREEMENT
@@ -231,6 +257,11 @@ router.post('/staff-checkin', async (req, res) => {
       badge: ins.rows[0].badge_number,
       visit: ins.rows[0]
     });
+    notifyTeams(org_id, `${crossOrg ? 'Staff (other location)' : 'Staff'} checked in: ${host.first_name} ${host.last_name}`, [
+      ['Department', host.department],
+      ['Badge', ins.rows[0].badge_number],
+      ['Time', new Date().toLocaleString()],
+    ]).catch(() => {});
   } catch (err) {
     console.error('Staff check-in error:', err);
     res.status(500).json({ error: 'Staff check-in failed', details: err.message });
@@ -307,6 +338,11 @@ router.post('/fv-checkin', async (req, res) => {
         ? [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum, deviceId]
         : [org_id, null, null, fvRow.first_name, fvRow.last_name, fvRow.email || null, fvRow.phone || null, fvRow.company || null, 'Frequent visit', badgeNum]
     );
+    notifyTeams(org_id, `Frequent visitor: ${fvRow.first_name} ${fvRow.last_name}`, [
+      ['Company', fvRow.company],
+      ['Badge', ins.rows[0].badge_number],
+      ['Time', new Date().toLocaleString()],
+    ]).catch(() => {});
     res.json({ action: 'checked_in', name: fvRow.first_name, code: fvRow.code, badge: ins.rows[0].badge_number, visit: ins.rows[0] });
   } catch (err) {
     console.error('FV check-in error:', err);
@@ -729,6 +765,13 @@ router.post('/check-in', async (req, res) => {
 
     const withDevice = await hasDeviceColumn();
     const deviceId = withDevice ? await resolveDevice(org_id, device_id) : null;
+    let deviceName = null;
+    if (deviceId) {
+      try {
+        const dn = await db.query('SELECT name FROM devices WHERE id = $1', [deviceId]);
+        deviceName = dn.rows[0] ? dn.rows[0].name : null;
+      } catch (e) { if (e.code !== '42P01' && e.code !== '42703') throw e; }
+    }
     const result = await db.query(withDevice ? `
       INSERT INTO visits (
         org_id, pre_reg_id, visitor_type_id, host_id,
@@ -823,6 +866,34 @@ router.post('/check-in', async (req, res) => {
         console.log('Host notification failed:', notifyErr.message);
       }
     }
+
+    // Date of birth from an ID scan (hospitals etc.) — stored when the column exists
+    if (req.body.visitor_dob) {
+      const dob = new Date(req.body.visitor_dob);
+      if (!isNaN(dob.getTime())) {
+        try {
+          await db.query('UPDATE visits SET visitor_dob = $1 WHERE id = $2', [dob.toISOString().slice(0, 10), visit.id]);
+          visit.visitor_dob = dob.toISOString().slice(0, 10);
+        } catch (e) { if (e.code !== '42703') throw e; }
+      }
+    }
+
+    // Teams card (no await on purpose beyond the helper's own safety)
+    let teamHostName = null;
+    if (host_id) {
+      try {
+        const hr = await db.query('SELECT first_name, last_name FROM hosts WHERE id = $1', [host_id]);
+        if (hr.rows[0]) teamHostName = `${hr.rows[0].first_name} ${hr.rows[0].last_name}`;
+      } catch (e) { /* optional detail — never block check-in */ }
+    }
+    notifyTeams(org_id, `New visitor: ${first_name} ${last_name}`, [
+      ['Host', teamHostName],
+      ['Company', company],
+      ['Purpose', purpose],
+      ['Badge', badgeNum],
+      ['Kiosk', deviceName || null],
+      ['Time', new Date().toLocaleString()],
+    ]).catch(() => {});
 
     res.status(201).json({
       success: true,
