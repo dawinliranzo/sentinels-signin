@@ -152,6 +152,9 @@ export default function KioskSignIn() {
   // Custom registration fields (org-configurable, Settings → Registration Form)
   const [customFields, setCustomFields] = useState([]);
   const [customData, setCustomData] = useState({});
+  // Standard fields the org hid (Settings → Registration Form) — name/host/type never hide
+  const [hiddenFields, setHiddenFields] = useState([]);
+  const fieldShown = (key) => !hiddenFields.includes(key);
 
   // Photo capture (org-configurable)
   const [photoRequired, setPhotoRequired] = useState(false);
@@ -168,6 +171,7 @@ export default function KioskSignIn() {
       setNdaText(r.data.nda_text || '');
       const cf = Array.isArray(r.data.custom_fields) ? r.data.custom_fields : [];
       setCustomFields(cf);
+      setHiddenFields(Array.isArray(r.data.hidden_fields) ? r.data.hidden_fields : []);
       setTerms(getTerms(r.data.profile_type));
       setIdScanEnabled(!!r.data.id_scan_enabled);
       // pre-fill checkbox defaults (keep any values the visitor already typed)
@@ -422,16 +426,16 @@ export default function KioskSignIn() {
       const v = data.visit || {};
       const badgeNo = data.badge_number || v.badge_number || '';
       const hostName = selectedHost ? `${selectedHost.first_name} ${selectedHost.last_name}` : '';
-      const photoImg = photo ? `<img src="${photo}" style="width:110px;height:110px;border-radius:50%;object-fit:cover;border:3px solid #0D7377" />` : '';
+      const photoImg = photo ? `<img src="${photo}" style="width:180px;height:180px;border-radius:50%;object-fit:cover;border:4px solid #0D7377" />` : '';
       const doc = frame.contentWindow.document;
       doc.open();
       doc.write(`<!doctype html><html><head><title>Visitor Badge ${badgeNo}</title></head>
         <body style="margin:0;font-family:Arial,sans-serif">
-          <div style="width:340px;border:3px solid #0D7377;border-radius:16px;overflow:hidden;text-align:center">
+          <div style="width:360px;border:3px solid #0D7377;border-radius:16px;overflow:hidden;text-align:center">
             <div style="background:#0D7377;color:#fff;padding:12px;font-size:20px;font-weight:800;letter-spacing:2px">VISITOR</div>
             <div style="padding:18px 14px">
               ${photoImg}
-              <div style="font-size:24px;font-weight:800;color:#0F172A;margin-top:10px">${formData.first_name} ${formData.last_name}</div>
+              <div style="font-size:26px;font-weight:800;color:#0F172A;margin-top:12px">${formData.first_name} ${formData.last_name}</div>
               ${formData.company ? `<div style="font-size:15px;color:#475569;margin-top:2px">${formData.company}</div>` : ''}
               ${hostName ? `<div style="font-size:15px;color:#0D7377;font-weight:700;margin-top:8px">Visiting: ${hostName}</div>` : ''}
               <div style="font-size:13px;color:#64748B;margin-top:8px">${new Date().toLocaleString()}</div>
@@ -749,36 +753,42 @@ export default function KioskSignIn() {
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}><Mail size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Email</label>
-            <input
-              type="email" value={formData.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              style={{ ...inputStyle, ...errBorder('email') }} placeholder="john@company.com"
-            />
-            {errText('email')}
-          </div>
+          {fieldShown('email') && (
+            <div>
+              <label style={labelStyle}><Mail size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Email</label>
+              <input
+                type="email" value={formData.email}
+                onChange={(e) => updateField('email', e.target.value)}
+                style={{ ...inputStyle, ...errBorder('email') }} placeholder="john@company.com"
+              />
+              {errText('email')}
+            </div>
+          )}
 
-          <div>
-            <label style={labelStyle}><Phone size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Phone</label>
-            <input
-              type="tel" value={formData.phone}
-              onChange={(e) => updateField('phone', e.target.value)}
-              style={{ ...inputStyle, ...errBorder('phone') }} placeholder="(555) 123-4567"
-            />
-            {errText('phone')}
-          </div>
+          {fieldShown('phone') && (
+            <div>
+              <label style={labelStyle}><Phone size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Phone</label>
+              <input
+                type="tel" value={formData.phone}
+                onChange={(e) => updateField('phone', e.target.value)}
+                style={{ ...inputStyle, ...errBorder('phone') }} placeholder="(555) 123-4567"
+              />
+              {errText('phone')}
+            </div>
+          )}
 
-          <div>
-            <label style={labelStyle}><Building size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Company</label>
-            <input
-              type="text" value={formData.company}
-              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-              style={inputStyle} placeholder="Acme Inc."
-            />
-          </div>
+          {fieldShown('company') && (
+            <div>
+              <label style={labelStyle}><Building size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Company</label>
+              <input
+                type="text" value={formData.company}
+                onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                style={inputStyle} placeholder="Acme Inc."
+              />
+            </div>
+          )}
 
-          {photoRequired && (
+          {photoRequired && fieldShown('photo') && (
             <div>
               <label style={labelStyle}><Camera size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Photo</label>
               {photo ? (
@@ -933,16 +943,18 @@ export default function KioskSignIn() {
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}><FileText size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Purpose of Visit</label>
-            <textarea
-              value={formData.purpose}
-              onChange={(e) => updateField('purpose', e.target.value)}
-              style={{ ...inputStyle, minHeight: 100, resize: 'none', ...errBorder('purpose') }}
-              placeholder="Meeting, interview, delivery, etc."
-            />
-            {errText('purpose')}
-          </div>
+          {fieldShown('purpose') && (
+            <div>
+              <label style={labelStyle}><FileText size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Purpose of Visit</label>
+              <textarea
+                value={formData.purpose}
+                onChange={(e) => updateField('purpose', e.target.value)}
+                style={{ ...inputStyle, minHeight: 100, resize: 'none', ...errBorder('purpose') }}
+                placeholder="Meeting, interview, delivery, etc."
+              />
+              {errText('purpose')}
+            </div>
+          )}
 
           {/* Industry-specific fields (Organization Profile — e.g. unit # for buildings, DOB for hospitals) */}
           {(terms.kioskFields || []).map((f) => (
@@ -995,15 +1007,17 @@ export default function KioskSignIn() {
             </div>
           ))}
 
-          <div>
-            <label style={labelStyle}><Car size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Vehicle Plate (optional)</label>
-            <input
-              type="text" value={formData.vehicle_plate}
-              onChange={(e) => updateField('vehicle_plate', e.target.value)}
-              style={{ ...inputStyle, ...errBorder('vehicle_plate') }} placeholder="ABC-1234"
-            />
-            {errText('vehicle_plate')}
-          </div>
+          {fieldShown('vehicle_plate') && (
+            <div>
+              <label style={labelStyle}><Car size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />Vehicle Plate (optional)</label>
+              <input
+                type="text" value={formData.vehicle_plate}
+                onChange={(e) => updateField('vehicle_plate', e.target.value)}
+                style={{ ...inputStyle, ...errBorder('vehicle_plate') }} placeholder="ABC-1234"
+              />
+              {errText('vehicle_plate')}
+            </div>
+          )}
 
           {errorMsg && (
             <div style={{
