@@ -28,9 +28,10 @@ router.patch('/', authenticate, requirePermission('settings'), async (req, res) 
       if (!allowed.includes(body.profile_type)) delete body.profile_type;
     }
     // Standard kiosk fields the org chose to hide — whitelist the hideable set
-    // (first/last name, host and visitor type are structural and can never hide)
+    // (only first/last name are truly structural; host and visitor type can be
+    // hidden — the check-in API already treats both as optional/NULL-able)
     if ('hidden_fields' in body) {
-      const HIDEABLE = ['email', 'phone', 'company', 'purpose', 'vehicle_plate', 'photo'];
+      const HIDEABLE = ['email', 'phone', 'company', 'purpose', 'vehicle_plate', 'photo', 'host', 'visitor_type'];
       body.hidden_fields = Array.isArray(body.hidden_fields)
         ? body.hidden_fields.filter(k => HIDEABLE.includes(k))
         : [];
