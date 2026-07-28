@@ -31,15 +31,31 @@ router.get('/stats', authenticate, async (req, res) => {
       [orgId]
     );
 
-    // Recent visits (last 10)
-    const recentResult = await db.query(
-      `SELECT v.*, h.first_name as host_first_name, h.last_name as host_last_name
-       FROM visits v
-       LEFT JOIN hosts h ON v.host_id = h.id
-       WHERE v.org_id = $1
-       ORDER BY v.checked_in_at DESC LIMIT 10`,
-      [orgId]
-    );
+    // Recent visits (last 10) — device name tells you WHICH kiosk they used
+    let recentResult;
+    try {
+      recentResult = await db.query(
+        `SELECT v.*, h.first_name as host_first_name, h.last_name as host_last_name,
+                d.name as device_name
+         FROM visits v
+         LEFT JOIN hosts h ON v.host_id = h.id
+         LEFT JOIN devices d ON v.device_id = d.id
+         WHERE v.org_id = $1
+         ORDER BY v.checked_in_at DESC LIMIT 10`,
+        [orgId]
+      );
+    } catch (e) {
+      if (e.code !== '42703') throw e;
+      recentResult = await db.query(
+        `SELECT v.*, h.first_name as host_first_name, h.last_name as host_last_name,
+                NULL as device_name
+         FROM visits v
+         LEFT JOIN hosts h ON v.host_id = h.id
+         WHERE v.org_id = $1
+         ORDER BY v.checked_in_at DESC LIMIT 10`,
+        [orgId]
+      );
+    }
 
     // Hourly breakdown for today
     const hourlyResult = await db.query(
@@ -52,11 +68,14 @@ router.get('/stats', authenticate, async (req, res) => {
     // Overstay threshold (hours) from org settings — the dashboard warns about
     // visitors who have been on site longer than this
     let overstayHours = 8;
+    let checkinPopup = true;
     try {
       const orgRes = await db.query('SELECT settings FROM organizations WHERE id = $1', [orgId]);
-      const v = parseFloat(orgRes.rows[0]?.settings?.overstay_hours);
+      const st = orgRes.rows[0]?.settings || {};
+      const v = parseFloat(st.overstay_hours);
       if (!isNaN(v) && v > 0) overstayHours = v;
-    } catch (e) { /* keep default */ }
+      checkinPopup = st.checkin_popup !== false; // on unless the admin turns it off
+    } catch (e) { /* keep defaults */ }
 
     res.json({
       active_visitors: parseInt(activeResult.rows[0].count),
@@ -65,7 +84,8 @@ router.get('/stats', authenticate, async (req, res) => {
       active_hosts: parseInt(activeHostsResult.rows[0].count),
       recent_visits: recentResult.rows,
       hourly_breakdown: hourlyResult.rows,
-      overstay_hours: overstayHours
+      overstay_hours: overstayHours,
+      checkin_popup: checkinPopup
     });
   } catch (err) {
     console.error(err);
