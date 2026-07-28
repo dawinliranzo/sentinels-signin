@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace } from 'lucide-react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
 import { getTerms } from '../utils/terms';
@@ -32,6 +32,74 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // ID scan (OCR) — admin enables it in Settings → Front Desk & Integrations
+  const [showScan, setShowScan] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [visitorDob, setVisitorDob] = useState(null);
+  const openScan = async () => {
+    setShowScan(true);
+    setScanError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (e) {
+      setScanError('Camera not available — you can upload a photo of the ID instead.');
+    }
+  };
+  const closeScan = () => {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    setShowScan(false);
+  };
+  const runScan = async (dataUrl) => {
+    setScanBusy(true);
+    setScanError('');
+    try {
+      const r = await api.post('/kiosk/scan-id', { org_id: orgId, image: dataUrl });
+      const d = r.data || {};
+      let filled = [];
+      setFormData(prev => ({
+        ...prev,
+        first_name: d.first_name || prev.first_name,
+        last_name: d.last_name || prev.last_name,
+      }));
+      if (d.first_name) filled.push('first name');
+      if (d.last_name) filled.push('last name');
+      if (d.dob) { setVisitorDob(d.dob); filled.push('date of birth'); }
+      closeScan();
+      if (filled.length > 0) {
+        setScanError('');
+        setOcrNotice(`From the ID: ${filled.join(', ')} — please check it's correct.`);
+      } else {
+        setOcrNotice('Could not read the ID clearly — please type the details.');
+      }
+    } catch (e) {
+      setScanError(e.response?.data?.error || 'Could not scan the ID — try again or type the details.');
+    } finally {
+      setScanBusy(false);
+    }
+  };
+  const captureScan = () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) { setScanError('Camera not ready yet — one moment…'); return; }
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    runScan(c.toDataURL('image/jpeg', 0.85));
+  };
+  const uploadScan = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => runScan(reader.result);
+    reader.readAsDataURL(f);
+  };
+  const [ocrNotice, setOcrNotice] = useState('');
+  const [idScanEnabled, setIdScanEnabled] = useState(false);
 
   // Per-field validation — the kiosk is public, so garbage in = garbage in the visitor log
   const [fieldErrors, setFieldErrors] = useState({});
@@ -100,6 +168,7 @@ export default function KioskSignIn() {
       const cf = Array.isArray(r.data.custom_fields) ? r.data.custom_fields : [];
       setCustomFields(cf);
       setTerms(getTerms(r.data.profile_type));
+      setIdScanEnabled(!!r.data.id_scan_enabled);
       // pre-fill checkbox defaults (keep any values the visitor already typed)
       setCustomData(prev => {
         const next = { ...prev };
@@ -347,6 +416,7 @@ export default function KioskSignIn() {
       const res = await api.post('/visits/check-in', {
         org_id: orgId,
         device_id: localStorage.getItem('kiosk_device_id') || undefined,
+        ...(visitorDob ? { visitor_dob: visitorDob } : {}),
         ...formData,
         sign_in_method: 'kiosk',
         photo_data: photo,
@@ -488,6 +558,49 @@ export default function KioskSignIn() {
     <div style={{ width: '100%', maxWidth: 600, zIndex: 1 }}>
       {idleBanner}
       {rfidOverlay}
+
+      {/* ID scan modal — camera or upload, OCR fills the form */}
+      {showScan && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(2,6,23,0.92)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{ background: '#0F172A', borderRadius: 24, padding: 24, width: '100%', maxWidth: 560, border: '1px solid rgba(20,255,236,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ color: '#fff', fontSize: 20, fontWeight: 800 }}>Scan your ID</div>
+              <button onClick={closeScan} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, padding: 10, cursor: 'pointer' }}>
+                <X size={18} color="#fff" />
+              </button>
+            </div>
+            <div style={{ fontSize: 14, color: '#94A3B8', marginBottom: 14 }}>
+              Hold the ID flat inside the frame, good lighting, no glare. We only read your name and date of birth — the photo is not stored.
+            </div>
+            <div style={{ borderRadius: 16, overflow: 'hidden', background: '#000', marginBottom: 14, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', display: 'block' }} />
+            </div>
+            {scanError && (
+              <div style={{ color: '#FCA5A5', fontSize: 14, marginBottom: 12, textAlign: 'center' }}>{scanError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={captureScan} disabled={scanBusy}
+                style={{
+                  flex: '1 1 200px', padding: '16px', borderRadius: 14, border: 'none',
+                  background: scanBusy ? '#475569' : 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                  color: '#fff', fontSize: 16, fontWeight: 800, cursor: scanBusy ? 'wait' : 'pointer'
+                }}>
+                {scanBusy ? 'Reading ID…' : 'Capture & Read'}
+              </button>
+              <label style={{
+                flex: '1 1 160px', padding: '16px', borderRadius: 14, textAlign: 'center',
+                border: '2px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer'
+              }}>
+                Upload photo
+                <input type="file" accept="image/*" onChange={uploadScan} disabled={scanBusy} style={{ display: 'none' }} />
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 32 }}>
         <button
@@ -542,6 +655,24 @@ export default function KioskSignIn() {
               ))}
             </div>
           </div>
+
+          {idScanEnabled && (
+            <div style={{ marginBottom: 18 }}>
+              <button type="button" onClick={openScan}
+                style={{
+                  width: '100%', padding: '16px', borderRadius: 14, border: '2px dashed rgba(20,255,236,0.5)',
+                  background: 'rgba(20,255,236,0.08)', color: '#14FFEC', fontSize: 17, fontWeight: 700,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
+                }}>
+                <ScanFace size={22} /> Scan your ID to fill this in
+              </button>
+              {ocrNotice && (
+                <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'rgba(20,255,236,0.12)', color: '#A7F3D0', fontSize: 14, textAlign: 'center' }}>
+                  {ocrNotice}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
