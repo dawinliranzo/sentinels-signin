@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../utils/store';
-import { Users, UserPlus, Shield, ShieldCheck, ShieldOff, Info, Plus, Trash2, KeyRound } from 'lucide-react';
+import { Users, UserPlus, Shield, ShieldCheck, ShieldOff, Info, Plus, Trash2, KeyRound, Pencil } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -46,6 +46,7 @@ export default function Team() {
   const [roles, setRoles] = useState([]);
   const [rolesError, setRolesError] = useState(null);
   const [roleForm, setRoleForm] = useState({ name: '', permissions: [] });
+  const [editingRole, setEditingRole] = useState(null); // { id, name, permissions }
   const [roleBusy, setRoleBusy] = useState(false);
 
   useEffect(() => {
@@ -90,6 +91,29 @@ export default function Team() {
       loadRoles();
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to create role', 'error');
+    } finally {
+      setRoleBusy(false);
+    }
+  };
+
+  const toggleEditPerm = (key) => {
+    setEditingRole(r => ({
+      ...r,
+      permissions: r.permissions.includes(key) ? r.permissions.filter(p => p !== key) : [...r.permissions, key]
+    }));
+  };
+
+  const saveRoleEdit = async () => {
+    if (!editingRole.name.trim()) return toast('Give the role a name', 'error');
+    if (editingRole.permissions.length === 0) return toast('Select at least one function', 'error');
+    setRoleBusy(true);
+    try {
+      await api.patch(`/roles/${editingRole.id}`, { name: editingRole.name.trim(), permissions: editingRole.permissions });
+      toast('Role updated — members keep the role with its new functions');
+      setEditingRole(null);
+      loadRoles();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to update role', 'error');
     } finally {
       setRoleBusy(false);
     }
@@ -443,6 +467,17 @@ export default function Team() {
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{r.name}</span>
                 <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>{r.member_count} member{Number(r.member_count) !== 1 ? 's' : ''}</span>
               </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => setEditingRole(editingRole?.id === r.id ? null : { id: r.id, name: r.name, permissions: [...(r.permissions || [])] })}
+                  title="Edit role name and functions"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8,
+                    background: editingRole?.id === r.id ? '#0D7377' : '#F0FDFA', border: 'none',
+                    color: editingRole?.id === r.id ? '#fff' : '#0D7377', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                  }}>
+                  <Pencil size={13} /> Edit
+                </button>
               <button
                 onClick={() => setConfirm({ action: 'deleteRole', roleId: r.id, roleName: r.name })}
                 disabled={r.member_count > 0}
@@ -455,7 +490,32 @@ export default function Team() {
                 }}>
                 <Trash2 size={13} /> Delete
               </button>
+              </div>
             </div>
+            {editingRole?.id === r.id ? (
+              <div style={{ marginTop: 10, padding: '12px 14px', background: '#fff', borderRadius: 10, border: '2px solid #99F6E4' }}>
+                <input type="text" value={editingRole.name} onChange={(e) => setEditingRole({ ...editingRole, name: e.target.value })}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, fontWeight: 600, marginBottom: 10 }} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6, marginBottom: 12 }}>
+                  {PERMISSION_OPTIONS.map(pp => (
+                    <label key={pp.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#334155', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={editingRole.permissions.includes(pp.key)} onChange={() => toggleEditPerm(pp.key)} />
+                      {pp.label}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setEditingRole(null)} disabled={roleBusy}
+                    style={{ flex: 1, padding: '9px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={saveRoleEdit} disabled={roleBusy}
+                    style={{ flex: 1, padding: '9px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    {roleBusy ? 'Saving…' : 'Save changes'}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
               {(r.permissions || []).map(p => (
                 <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E0F2F1', color: '#0F766E' }}>
@@ -463,6 +523,7 @@ export default function Team() {
                 </span>
               ))}
             </div>
+            )}
             {confirm?.action === 'deleteRole' && confirm.roleId === r.id && (
               <div style={{
                 marginTop: 10, padding: '10px 12px', borderRadius: 8,
