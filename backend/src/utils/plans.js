@@ -3,12 +3,15 @@
 // (e.g. {"reports": true} grants reports to a Free org as an exception).
 
 // Sellable features — these are the checkboxes in Super Admin → Manage
+// NOTE: custom registration fields used to be a paid feature — they are now
+// core for every org (Settings → Registration Form), so they no longer appear
+// here. Existing per-org overrides containing "custom_fields" are harmless:
+// getOrgFeatures only resolves keys listed in FEATURE_DEFS.
 const FEATURE_DEFS = [
   { key: 'reports',       label: 'Reports & analytics' },
   { key: 'compliance',    label: 'Compliance / NDA records' },
   { key: 'sms',           label: 'SMS notifications (Twilio)' },
   { key: 'bulk_import',   label: 'Bulk host import (CSV)' },
-  { key: 'custom_fields', label: 'Custom registration fields' },
   { key: 'backups',       label: 'Daily backups (snapshot + download)' },
 ];
 
@@ -25,14 +28,14 @@ const PLANS = {
     max_users: 25,
     max_visits_per_month: 2000,
     max_devices: 5,
-    features: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields'],
+    features: ['reports', 'compliance', 'sms', 'bulk_import'],
   },
   enterprise: {
     label: 'Enterprise',
     max_users: 1000,
     max_visits_per_month: 100000,
     max_devices: 50,
-    features: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields', 'backups'],
+    features: ['reports', 'compliance', 'sms', 'bulk_import', 'backups'],
   },
 };
 
