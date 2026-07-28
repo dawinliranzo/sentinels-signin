@@ -182,8 +182,12 @@ export default function KioskSignIn() {
       });
     }).catch(() => {});
     loadConfig();
-    const t = setInterval(loadConfig, 5 * 60 * 1000);
-    return () => clearInterval(t);
+    // Admins edit the registration form while the kiosk is running — pick changes
+    // up fast (30s) and immediately when the tablet screen comes back to the tab
+    const t = setInterval(loadConfig, 30 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') loadConfig(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [orgId]);
 
   // ─── IDLE RESET: an abandoned half-filled form leaks the previous visitor's
@@ -473,6 +477,10 @@ export default function KioskSignIn() {
         device_id: localStorage.getItem('kiosk_device_id') || undefined,
         ...(dobValue ? { visitor_dob: dobValue } : {}),
         ...formData,
+        // Hidden fields submit as NULL, never "" — an empty string crashes the
+        // uuid columns (host_id / visitor_type_id) with "invalid input syntax"
+        host_id: formData.host_id || null,
+        visitor_type_id: formData.visitor_type_id || null,
         sign_in_method: 'kiosk',
         photo_data: photo,
         custom_data: Object.keys(mergedCustom).length > 0 ? mergedCustom : undefined,
@@ -693,26 +701,28 @@ export default function KioskSignIn() {
 
       {step === 1 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div>
-            <label style={labelStyle}>I am a...</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {visitorTypes.map(vt => (
-                <button
-                  key={vt.id}
-                  onClick={() => setFormData({ ...formData, visitor_type_id: vt.id })}
-                  style={{
-                    padding: '20px 16px', borderRadius: 14,
-                    background: formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.1)',
-                    border: `2px solid ${formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.2)'}`,
-                    color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer',
-                    textAlign: 'center'
-                  }}
-                >
-                  {vt.name}
-                </button>
-              ))}
+          {fieldShown('visitor_type') && (
+            <div>
+              <label style={labelStyle}>I am a...</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {visitorTypes.map(vt => (
+                  <button
+                    key={vt.id}
+                    onClick={() => setFormData({ ...formData, visitor_type_id: vt.id })}
+                    style={{
+                      padding: '20px 16px', borderRadius: 14,
+                      background: formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.1)',
+                      border: `2px solid ${formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.2)'}`,
+                      color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {vt.name}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {idScanEnabled && (
             <div style={{ marginBottom: 18 }}>
@@ -825,13 +835,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={() => { setErrorMsg(''); if (validateStep1()) setStep(2); }}
-            disabled={!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing}
+            disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.first_name || !formData.last_name || !formData.visitor_type_id || (photoRequired && !photo) || customRequiredMissing) ? 0.5 : 1
+              cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 'not-allowed' : 'pointer',
+              opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 0.5 : 1
             }}
           >
             Continue
@@ -841,6 +851,7 @@ export default function KioskSignIn() {
 
       {step === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {fieldShown('host') && (
           <div>
             <label style={labelStyle}>{terms.visiting}</label>
 
@@ -942,6 +953,7 @@ export default function KioskSignIn() {
               )}
             </div>
           </div>
+          )}
 
           {fieldShown('purpose') && (
             <div>
@@ -1031,13 +1043,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={ndaRequired ? goToNdaStep : handleSubmit}
-            disabled={loading || !formData.host_id}
+            disabled={loading || (fieldShown('host') && !formData.host_id)}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.host_id || loading) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (loading || (fieldShown('host') && !formData.host_id)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.host_id || loading) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.host_id || loading) ? 0.5 : 1
+              cursor: (loading || (fieldShown('host') && !formData.host_id)) ? 'not-allowed' : 'pointer',
+              opacity: (loading || (fieldShown('host') && !formData.host_id)) ? 0.5 : 1
             }}
           >
             {loading ? 'Processing...' : ndaRequired ? 'Continue to NDA' : 'Complete Sign In'}
