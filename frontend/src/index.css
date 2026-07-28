@@ -74,6 +74,20 @@ img { max-width: 100%; }
      shrink below their default intrinsic width inside flex rows */
   input, select, textarea { max-width: 100%; min-width: 0; }
 
+  /* Checkboxes/radios: one consistent size everywhere (inline styles still
+     win). Without this, bare checkboxes render at browser-default ~13px next
+     to explicitly-sized 22px ones — the "mismatched check buttons" look —
+     and flex rows can squash them to ovals on narrow screens */
+  input[type="checkbox"], input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+    flex-shrink: 0;
+    accent-color: #0D7377;
+    cursor: pointer;
+  }
+
   /* Long unbreakable strings (kiosk URLs, pairing codes, tokens, emails)
      wrap instead of running off the right edge */
   code, pre, kbd, samp {
