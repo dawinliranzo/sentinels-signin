@@ -34,11 +34,15 @@ export default function AdminLayout() {
   // Refresh the signed-in user (picks up role/permission changes) and load
   // the list of organizations this user may switch into for tech support
   React.useEffect(() => {
-    api.get('/auth/me').then(r => {
+    const loadMe = () => api.get('/auth/me').then(r => {
       const me = r.data;
       setAuth(useStore.getState().token, me, { id: me.org_id, name: me.org_name });
     }).catch(() => {});
+    loadMe();
     api.get('/auth/support-orgs').then(r => setSupportOrgs(r.data || [])).catch(() => {});
+    // Poll so plan, profile and feature changes (e.g. made by support) appear without re-login
+    const t = setInterval(loadMe, 60000);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
