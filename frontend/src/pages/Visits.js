@@ -266,24 +266,19 @@ export default function Visits() {
               >
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, fontSize: 12, color: '#fff'
-                    }}>
-                      {v.visitor_first_name?.[0]}{v.visitor_last_name?.[0]}
-                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {v.photo_data ? (
-                        <img src={v.photo_data} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                        <img src={v.photo_data} alt="" onClick={() => setDetailVisit(v)}
+                          style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, cursor: 'pointer', border: '2px solid #E2E8F0' }} />
                       ) : (
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#64748B', flexShrink: 0 }}>
+                        <div onClick={() => setDetailVisit(v)}
+                          style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
                           {v.visitor_first_name?.[0]}{v.visitor_last_name?.[0]}
                         </div>
                       )}
                       <div>
-                        <div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14 }}>
+                        <div onClick={() => setDetailVisit(v)} title="View visit details"
+                          style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
                           {v.visitor_first_name} {v.visitor_last_name}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748B' }}>{v.visitor_company || 'No company'}</div>
