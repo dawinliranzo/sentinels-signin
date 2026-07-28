@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode , Printer } from 'lucide-react';
+import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode , Printer, RotateCcw } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -21,6 +21,25 @@ export default function Devices() {
   const [addError, setAddError] = useState('');
   const [pairDevice, setPairDevice] = useState(null); // device shown in the Pair/QR modal
   const [linkCopied, setLinkCopied] = useState(false);
+  const [confirmRegenId, setConfirmRegenId] = useState(null); // two-tap confirm for code regeneration
+  const [regenBusy, setRegenBusy] = useState(false);
+
+  // Rotate the pairing code: old code dies immediately, one NEW kiosk may pair.
+  // The currently-paired kiosk is unaffected (it uses its stored device_id).
+  const regenerateCode = async (d) => {
+    setRegenBusy(true);
+    try {
+      const r = await api.post(`/devices/${d.id}/regenerate-code`);
+      setConfirmRegenId(null);
+      refetch();
+      if (pairDevice?.id === d.id) setPairDevice(r.data); // refresh the QR if its modal is open
+      toast(`New code for "${d.name}" — the old one no longer works`);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to regenerate code', 'error');
+    } finally {
+      setRegenBusy(false);
+    }
+  };
 
   const pairUrl = (d) => `${window.location.origin}/kiosk?pair=${d.pair_code}`;
   const copyPairLink = (d) => {
@@ -228,9 +247,17 @@ export default function Devices() {
             {canManage && (
               <button
                 onClick={async () => {
+                  const want = !d.print_badge;
                   try {
-                    await api.patch(`/devices/${d.id}`, { print_badge: !d.print_badge });
+                    // Send the current name along: older backends require it and
+                    // would otherwise reject the toggle with "Device name is required"
+                    const r = await api.patch(`/devices/${d.id}`, { name: d.name, print_badge: want });
+                    if (r.data && r.data.print_badge !== want) {
+                      toast('Server accepted the update but ignored the printer flag — deploy the latest devices backend first', 'error');
+                      return;
+                    }
                     refetch();
+                    toast(want ? `Printer linked to "${d.name}"` : `Printer unlinked from "${d.name}"`);
                   } catch (err) {
                     toast(err.response?.data?.error || 'Failed to update device', 'error');
                   }
@@ -255,6 +282,25 @@ export default function Devices() {
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 13, fontFamily: 'monospace', fontWeight: 700, color: '#334155', cursor: 'pointer', letterSpacing: 2 }}>
               {copiedId === d.id ? <Check size={14} color="#166534" /> : <Copy size={14} />} {d.pair_code}
             </button>
+
+            {canManage && (confirmRegenId === d.id ? (
+              <>
+                <button onClick={() => regenerateCode(d)} disabled={regenBusy}
+                  style={{ padding: '8px 10px', borderRadius: 8, background: '#D97706', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {regenBusy ? 'Working…' : 'New code'}
+                </button>
+                <button onClick={() => setConfirmRegenId(null)}
+                  style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmRegenId(d.id)}
+                title="Regenerate the pairing code — the old code stops working instantly. Use when replacing the tablet or if the code was shared too widely."
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 12px', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 12, fontWeight: 700, color: '#B45309', cursor: 'pointer' }}>
+                <RotateCcw size={13} /> Regenerate
+              </button>
+            ))}
 
             {canManage && renamingId !== d.id && (
               <div style={{ display: 'flex', gap: 6 }}>
@@ -298,6 +344,16 @@ export default function Devices() {
             <p style={{ fontSize: 13, color: '#64748B', marginBottom: 20 }}>
               Easiest: point the kiosk tablet's camera at this QR code and open the link — it pairs itself. No typing.
             </p>
+            {pairDevice.paired_at ? (
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92400E', lineHeight: 1.5, textAlign: 'left' }}>
+                <strong>This kiosk is already paired.</strong> Codes are single-use — this QR will be rejected on another tablet.
+                To pair a replacement, tap <strong>Regenerate</strong> on the device row first (the old code dies instantly), then scan the new QR.
+              </div>
+            ) : (
+              <div style={{ background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#0F766E', lineHeight: 1.5, textAlign: 'left' }}>
+                <strong>One code pairs one kiosk.</strong> After it's used, pairing another tablet requires a fresh code (Regenerate) — this keeps kiosks from being cloned.
+              </div>
+            )}
             <div style={{ background: '#fff', border: '2px solid #E2E8F0', borderRadius: 16, padding: 16, display: 'inline-block', marginBottom: 16 }}>
               <QRCodeCanvas value={pairUrl(pairDevice)} size={200} includeMargin={false} />
             </div>
