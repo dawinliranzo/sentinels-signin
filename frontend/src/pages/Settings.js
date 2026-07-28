@@ -21,6 +21,7 @@ const DEFAULTS = (orgName) => ({
   overstay_hours: 8,
   logo_data: '',
   custom_fields: [],
+  hidden_fields: [],
 });
 
 export default function Settings() {
@@ -348,8 +349,7 @@ export default function Settings() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.notify_email}
-              onChange={(e) => setSettings({...settings, notify_email: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, notify_email: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Email Notifications</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Send email to hosts when visitors arrive</div>
@@ -357,8 +357,7 @@ export default function Settings() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.notify_sms}
-              onChange={(e) => setSettings({...settings, notify_sms: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, notify_sms: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>SMS Notifications</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Send SMS to hosts when visitors arrive</div>
@@ -366,8 +365,7 @@ export default function Settings() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', paddingTop: 12, borderTop: '1px solid #F1F5F9' }}>
             <input type="checkbox" checked={notifyOffline}
-              onChange={(e) => toggleOfflineAlerts(e.target.checked)}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => toggleOfflineAlerts(e.target.checked)} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Kiosk Offline Alerts</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Email me if the kiosk stops responding (10+ min), and when it comes back online · <strong>this one saves immediately, no Save needed</strong></div>
@@ -400,8 +398,7 @@ export default function Settings() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.checkin_popup !== false}
-              onChange={(e) => setSettings({...settings, checkin_popup: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, checkin_popup: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Check-in Alerts on the Dashboard</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>
@@ -412,8 +409,7 @@ export default function Settings() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.id_scan_enabled === true}
-              onChange={(e) => setSettings({...settings, id_scan_enabled: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, id_scan_enabled: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>ID Scan at the Kiosk (OCR)</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>
@@ -424,8 +420,7 @@ export default function Settings() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.auto_print_badge === true}
-              onChange={(e) => setSettings({...settings, auto_print_badge: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, auto_print_badge: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Auto-print Visitor Badges</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>
@@ -586,11 +581,41 @@ export default function Settings() {
           <PenLine size={20} color="#0D7377" /> Registration Form
         </h3>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
-          Extra questions asked on the kiosk during check-in — every organization can have its own
-          (e.g. an apartment building asks "Apartment #", a school asks "Student ID").
+          Choose what the kiosk asks during check-in — hide standard fields you don't need and add
+          your own (e.g. an apartment building asks "Apartment #", a school asks "Student ID").
           Answers are stored with each visit (Visits → eye icon). Remember to Save Settings after editing.
         </p>
 
+        {/* Standard field visibility — name, host and visitor type are structural and always asked */}
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Standard fields on the kiosk</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, marginBottom: 18 }}>
+          {[
+            { key: 'email', label: 'Email' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'company', label: 'Company' },
+            { key: 'purpose', label: 'Purpose of visit' },
+            { key: 'vehicle_plate', label: 'Vehicle plate' },
+            { key: 'photo', label: 'Photo capture' },
+          ].map(({ key, label }) => {
+            const shown = !(settings.hidden_fields || []).includes(key);
+            return (
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${shown ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={shown}
+                  onChange={(e) => {
+                    const cur = settings.hidden_fields || [];
+                    const next = e.target.checked ? cur.filter(k => k !== key) : [...cur, key];
+                    setSettings({ ...settings, hidden_fields: next });
+                  }} />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+        <p style={{ fontSize: 12, color: '#94A3B8', marginTop: -8, marginBottom: 18 }}>
+          First name, last name, host and visitor type are always asked — a visit can't exist without them.
+        </p>
+
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Your own fields</div>
         {(settings.custom_fields || []).map((f, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
@@ -648,8 +673,7 @@ export default function Settings() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.require_photo}
-              onChange={(e) => setSettings({...settings, require_photo: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, require_photo: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Require Photo Capture</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Take a photo of every visitor during check-in</div>
@@ -657,8 +681,7 @@ export default function Settings() {
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.require_prereg_date || false}
-              onChange={(e) => setSettings({...settings, require_prereg_date: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, require_prereg_date: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Require Date for Pre-Registrations</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Off by default — pre-registered visitors can have open-ended visits with no expected date/time</div>
@@ -723,8 +746,7 @@ export default function Settings() {
             {canManage && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', marginTop: 16, paddingTop: 12, borderTop: '1px solid #F1F5F9' }}>
                 <input type="checkbox" checked={settings.mfa_required || false}
-                  onChange={(e) => setSettings({...settings, mfa_required: e.target.checked})}
-                  style={{ width: 22, height: 22 }} />
+                  onChange={(e) => setSettings({...settings, mfa_required: e.target.checked})} />
                 <div>
                   <div style={{ fontWeight: 600, color: '#0F172A' }}>Require MFA for everyone in this organization</div>
                   <div style={{ fontSize: 13, color: '#64748B' }}>Users without MFA will be sent to set it up at next login (remember to Save Settings below)</div>
@@ -734,8 +756,7 @@ export default function Settings() {
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.require_nda}
-              onChange={(e) => setSettings({...settings, require_nda: e.target.checked})}
-              style={{ width: 22, height: 22 }} />
+              onChange={(e) => setSettings({...settings, require_nda: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Require NDA Signing</div>
               <div style={{ fontSize: 13, color: '#64748B' }}>Visitors must sign an NDA before entry</div>
