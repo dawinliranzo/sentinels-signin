@@ -369,7 +369,7 @@ export default function Dashboard() {
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                       <div>
                         <div onClick={() => setDetailVisit(v)} title="View visit details"
-                          style={{ fontWeight: 700, fontSize: 14, color: '#0D7377', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                          style={{ fontWeight: 700, fontSize: 14, color: '#0D7377', cursor: 'pointer' }}>
                           {v.visitor_first_name} {v.visitor_last_name}
                         </div>
                         <div style={{ fontSize: 12, color: '#94A3B8' }}>
@@ -426,7 +426,7 @@ export default function Dashboard() {
                 <div style={{ flex: 1 }}>
                   <div onClick={() => setDetailVisit(visit)}
                     title="View visit details"
-                    style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                    style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
                     {visit.visitor_first_name} {visit.visitor_last_name}
                   </div>
                   <div style={{ fontSize: 13, color: '#64748B' }}>
@@ -606,7 +606,7 @@ export default function Dashboard() {
                     )}
                     <div>
                       <div onClick={() => setDetailVisit(v)} title="View visit details"
-                        style={{ fontWeight: 600, fontSize: 15, color: '#0D7377', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#99F6E4', textUnderlineOffset: 3 }}>
+                        style={{ fontWeight: 600, fontSize: 15, color: '#0D7377', cursor: 'pointer' }}>
                         {v.visitor_first_name} {v.visitor_last_name}
                       </div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>
