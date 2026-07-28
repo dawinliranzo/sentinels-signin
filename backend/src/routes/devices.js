@@ -95,6 +95,21 @@ router.post('/', authenticate, requirePermission('devices'), async (req, res) =>
 // ─── ADMIN: rename a device ───
 router.patch('/:id', authenticate, requirePermission('devices'), async (req, res) => {
   try {
+    // Printer link toggle (badge auto-print) — tolerant before the migration runs
+    if (Object.prototype.hasOwnProperty.call(req.body, 'print_badge')) {
+      try {
+        const r = await db.query(
+          'UPDATE devices SET print_badge = $1 WHERE id = $2 AND org_id = $3 RETURNING *',
+          [req.body.print_badge === true, req.params.id, req.user.org_id]
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Device not found' });
+        if (!req.body.name) return res.json(r.rows[0]);
+      } catch (e) {
+        if (e.code === '42703') return res.status(503).json({ error: 'Run the badge-print migration first', code: 'MIGRATION_PENDING' });
+        throw e;
+      }
+    }
+    if (!req.body.name) return res.status(400).json({ error: 'Device name is required' });
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Device name is required' });
     const result = await db.query(
