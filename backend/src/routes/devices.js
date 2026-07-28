@@ -11,6 +11,10 @@ const makePairCode = () => Array.from(crypto.randomBytes(6)).map(b => CODE_ALPHA
 
 // ─── PUBLIC: pair a kiosk device with its code ───
 // POST /api/devices/pair  { code }
+// A pairing code is SINGLE-USE: once a kiosk has paired, the same code cannot
+// pair a second tablet (that used to let any number of devices clone the same
+// kiosk identity). To move the kiosk to a new tablet, an admin regenerates the
+// code (POST /:id/regenerate-code) or creates a new device.
 router.post('/pair', async (req, res) => {
   try {
     const code = String(req.body.code || '').trim().toUpperCase();
@@ -19,11 +23,24 @@ router.post('/pair', async (req, res) => {
     const result = await db.query(
       `UPDATE devices d SET paired_at = NOW(), last_seen_at = NOW()
        FROM organizations o
-       WHERE d.pair_code = $1 AND d.is_active = true AND o.id = d.org_id AND o.status = 'active'
+       WHERE d.pair_code = $1 AND d.is_active = true AND d.paired_at IS NULL
+         AND o.id = d.org_id AND o.status = 'active'
        RETURNING d.id, d.name, d.org_id, o.name AS org_name`,
       [code]
     );
     if (result.rows.length === 0) {
+      // Distinguish "code doesn't exist" from "code already consumed" — the
+      // second case tells the kiosk operator exactly what to do next
+      const existing = await db.query(
+        'SELECT id FROM devices WHERE pair_code = $1 AND is_active = true',
+        [code]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(409).json({
+          error: 'This pairing code was already used on another kiosk. Ask an admin to open Devices → regenerate the code, or create a separate kiosk device.',
+          code: 'CODE_ALREADY_USED'
+        });
+      }
       return res.status(404).json({ error: 'Invalid pairing code' });
     }
     const d = result.rows[0];
@@ -121,6 +138,34 @@ router.patch('/:id', authenticate, requirePermission('devices'), async (req, res
   } catch (err) {
     console.error('Device rename error:', err);
     res.status(500).json({ error: 'Failed to rename device' });
+  }
+});
+
+// ─── ADMIN: regenerate a pairing code ───
+// Rotates the code and resets paired_at so ONE new kiosk can pair. The old code
+// dies instantly; an already-paired kiosk keeps working (it uses its stored
+// device_id, not the code). Use this to replace a tablet or reclaim a code that
+// was shared too widely.
+router.post('/:id/regenerate-code', authenticate, requirePermission('devices'), async (req, res) => {
+  try {
+    let updated = null;
+    for (let attempt = 0; attempt < 5 && !updated; attempt++) {
+      try {
+        const result = await db.query(
+          `UPDATE devices SET pair_code = $1, paired_at = NULL
+           WHERE id = $2 AND org_id = $3 AND is_active = true RETURNING *`,
+          [makePairCode(), req.params.id, req.user.org_id]
+        );
+        updated = result.rows[0];
+      } catch (e) {
+        if (e.code !== '23505') throw e; // retry only on pair_code collision
+      }
+    }
+    if (!updated) return res.status(404).json({ error: 'Device not found' });
+    res.json(updated);
+  } catch (err) {
+    console.error('Regenerate code error:', err);
+    res.status(500).json({ error: 'Failed to regenerate pairing code' });
   }
 });
 
