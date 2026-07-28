@@ -190,22 +190,39 @@ export default function SuperAdmin() {
     }
   };
 
+  const reactivateTrial = async (orgId, days) => {
+    try {
+      const r = await api.post(`/super-admin/organizations/${orgId}/reactivate-trial`, { days });
+      toast(`Trial extended to ${new Date(r.data.trial_ends_at).toLocaleDateString()} — the org is unlocked`);
+      // keep the open panel + list in sync
+      setPlanEdit(pe => pe ? { ...pe, trial_ends_at: r.data.trial_ends_at.slice(0, 10) } : pe);
+      fetchData();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to extend trial', 'error');
+    }
+  };
+
   const savePlanEdit = async () => {
     setSavingPlan(true);
     try {
-      await api.patch(`/super-admin/organizations/${viewOrg.id}`, {
-        ...planEdit,
+      // Explicit payload — never spread planEdit: its helper fields (parent_id,
+      // trial_ends_at, status) must only be sent when they actually changed.
+      const payload = {
+        name: planEdit.name,
+        plan: planEdit.plan,
+        billing_email: planEdit.billing_email,
         max_users: planEdit.max_users === '' ? null : Number(planEdit.max_users),
         max_visits_per_month: planEdit.max_visits_per_month === '' ? null : Number(planEdit.max_visits_per_month),
         max_devices: planEdit.max_devices === '' ? null : Number(planEdit.max_devices),
         plan_renews_at: planEdit.plan_renews_at || null,
-        // Only include when actually changed — otherwise a pending migration
-        // would block unrelated plan saves with MIGRATION_PENDING
-        ...((planEdit.parent_id || '') !== (viewOrg.parent_id || '') ? { parent_id: planEdit.parent_id || null } : {}),
         profile_type: planEdit.profile_type || 'other',
-        ...((planEdit.trial_ends_at || '') !== ((viewOrg.trial_ends_at || '').slice(0, 10)) ? { trial_ends_at: planEdit.trial_ends_at || null } : {}),
-        ...(planEdit.status !== viewOrg.status ? { status: planEdit.status } : {}),
-      });
+      };
+      // Only include when actually changed — otherwise a pending migration
+      // would block unrelated plan saves with MIGRATION_PENDING
+      if ((planEdit.parent_id || '') !== (viewOrg.parent_id || '')) payload.parent_id = planEdit.parent_id || null;
+      if ((planEdit.trial_ends_at || '') !== ((viewOrg.trial_ends_at || '').slice(0, 10))) payload.trial_ends_at = planEdit.trial_ends_at || null;
+      if (planEdit.status && planEdit.status !== viewOrg.status) payload.status = planEdit.status;
+      await api.patch(`/super-admin/organizations/${viewOrg.id}`, payload);
       toast('Plan & limits updated');
       setViewOrg({ ...viewOrg, ...planEdit });
       setPlanSnapshot(JSON.stringify(planEdit));
@@ -799,7 +816,7 @@ export default function SuperAdmin() {
                   <label style={{ fontSize: 11, color: '#92400E', display: 'block', marginBottom: 4, fontWeight: 700 }}>Status</label>
                   <select value={planEdit.status || 'active'} onChange={(e) => setPlanEdit({ ...planEdit, status: e.target.value })}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #FDE68A', fontSize: 13, background: '#fff' }}>
-                    {['trial', 'active', 'suspended', 'cancelled'].map(st => <option key={st} value={st}>{st}</option>)}
+                    {['active', 'suspended', 'cancelled'].map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: '1 1 170px' }}>
@@ -811,25 +828,19 @@ export default function SuperAdmin() {
               <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                 {[7, 14, 30].map(days => (
                   <button key={days} type="button"
-                    onClick={() => {
-                      const d = new Date(Date.now() + days * 864e5);
-                      setPlanEdit({ ...planEdit, trial_ends_at: d.toISOString().slice(0, 10), status: planEdit.status === 'active' ? 'active' : 'trial' });
-                    }}
+                    onClick={() => reactivateTrial(viewOrg.id, days)}
                     style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: '1px solid #F59E0B', background: '#fff', color: '#B45309' }}>
                     +{days} days
                   </button>
                 ))}
                 <button type="button"
-                  onClick={() => {
-                    const d = new Date(Date.now() + 14 * 864e5);
-                    setPlanEdit({ ...planEdit, trial_ends_at: d.toISOString().slice(0, 10), status: 'trial' });
-                  }}
+                  onClick={() => reactivateTrial(viewOrg.id, 14)}
                   style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: '#D97706', color: '#fff' }}>
                   Reactivate trial (14d)
                 </button>
               </div>
               <div style={{ fontSize: 11, color: '#92400E', marginTop: 8, lineHeight: 1.5 }}>
-                Expired orgs can only read data. Pick a date or a quick action, then press "Save Plan &amp; Limits" below — the org unlocks immediately.
+                Expired orgs can only read data. Quick actions apply <strong>immediately</strong>; a custom date applies with "Save Plan &amp; Limits". Trial expiry follows the date — status stays untouched.
               </div>
             </div>
 
