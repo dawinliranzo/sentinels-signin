@@ -102,9 +102,11 @@ export default function AdminLayout() {
                   : ((!i.perm || hasPerm(i.perm)) && (!i.feature || hasFeature(i.feature)))
   );
 
-  // Trial / suspension banners
+  // Billing banners — the server computes billing_limited for BOTH cases:
+  // expired free trial and paid plan past its renewal date (payment not clear)
   const trialEnd = user?.trial_ends_at ? new Date(user.trial_ends_at) : null;
-  const trialExpired = user?.org_plan === 'free' && trialEnd && trialEnd < new Date();
+  const billingLimited = !!user?.billing_limited;
+  const renewalEnd = user?.plan_renews_at ? new Date(user.plan_renews_at) : null;
   const trialDaysLeft = user?.org_plan === 'free' && trialEnd && trialEnd >= new Date()
     ? Math.ceil((trialEnd - Date.now()) / 864e5) : null;
 
@@ -302,16 +304,20 @@ export default function AdminLayout() {
           </div>
         )}
 
-        {/* Trial banners */}
-        {trialExpired && !user?.switched && user?.org_status !== 'suspended' && (
+        {/* Billing: limited-mode banner (expired trial OR lapsed paid renewal) */}
+        {billingLimited && !user?.switched && user?.org_status !== 'suspended' && (
           <div style={{
-            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
-            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#991B1B'
+            background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#92400E'
           }}>
-            <b>Your trial expired on {trialEnd.toLocaleDateString()}.</b> You can still view everything, but changes are blocked until you upgrade — contact Sentinels at info@sentinelsit.com to pick a plan.
+            {user?.org_plan === 'free' ? (
+              <><b>Your trial{trialEnd ? ` ended on ${trialEnd.toLocaleDateString()}` : ' has ended'} — you're in limited mode.</b> The kiosk and visitor log keep working and you can view everything, but management changes (hosts, team, settings, devices) are paused. Contact Sentinels at info@sentinelsit.com to activate a plan and unlock everything.</>
+            ) : (
+              <><b>Your plan renewal{renewalEnd ? ` was due on ${renewalEnd.toLocaleDateString()}` : ' is past due'} — you're in limited mode.</b> The kiosk and visitor log keep working and you can view everything, but management changes (hosts, team, settings, devices) are paused until payment is clear. Contact Sentinels at info@sentinelsit.com.</>
+            )}
           </div>
         )}
-        {trialDaysLeft !== null && trialDaysLeft <= 3 && !trialExpired && !user?.switched && (
+        {trialDaysLeft !== null && trialDaysLeft <= 3 && !billingLimited && !user?.switched && (
           <div style={{
             background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12,
             padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#92400E'
