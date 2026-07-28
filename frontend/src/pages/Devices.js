@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode } from 'lucide-react';
+import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode , Printer } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
@@ -224,6 +224,27 @@ export default function Devices() {
             }}>
               {d.is_online ? '● ONLINE' : '○ OFFLINE'}
             </span>
+
+            {canManage && (
+              <button
+                onClick={async () => {
+                  try {
+                    await api.patch(`/devices/${d.id}`, { print_badge: !d.print_badge });
+                    refetch();
+                  } catch (err) {
+                    toast(err.response?.data?.error || 'Failed to update device', 'error');
+                  }
+                }}
+                title={d.print_badge ? 'Badge printer linked — badges auto-print at this kiosk on check-in' : 'Link a badge printer at this kiosk'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+                  border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  background: d.print_badge ? '#0D7377' : '#F1F5F9',
+                  color: d.print_badge ? '#fff' : '#64748B'
+                }}>
+                <Printer size={14} /> {d.print_badge ? 'Printer linked' : 'Link printer'}
+              </button>
+            )}
 
             <button onClick={() => setPairDevice(d)} title="Show pairing QR code"
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>
