@@ -75,29 +75,65 @@ router.post('/test-teams', async (req, res) => {
     const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
     const url = (r.rows[0] && r.rows[0].settings && r.rows[0].settings.teams_webhook_url) || req.body.url;
     if (!url) return res.status(400).json({ error: 'Save a Teams webhook URL first' });
+    const title = 'Sentinels Kiosk is connected';
+    const facts = [['Status', 'Check-in notifications will appear in this channel'], ['Time', new Date().toLocaleString()]];
+    const body = /logic\.azure\.com|powerautomate|workflow/i.test(url)
+      ? {
+          type: 'message',
+          attachments: [{
+            contentType: 'application/vnd.microsoft.card.adaptive',
+            contentUrl: null,
+            content: {
+              $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+              type: 'AdaptiveCard',
+              version: '1.4',
+              body: [
+                { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Medium', wrap: true, color: 'Accent' },
+                { type: 'FactSet', facts: facts.map(([t, v]) => ({ title: t, value: String(v) })) },
+              ],
+            },
+          }],
+        }
+      : {
+          '@type': 'MessageCard',
+          '@context': 'http://schema.org/extensions',
+          themeColor: '0D7377',
+          summary: title,
+          sections: [{ activityTitle: title, facts: facts.map(([name, value]) => ({ name, value: String(value) })), markdown: true }],
+        };
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        '@type': 'MessageCard',
-        '@context': 'http://schema.org/extensions',
-        themeColor: '0D7377',
-        summary: 'Sentinels Kiosk test',
-        sections: [{
-          activityTitle: 'Sentinels Kiosk is connected',
-          facts: [
-            { name: 'Status', value: 'Check-in notifications will appear in this channel' },
-            { name: 'Time', value: new Date().toLocaleString() },
-          ],
-          markdown: true,
-        }],
-      }),
+      body: JSON.stringify(body),
     });
     if (!resp.ok) return res.status(502).json({ error: `Teams rejected the message (HTTP ${resp.status}) — check the webhook URL` });
     res.json({ success: true });
   } catch (e) {
     console.error('Teams test failed:', e.message);
     res.status(502).json({ error: 'Could not reach Teams — check the webhook URL' });
+  }
+});
+
+// POST /api/settings/test-webhook — POST a sample event to the generic webhook URL
+router.post('/test-webhook', async (req, res) => {
+  try {
+    const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [req.user.org_id]);
+    const url = (r.rows[0] && r.rows[0].settings && r.rows[0].settings.generic_webhook_url) || req.body.url;
+    if (!url) return res.status(400).json({ error: 'Save a webhook URL first' });
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'test',
+        timestamp: new Date().toISOString(),
+        data: { message: 'Sentinels Kiosk webhook is connected', first_name: 'Test', last_name: 'Visitor' },
+      }),
+    });
+    if (!resp.ok) return res.status(502).json({ error: `Endpoint rejected the call (HTTP ${resp.status})` });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Webhook test failed:', e.message);
+    res.status(502).json({ error: 'Could not reach the webhook URL' });
   }
 });
 
