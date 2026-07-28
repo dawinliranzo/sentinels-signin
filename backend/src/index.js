@@ -98,6 +98,7 @@ app.use('/api/backups', backupsRoutes);
 app.use('/api/flags', flagsRoutes);
 app.use('/api/frequent-visitors', frequentVisitorsRoutes);
 app.use('/api/rfid-cards', rfidRoutes);
+app.use('/api/api-keys', require('./routes/apiKeys'));
 
 // Error handling
 app.use((err, req, res, next) => {
