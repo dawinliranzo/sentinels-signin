@@ -15,6 +15,12 @@ const PROFILES = {
     hostPageTitle: 'Employees',
     hostPageSub: 'People visitors can check in to see',
     kioskFields: [],
+    defaultTypes: [
+      { name: 'Guest', color: '#0D7377' },
+      { name: 'Contractor', color: '#FF6B35' },
+      { name: 'Delivery', color: '#2ECC71' },
+      { name: 'Interview', color: '#9B59B6' },
+    ],
   },
   building: {
     label: 'Building / Property',
@@ -29,6 +35,12 @@ const PROFILES = {
     hostPageSub: 'Tenants visitors can check in to see',
     kioskFields: [
       { key: 'unit', label: 'Apartment / Unit #', type: 'text', required: false, placeholder: 'e.g. 4B' },
+    ],
+    defaultTypes: [
+      { name: 'Guest', color: '#0D7377' },
+      { name: 'Delivery', color: '#2ECC71' },
+      { name: 'Contractor', color: '#FF6B35' },
+      { name: 'Maintenance', color: '#D97706' },
     ],
   },
   hospital: {
@@ -45,6 +57,12 @@ const PROFILES = {
     kioskFields: [
       { key: 'dob', label: 'Date of Birth', type: 'date', required: false },
     ],
+    defaultTypes: [
+      { name: 'Patient', color: '#0D7377' },
+      { name: 'Family Member', color: '#9B59B6' },
+      { name: 'Vendor', color: '#FF6B35' },
+      { name: 'Contractor', color: '#2ECC71' },
+    ],
   },
   school: {
     label: 'School / Campus',
@@ -60,6 +78,12 @@ const PROFILES = {
     kioskFields: [
       { key: 'student', label: 'Student name or ID', type: 'text', required: false, placeholder: 'Who are you here for?' },
     ],
+    defaultTypes: [
+      { name: 'Parent', color: '#0D7377' },
+      { name: 'Student', color: '#2ECC71' },
+      { name: 'Vendor', color: '#FF6B35' },
+      { name: 'Staff Visitor', color: '#9B59B6' },
+    ],
   },
   other: {
     label: 'Other / General',
@@ -73,6 +97,12 @@ const PROFILES = {
     hostPageTitle: 'Hosts',
     hostPageSub: 'People visitors can check in to see',
     kioskFields: [],
+    defaultTypes: [
+      { name: 'Guest', color: '#0D7377' },
+      { name: 'Delivery', color: '#2ECC71' },
+      { name: 'Vendor', color: '#FF6B35' },
+      { name: 'Other', color: '#9B59B6' },
+    ],
   },
 };
 
