@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
 import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound, Users, Trash2, Pencil, Plus } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -56,6 +56,66 @@ export default function Settings() {
   const [keyBusy, setKeyBusy] = useState(false);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
   const [editingFieldIdx, setEditingFieldIdx] = useState(null); // which custom field is loaded in the editor
+  // Visitor types manager (the "I am a..." buttons on the kiosk)
+  const [visitorTypes, setVisitorTypes] = useState([]);
+  const [vtForm, setVtForm] = useState({ name: '', description: '', badge_color: '#0D7377', requires_nda: false });
+  const [vtEditingId, setVtEditingId] = useState(null);
+  const [vtBusy, setVtBusy] = useState(false);
+
+  const loadVisitorTypes = () => api.get('/visitor-types').then(r => setVisitorTypes(r.data || [])).catch(() => {});
+
+  const saveVisitorType = async () => {
+    if (!vtForm.name.trim()) return toast('Give the type a name first', 'error');
+    setVtBusy(true);
+    try {
+      const payload = { name: vtForm.name.trim(), description: vtForm.description.trim(), badge_color: vtForm.badge_color, requires_nda: vtForm.requires_nda };
+      if (vtEditingId) {
+        await api.put(`/visitor-types/${vtEditingId}`, payload);
+        toast('Visitor type updated');
+      } else {
+        await api.post('/visitor-types', payload);
+        toast(`"${payload.name}" added — the kiosk picks it up within a minute`);
+      }
+      setVtForm({ name: '', description: '', badge_color: '#0D7377', requires_nda: false });
+      setVtEditingId(null);
+      loadVisitorTypes();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to save visitor type', 'error');
+    } finally {
+      setVtBusy(false);
+    }
+  };
+
+  const deleteVisitorType = async (t) => {
+    setVtBusy(true);
+    try {
+      await api.delete(`/visitor-types/${t.id}`);
+      if (vtEditingId === t.id) { setVtEditingId(null); setVtForm({ name: '', description: '', badge_color: '#0D7377', requires_nda: false }); }
+      loadVisitorTypes();
+      toast(`"${t.name}" removed — past visits keep their records`);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to delete', 'error');
+    } finally {
+      setVtBusy(false);
+    }
+  };
+
+  const seedSuggestedTypes = async () => {
+    const suggested = getTerms(settings.profile_type).defaultTypes || [];
+    if (suggested.length === 0) return;
+    setVtBusy(true);
+    try {
+      for (const t of suggested) {
+        await api.post('/visitor-types', { name: t.name, badge_color: t.color });
+      }
+      loadVisitorTypes();
+      toast('Suggested types added — edit them however you like');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to add suggested types', 'error');
+    } finally {
+      setVtBusy(false);
+    }
+  };
 
   // Daily backups (plan feature)
   const [backups, setBackups] = useState([]);
@@ -204,6 +264,7 @@ export default function Settings() {
       }
     }).catch(() => {});
     api.get('/api-keys').then(r => setApiKeys(r.data || [])).catch(() => {});
+    loadVisitorTypes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -692,6 +753,84 @@ export default function Settings() {
           }}
             style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
             {editingFieldIdx !== null ? 'Save changes' : '+ Add Field'}
+          </button>
+        </div>
+      </div>
+
+      {/* Visitor Types — the "I am a..." buttons on the kiosk */}
+      <div style={sectionStyle}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Users size={20} color="#0D7377" /> Visitor Types
+        </h3>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
+          The buttons visitors pick on the kiosk's first screen ("I am a…"). Make them fit your
+          organization — a hospital might use <em>Patient, Family Member, Vendor</em>. Changes reach
+          the kiosk within a minute; no Save Settings needed for this section.
+        </p>
+
+        {visitorTypes.length === 0 && (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13, color: '#92400E', lineHeight: 1.5 }}>
+            <strong>No types yet</strong> — the kiosk is showing generic suggestions for your industry.
+            <button type="button" onClick={seedSuggestedTypes} disabled={vtBusy}
+              style={{ marginLeft: 8, padding: '6px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {vtBusy ? 'Adding…' : `Start with suggested ${getTerms(settings.profile_type).label} types`}
+            </button>
+            <div style={{ marginTop: 6, fontSize: 12 }}>
+              {(getTerms(settings.profile_type).defaultTypes || []).map(t => t.name).join(' · ')} — they become fully editable once added.
+            </div>
+          </div>
+        )}
+
+        {visitorTypes.map(t => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: vtEditingId === t.id ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${vtEditingId === t.id ? '#99F6E4' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
+            <span style={{ width: 16, height: 16, borderRadius: '50%', background: t.badge_color, flexShrink: 0, border: '2px solid #fff', boxShadow: '0 0 0 1px #E2E8F0' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{t.name}</span>
+              <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>
+                {t.description || ''}{t.requires_nda ? ' · NDA required' : ''}
+              </span>
+            </div>
+            <button type="button" onClick={() => { setVtEditingId(t.id); setVtForm({ name: t.name, description: t.description || '', badge_color: t.badge_color, requires_nda: !!t.requires_nda }); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <Pencil size={12} /> Edit
+            </button>
+            <button type="button" onClick={() => deleteVisitorType(t)} disabled={vtBusy}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <Trash2 size={12} /> Delete
+            </button>
+          </div>
+        ))}
+
+        {vtEditingId && (
+          <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#F0FDFA', border: '1px solid #99F6E4', fontSize: 13, color: '#0F766E', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>Editing: {visitorTypes.find(t => t.id === vtEditingId)?.name}</span>
+            <button type="button" onClick={() => { setVtEditingId(null); setVtForm({ name: '', description: '', badge_color: '#0D7377', requires_nda: false }); }}
+              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel edit
+            </button>
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+          <input type="text" placeholder="Type name — e.g. Patient" value={vtForm.name}
+            onChange={(e) => setVtForm({ ...vtForm, name: e.target.value })} style={inputStyle} />
+          <input type="text" placeholder="Description (optional)" value={vtForm.description}
+            onChange={(e) => setVtForm({ ...vtForm, description: e.target.value })} style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>Button color:</span>
+          {['#0D7377', '#FF6B35', '#2ECC71', '#9B59B6', '#D97706', '#2563EB', '#DC2626', '#475569'].map(c => (
+            <button key={c} type="button" onClick={() => setVtForm({ ...vtForm, badge_color: c })}
+              style={{ width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', border: vtForm.badge_color === c ? '3px solid #0F172A' : '2px solid #fff', boxShadow: '0 0 0 1px #CBD5E1' }} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, flexWrap: 'wrap', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155', cursor: 'pointer' }}>
+            <input type="checkbox" checked={vtForm.requires_nda} onChange={(e) => setVtForm({ ...vtForm, requires_nda: e.target.checked })} />
+            Requires NDA signature
+          </label>
+          <button type="button" onClick={saveVisitorType} disabled={vtBusy}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            <Plus size={14} /> {vtBusy ? 'Saving…' : vtEditingId ? 'Save changes' : 'Add Type'}
           </button>
         </div>
       </div>
