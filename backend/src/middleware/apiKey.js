@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const db = require('../config/database');
+const db = require('../utils/db');
 
 // API-key authentication for custom integrations (Settings → Integrations).
 // Send header:  x-api-key: sk_live_...
