@@ -410,7 +410,8 @@ export default function KioskSignIn() {
     </div>
   );
 
-  // Required custom fields gate step 1's Continue button
+  // Required custom + industry fields gate the step-2 submit (they render on step 2 —
+  // gating step 1's Continue with them deadlocked the form: you could never reach the field)
   const customRequiredMissing = customFields.some(f => {
     if (!f.required) return false;
     const v = customData[f.label];
@@ -835,13 +836,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={() => { setErrorMsg(''); if (validateStep1()) setStep(2); }}
-            disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing}
+            disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo) || customRequiredMissing) ? 0.5 : 1
+              cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 'not-allowed' : 'pointer',
+              opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 0.5 : 1
             }}
           >
             Continue
@@ -1043,13 +1044,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={ndaRequired ? goToNdaStep : handleSubmit}
-            disabled={loading || (fieldShown('host') && !formData.host_id)}
+            disabled={loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (loading || (fieldShown('host') && !formData.host_id)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (loading || (fieldShown('host') && !formData.host_id)) ? 'not-allowed' : 'pointer',
-              opacity: (loading || (fieldShown('host') && !formData.host_id)) ? 0.5 : 1
+              cursor: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 'not-allowed' : 'pointer',
+              opacity: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 0.5 : 1
             }}
           >
             {loading ? 'Processing...' : ndaRequired ? 'Continue to NDA' : 'Complete Sign In'}
