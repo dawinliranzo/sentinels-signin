@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace, Printer } from 'lucide-react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
 import { getTerms } from '../utils/terms';
+import { printBadge } from '../utils/badge';
 import SignaturePad from '../components/SignaturePad';
 
 // Shown when the org requires an NDA but hasn't written their own text yet.
@@ -126,6 +127,20 @@ export default function KioskSignIn() {
     if (em && !EMAIL_RE.test(em)) e.email = "That email doesn't look valid — fix it or leave it empty";
     const ph = formData.phone.trim();
     if (ph && (!PHONE_RE.test(ph) || (ph.match(/\d/g) || []).length < 7)) e.phone = "That phone number doesn't look valid — fix it or leave it empty";
+    // Date of birth (hospital profile): a present value must be a real calendar
+    // date, after 1900 and not in the future — typed or scanned
+    const dobVal = visitorDob || String(profileAnswers.dob || '').trim();
+    if (dobVal) {
+      const m = dobVal.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      let bad = !m;
+      if (m) {
+        const y = +m[1], mo = +m[2], d = +m[3];
+        const dt = new Date(y, mo - 1, d);
+        bad = dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d
+           || y < 1900 || dt.getTime() > Date.now();
+      }
+      if (bad) e.dob = 'Enter a real date of birth — it cannot be in the future';
+    }
     setFieldErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -421,43 +436,22 @@ export default function KioskSignIn() {
     return f.type === 'checkbox' ? !v : !v || !String(v).trim();
   });
 
-  // Prints the visitor badge in a sandboxed iframe: org, name, host, badge #, photo.
+  // Prints the visitor badge via the shared builder (utils/badge.js) — it waits
+  // for the photo to decode before printing so badges never come out half-blank.
   // The kiosk browser's default printer is used — enable silent/kiosk-mode printing
   // (Chrome --kiosk-printing) on unattended kiosks for zero-dialog printing.
   const printVisitorBadge = (data) => {
-    try {
-      const frame = document.createElement('iframe');
-      frame.style.position = 'fixed';
-      frame.style.right = '0'; frame.style.bottom = '0';
-      frame.style.width = '0'; frame.style.height = '0'; frame.style.border = '0';
-      document.body.appendChild(frame);
-      const v = data.visit || {};
-      const badgeNo = data.badge_number || v.badge_number || '';
-      const hostName = selectedHost ? `${selectedHost.first_name} ${selectedHost.last_name}` : '';
-      const photoImg = photo ? `<img src="${photo}" style="width:180px;height:180px;border-radius:50%;object-fit:cover;border:4px solid #0D7377" />` : '';
-      const doc = frame.contentWindow.document;
-      doc.open();
-      doc.write(`<!doctype html><html><head><title>Visitor Badge ${badgeNo}</title></head>
-        <body style="margin:0;font-family:Arial,sans-serif">
-          <div style="width:360px;border:3px solid #0D7377;border-radius:16px;overflow:hidden;text-align:center">
-            <div style="background:#0D7377;color:#fff;padding:12px;font-size:20px;font-weight:800;letter-spacing:2px">VISITOR</div>
-            <div style="padding:18px 14px">
-              ${photoImg}
-              <div style="font-size:26px;font-weight:800;color:#0F172A;margin-top:12px">${formData.first_name} ${formData.last_name}</div>
-              ${formData.company ? `<div style="font-size:15px;color:#475569;margin-top:2px">${formData.company}</div>` : ''}
-              ${hostName ? `<div style="font-size:15px;color:#0D7377;font-weight:700;margin-top:8px">Visiting: ${hostName}</div>` : ''}
-              <div style="font-size:13px;color:#64748B;margin-top:8px">${new Date().toLocaleString()}</div>
-            </div>
-            <div style="background:#0F172A;color:#14FFEC;padding:10px;font-size:22px;font-weight:800;font-family:monospace;letter-spacing:3px">${badgeNo}</div>
-          </div>
-        </body></html>`);
-      doc.close();
-      frame.contentWindow.focus();
-      setTimeout(() => {
-        try { frame.contentWindow.print(); } catch (e) { /* print dialog cancelled */ }
-        setTimeout(() => frame.remove(), 2000);
-      }, 350);
-    } catch (e) { /* printing is best-effort */ }
+    const v = (data && data.visit) || {};
+    printBadge({
+      title: 'VISITOR',
+      firstName: formData.first_name,
+      lastName: formData.last_name,
+      company: formData.company,
+      hostName: selectedHost ? `${selectedHost.first_name} ${selectedHost.last_name}` : '',
+      hostLabel: 'Visiting',
+      badgeNo: (data && data.badge_number) || v.badge_number || '',
+      photo,
+    });
   };
 
   const handleSubmit = async () => {
@@ -592,6 +586,20 @@ export default function KioskSignIn() {
             {visitResult.badge_number}
           </div>
         </div>
+
+        {/* Manual print — the safety net when auto-print didn't fire (printer not
+            linked to this device, dialog dismissed, or paper jam) */}
+        <button
+          onClick={() => printVisitorBadge(visitResult)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 30,
+            padding: '16px 28px', borderRadius: 14, fontSize: 17, fontWeight: 700,
+            background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+            border: '2px solid rgba(255,255,255,0.3)'
+          }}
+        >
+          <Printer size={20} /> Print Badge
+        </button>
 
         <div style={{
           background: 'rgba(255,255,255,0.05)', borderRadius: 16,
@@ -780,6 +788,7 @@ export default function KioskSignIn() {
                 style={inputStyle}
                 placeholder={f.placeholder || f.label}
               />
+              {f.key === 'dob' && errText('dob')}
             </div>
           ))}
 
