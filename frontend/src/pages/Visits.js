@@ -1,9 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X, Flag, ShieldAlert, Trash2 , MapPin } from 'lucide-react';
+import { Search, Filter, Download, CheckCircle, XCircle, FileText, Eye, X, Flag, ShieldAlert, Trash2 , MapPin, Printer } from 'lucide-react';
+import { printBadge } from '../utils/badge';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
+
+// Reprint a visitor badge for any visit on record — the safety net for when
+// auto-print didn't fire (printer offline, dialog dismissed, new kiosk)
+const reprintBadge = (v) => {
+  printBadge({
+    title: 'VISITOR',
+    firstName: v.visitor_first_name,
+    lastName: v.visitor_last_name,
+    company: v.visitor_company || '',
+    hostName: v.host_first_name ? `${v.host_first_name} ${v.host_last_name || ''}`.trim() : '',
+    hostLabel: 'Visiting',
+    badgeNo: v.badge_number || '',
+    photo: v.photo_data || null,
+    time: v.checked_in_at,
+  });
+};
+
 
 // Convert a Date to the "YYYY-MM-DDTHH:mm" format datetime-local inputs expect
 const toLocalInput = (d) => {
@@ -325,6 +343,10 @@ export default function Visits() {
                       style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
                       <Eye size={15} color="#64748B" />
                     </button>
+                    <button onClick={() => reprintBadge(v)} title="Reprint visitor badge"
+                      style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
+                      <Printer size={15} color="#64748B" />
+                    </button>
                     {(() => {
                       const existing = flagFor(v);
                       return (
@@ -541,6 +563,14 @@ export default function Visits() {
                 </div>
               ))}
             </div>
+            <button onClick={() => reprintBadge(detailVisit)}
+              style={{
+                width: '100%', marginTop: 16, padding: '13px', borderRadius: 10,
+                background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+              }}>
+              <Printer size={16} /> Print Badge
+            </button>
           </div>
         </div>
       )}
