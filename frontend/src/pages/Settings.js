@@ -485,9 +485,11 @@ export default function Settings() {
               onChange={(e) => setSettings({...settings, auto_print_badge: e.target.checked})} />
             <div>
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Auto-print Visitor Badges</div>
-              <div style={{ fontSize: 13, color: '#64748B' }}>
-                Print the visitor's badge automatically right after kiosk check-in. Works with any printer the kiosk computer knows —
-                link it per kiosk in <strong>Devices → Link printer</strong>. For unattended kiosks, run the browser with silent printing
+              <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
+                Print the visitor's badge automatically right after kiosk check-in. <strong>Both switches are required:</strong>
+                ① this org switch (then Save Settings), and ② <strong>Devices → Link printer</strong> on each kiosk that should print.
+                Verify the chain any time with <strong>Devices → Test print</strong>, and reprint any visitor from the kiosk's
+                success screen or <strong>Visits → printer icon</strong>. For unattended kiosks, run the browser with silent printing
                 (Chrome's <code>--kiosk-printing</code>) so no print dialog appears.
               </div>
             </div>
