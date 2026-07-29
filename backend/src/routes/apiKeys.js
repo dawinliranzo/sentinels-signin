@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/database');
+const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { generateKey, hashKey } = require('../middleware/apiKey');
 
