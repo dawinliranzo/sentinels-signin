@@ -840,6 +840,24 @@ router.post('/check-in', async (req, res) => {
         } else if (e.code !== '42P01') throw e;
       }
     }
+    // DOB sanity (hospital profiles): reject impossible dates outright instead of
+    // quietly storing them — must be a real calendar date, after 1900, not future
+    let dobClean = null;
+    if (req.body.visitor_dob) {
+      const m = String(req.body.visitor_dob).match(/^(\d{4})-(\d{2})-(\d{2})/);
+      let cand = null;
+      if (m) {
+        const y = +m[1], mo = +m[2], d = +m[3];
+        const dt = new Date(Date.UTC(y, mo - 1, d));
+        if (dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d
+            && y >= 1900 && dt.getTime() <= Date.now()) cand = dt;
+      }
+      if (!cand) {
+        return res.status(400).json({ error: 'Enter a valid date of birth — it cannot be in the future.' });
+      }
+      dobClean = cand.toISOString().slice(0, 10);
+    }
+
     // Auto-print: org master switch (Settings) AND this kiosk has a printer linked (Devices)
     const shouldPrintBadge = (orgSettings?.auto_print_badge === true) && devicePrint === true;
     // Suggested (fallback) visitor types carry no DB id — keep the chosen name
@@ -943,15 +961,12 @@ router.post('/check-in', async (req, res) => {
       }
     }
 
-    // Date of birth from an ID scan (hospitals etc.) — stored when the column exists
-    if (req.body.visitor_dob) {
-      const dob = new Date(req.body.visitor_dob);
-      if (!isNaN(dob.getTime())) {
-        try {
-          await db.query('UPDATE visits SET visitor_dob = $1 WHERE id = $2', [dob.toISOString().slice(0, 10), visit.id]);
-          visit.visitor_dob = dob.toISOString().slice(0, 10);
-        } catch (e) { if (e.code !== '42703') throw e; }
-      }
+    // Date of birth (validated above) — stored when the column exists
+    if (dobClean) {
+      try {
+        await db.query('UPDATE visits SET visitor_dob = $1 WHERE id = $2', [dobClean, visit.id]);
+        visit.visitor_dob = dobClean;
+      } catch (e) { if (e.code !== '42703') throw e; }
     }
 
     // Teams card (no await on purpose beyond the helper's own safety)
