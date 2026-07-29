@@ -27,7 +27,7 @@ export default function KioskSignIn() {
   const [visitorTypes, setVisitorTypes] = useState([]);
   const [formData, setFormData] = useState({
     first_name: '', last_name: '', email: '', phone: '',
-    company: '', host_id: '', visitor_type_id: '',
+    company: '', host_id: '', visitor_type_id: '', visitor_type_name: '',
     purpose: '', vehicle_plate: '',
   });
   const [visitResult, setVisitResult] = useState(null);
@@ -341,13 +341,6 @@ export default function KioskSignIn() {
   }, [orgId]);
 
   React.useEffect(() => {
-    setVisitorTypes([
-      { id: '10000000-0000-0000-0000-000000000001', name: 'Guest', badge_color: '#0D7377' },
-      { id: '10000000-0000-0000-0000-000000000002', name: 'Contractor', badge_color: '#FF6B35' },
-      { id: '10000000-0000-0000-0000-000000000003', name: 'Delivery', badge_color: '#2ECC71' },
-      { id: '10000000-0000-0000-0000-000000000004', name: 'Interview', badge_color: '#9B59B6' },
-    ]);
-
     if (!orgId) return;
 
     const loadLists = () => {
@@ -355,13 +348,21 @@ export default function KioskSignIn() {
         if (r.data && r.data.length > 0) setHosts(r.data);
       }).catch(() => {});
       api.get(`/visitor-types/public/${orgId}`).then(r => {
-        if (r.data && r.data.length > 0) setVisitorTypes(r.data);
+        setVisitorTypes(Array.isArray(r.data) ? r.data : []);
       }).catch(() => {});
     };
     loadLists();
     const t = setInterval(loadLists, 5 * 60 * 1000);
     return () => clearInterval(t);
   }, [orgId]);
+
+  // Types the kiosk shows: the org's own editable types (Settings → Visitor
+  // Types) when they exist, otherwise sensible suggestions for the industry —
+  // a hospital gets Patient / Family Member, not Guest / Interview. Fallback
+  // types have id null so check-ins never send a fake uuid to the FK column.
+  const displayTypes = visitorTypes.length > 0
+    ? visitorTypes
+    : (terms.defaultTypes || []).map(t => ({ id: null, name: t.name, badge_color: t.color }));
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -410,13 +411,15 @@ export default function KioskSignIn() {
     </div>
   );
 
-  // Required custom + industry fields gate the step-2 submit (they render on step 2 —
-  // gating step 1's Continue with them deadlocked the form: you could never reach the field)
+  // Industry fields render on step 1 → they gate Continue.
+  const industryRequiredMissing = (terms.kioskFields || []).some(f => f.required && !String(profileAnswers[f.key] || '').trim());
+  // Org custom fields render on step 2 → they gate the final submit.
+  // (Never gate a step with fields the visitor can't see yet — that deadlocks the form.)
   const customRequiredMissing = customFields.some(f => {
     if (!f.required) return false;
     const v = customData[f.label];
     return f.type === 'checkbox' ? !v : !v || !String(v).trim();
-  }) || (terms.kioskFields || []).some(f => f.required && !String(profileAnswers[f.key] || '').trim());
+  });
 
   // Prints the visitor badge in a sandboxed iframe: org, name, host, badge #, photo.
   // The kiosk browser's default printer is used — enable silent/kiosk-mode printing
@@ -482,6 +485,7 @@ export default function KioskSignIn() {
         // uuid columns (host_id / visitor_type_id) with "invalid input syntax"
         host_id: formData.host_id || null,
         visitor_type_id: formData.visitor_type_id || null,
+        visitor_type_name: formData.visitor_type_name || undefined,
         sign_in_method: 'kiosk',
         photo_data: photo,
         custom_data: Object.keys(mergedCustom).length > 0 ? mergedCustom : undefined,
@@ -706,14 +710,14 @@ export default function KioskSignIn() {
             <div>
               <label style={labelStyle}>I am a...</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {visitorTypes.map(vt => (
+                {displayTypes.map(vt => (
                   <button
-                    key={vt.id}
-                    onClick={() => setFormData({ ...formData, visitor_type_id: vt.id })}
+                    key={vt.id || vt.name}
+                    onClick={() => setFormData({ ...formData, visitor_type_id: vt.id || null, visitor_type_name: vt.name })}
                     style={{
                       padding: '20px 16px', borderRadius: 14,
-                      background: formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.1)',
-                      border: `2px solid ${formData.visitor_type_id === vt.id ? vt.badge_color : 'rgba(255,255,255,0.2)'}`,
+                      background: formData.visitor_type_name === vt.name ? vt.badge_color : 'rgba(255,255,255,0.1)',
+                      border: `2px solid ${formData.visitor_type_name === vt.name ? vt.badge_color : 'rgba(255,255,255,0.2)'}`,
                       color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer',
                       textAlign: 'center'
                     }}
@@ -763,6 +767,21 @@ export default function KioskSignIn() {
               {errText('last_name')}
             </div>
           </div>
+
+          {/* Industry identity fields (Organization Profile — DOB for hospitals,
+              unit # for buildings) live on step 1 with the rest of "who are you" */}
+          {(terms.kioskFields || []).map((f) => (
+            <div key={f.key}>
+              <label style={labelStyle}>{f.label}{f.required ? ' *' : ''}</label>
+              <input
+                type={f.type === 'date' ? 'date' : 'text'}
+                value={profileAnswers[f.key] || ''}
+                onChange={(e) => setProfileAnswers({ ...profileAnswers, [f.key]: e.target.value })}
+                style={inputStyle}
+                placeholder={f.placeholder || f.label}
+              />
+            </div>
+          ))}
 
           {fieldShown('email') && (
             <div>
@@ -836,13 +855,13 @@ export default function KioskSignIn() {
 
           <button
             onClick={() => { setErrorMsg(''); if (validateStep1()) setStep(2); }}
-            disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)}
+            disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
-              cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 'not-allowed' : 'pointer',
-              opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_id) || (photoRequired && fieldShown('photo') && !photo)) ? 0.5 : 1
+              cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 'not-allowed' : 'pointer',
+              opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 0.5 : 1
             }}
           >
             Continue
@@ -968,20 +987,6 @@ export default function KioskSignIn() {
               {errText('purpose')}
             </div>
           )}
-
-          {/* Industry-specific fields (Organization Profile — e.g. unit # for buildings, DOB for hospitals) */}
-          {(terms.kioskFields || []).map((f) => (
-            <div key={f.key}>
-              <label style={labelStyle}>{f.label}{f.required ? ' *' : ''}</label>
-              <input
-                type={f.type === 'date' ? 'date' : 'text'}
-                value={profileAnswers[f.key] || ''}
-                onChange={(e) => setProfileAnswers({ ...profileAnswers, [f.key]: e.target.value })}
-                style={inputStyle}
-                placeholder={f.placeholder || f.label}
-              />
-            </div>
-          ))}
 
           {/* Org-defined custom registration fields */}
           {customFields.map((f) => (
