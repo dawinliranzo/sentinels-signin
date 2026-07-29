@@ -842,6 +842,12 @@ router.post('/check-in', async (req, res) => {
     }
     // Auto-print: org master switch (Settings) AND this kiosk has a printer linked (Devices)
     const shouldPrintBadge = (orgSettings?.auto_print_badge === true) && devicePrint === true;
+    // Suggested (fallback) visitor types carry no DB id — keep the chosen name
+    // inside custom_data so the visit record still shows what was picked
+    const customDataOut = { ...(custom_data || {}) };
+    if (!visitor_type_id && req.body.visitor_type_name) {
+      customDataOut.visitor_type = String(req.body.visitor_type_name).slice(0, 60);
+    }
     const result = await db.query(withDevice ? `
       INSERT INTO visits (
         org_id, pre_reg_id, visitor_type_id, host_id,
@@ -857,8 +863,8 @@ router.post('/check-in', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'checked_in')
       RETURNING *
     `, withDevice
-      ? [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null, deviceId]
-      : [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(custom_data || {}), sign_in_method, photo_data || null]);
+      ? [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(customDataOut), sign_in_method, photo_data || null, deviceId]
+      : [org_id, linkedPreRegId || null, visitor_type_id, host_id, first_name, last_name, email, phone, company, purpose, badgeNum, vehicle_plate, JSON.stringify(customDataOut), sign_in_method, photo_data || null]);
 
     const visit = result.rows[0];
 
