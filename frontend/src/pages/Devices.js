@@ -1,10 +1,25 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { Monitor, Plus, Copy, Pencil, Trash2, Check, ExternalLink, Wifi, WifiOff, QrCode , Printer, RotateCcw } from 'lucide-react';
+import { printBadge } from '../utils/badge';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 import { useStore } from '../utils/store';
+
+// Print a sample badge from this very browser — proves the kiosk computer can
+// reach a printer before you rely on auto-print during real check-ins
+const testPrint = (d) => {
+  const ok = printBadge({
+    title: 'VISITOR',
+    firstName: 'Test', lastName: 'Visitor',
+    company: 'Sentinels Print Check',
+    hostName: d.name, hostLabel: 'Kiosk',
+    badgeNo: 'TEST-001',
+  });
+  if (!ok) toast('This browser blocked the print — check its print permissions', 'error');
+};
+
 
 export default function Devices() {
   const org = useStore((s) => s.organization);
@@ -270,6 +285,13 @@ export default function Devices() {
                   color: d.print_badge ? '#fff' : '#64748B'
                 }}>
                 <Printer size={14} /> {d.print_badge ? 'Printer linked' : 'Link printer'}
+              </button>
+            )}
+
+            {canManage && d.print_badge && (
+              <button onClick={() => testPrint(d)} title="Print a sample badge from THIS browser to verify the printer chain"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 12, fontWeight: 700, color: '#B45309', cursor: 'pointer' }}>
+                Test print
               </button>
             )}
 
