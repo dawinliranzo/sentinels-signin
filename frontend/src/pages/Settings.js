@@ -55,6 +55,7 @@ export default function Settings() {
   const [freshKey, setFreshKey] = useState(null); // full plaintext key — shown once
   const [keyBusy, setKeyBusy] = useState(false);
   const [newField, setNewField] = useState({ label: '', type: 'text', required: false, options: '' });
+  const [editingFieldIdx, setEditingFieldIdx] = useState(null); // which custom field is loaded in the editor
 
   // Daily backups (plan feature)
   const [backups, setBackups] = useState([]);
@@ -622,20 +623,39 @@ export default function Settings() {
 
         <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Your own fields</div>
         {(settings.custom_fields || []).map((f, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: editingFieldIdx === i ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${editingFieldIdx === i ? '#99F6E4' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{f.label}</span>
               <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>
                 {f.type}{f.required ? ' · required' : ''}{f.type === 'dropdown' ? ` · ${(f.options || []).join(', ')}` : ''}
               </span>
             </div>
-            <button type="button" onClick={() => setSettings({ ...settings, custom_fields: settings.custom_fields.filter((_, j) => j !== i) })}
+            <button type="button" onClick={() => {
+              setEditingFieldIdx(i);
+              setNewField({ label: f.label, type: f.type, required: !!f.required, options: (f.options || []).join(', ') });
+            }}
+              style={{ padding: '6px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              Edit
+            </button>
+            <button type="button" onClick={() => {
+              setSettings({ ...settings, custom_fields: settings.custom_fields.filter((_, j) => j !== i) });
+              if (editingFieldIdx === i) { setEditingFieldIdx(null); setNewField({ label: '', type: 'text', required: false, options: '' }); }
+            }}
               style={{ padding: '6px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', color: '#991B1B', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               Remove
             </button>
           </div>
         ))}
 
+        {editingFieldIdx !== null && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: '#F0FDFA', border: '1px solid #99F6E4', fontSize: 13, color: '#0F766E', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span>Editing: {(settings.custom_fields || [])[editingFieldIdx]?.label}</span>
+            <button type="button" onClick={() => { setEditingFieldIdx(null); setNewField({ label: '', type: 'text', required: false, options: '' }); }}
+              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              Cancel edit
+            </button>
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginTop: 12 }}>
           <input type="text" placeholder="Field label — e.g. Apartment #" value={newField.label}
             onChange={(e) => setNewField({ ...newField, label: e.target.value })} style={inputStyle} />
@@ -661,11 +681,17 @@ export default function Settings() {
               field.options = newField.options.split(',').map(o => o.trim()).filter(Boolean);
               if (field.options.length === 0) return toast('Add at least one choice for the dropdown', 'error');
             }
-            setSettings({ ...settings, custom_fields: [...(settings.custom_fields || []), field] });
+            if (editingFieldIdx !== null) {
+              // Update in place — keeps the field's position and its existing answers on past visits
+              setSettings({ ...settings, custom_fields: (settings.custom_fields || []).map((cf, j) => j === editingFieldIdx ? field : cf) });
+              setEditingFieldIdx(null);
+            } else {
+              setSettings({ ...settings, custom_fields: [...(settings.custom_fields || []), field] });
+            }
             setNewField({ label: '', type: 'text', required: false, options: '' });
           }}
             style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-            + Add Field
+            {editingFieldIdx !== null ? 'Save changes' : '+ Add Field'}
           </button>
         </div>
       </div>
