@@ -723,7 +723,9 @@ export default function Hosts() {
                       agreed to receive transactional text messages from Sentinels Kiosk at the number above — only to notify them
                       when a visitor arrives for them. Message frequency varies. Message &amp; data rates may apply.
                       They can reply <strong>STOP</strong> to opt out at any time, or <strong>HELP</strong> for help.
-                      Consent is recorded with a timestamp when you save.
+                      Consent is not a condition of employment or service and is recorded with a timestamp when you save.
+                      See our <a href="https://www.sentinelskiosk.com/terms.html" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Terms &amp; Conditions</a> and{' '}
+                      <a href="https://www.sentinelskiosk.com/privacy" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Privacy Policy</a>.
                     </div>
                   )}
                 </div>
