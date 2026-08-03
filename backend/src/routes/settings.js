@@ -36,6 +36,9 @@ router.patch('/', authenticate, requirePermission('settings'), async (req, res) 
         ? body.hidden_fields.filter(k => HIDEABLE.includes(k))
         : [];
     }
+    // Date of birth is a standard kiosk field with an explicit on/off switch
+    // (off by default except hospitals — the kiosk applies that default when unset)
+    if ('dob_enabled' in body) body.dob_enabled = body.dob_enabled === true;
     const r = await db.query(
       'UPDATE organizations SET settings = $1 WHERE id = $2 RETURNING settings',
       [JSON.stringify(body), req.user.org_id]
