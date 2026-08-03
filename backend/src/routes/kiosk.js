@@ -116,6 +116,10 @@ router.get('/config/:orgId', async (req, res) => {
       hidden_fields: Array.isArray(s.hidden_fields) ? s.hidden_fields : [],
       profile_type: s.profile_type || 'other',
       id_scan_enabled: s.id_scan_enabled === true,
+      // Date of birth is a STANDARD kiosk field, off by default except for the
+      // hospital profile (its historical behavior) — null = org never chose,
+      // the kiosk applies the profile default; true/false = org's explicit choice
+      dob_enabled: typeof s.dob_enabled === 'boolean' ? s.dob_enabled : null,
     });
   } catch (err) {
     console.error(err);
@@ -129,52 +133,106 @@ router.get('/config/:orgId', async (req, res) => {
 // OCR is an assistant, not an authority.
 
 function parseDob(text) {
-  // MM/DD/YYYY or MM-DD-YYYY (US licenses)
-  let m = text.match(/\b(0[1-9]|1[0-2])[\/.\- ](0[1-9]|[12]\d|3[01])[\/.\- ]((19|20)\d{2})\b/);
-  if (m) return `${m[3]}-${m[1]}-${m[2]}`;
+  // Real-world OCR of an ID glues the label to the date ("oBO1/16/1985") and
+  // confuses letters for digits (O→0, l→1, S→5). Dates never contain letters,
+  // so every pattern runs against a digit-normalized copy of the text.
+  const original = String(text).toUpperCase();
+  const norm = original
+    .replace(/[OQ]/g, '0')
+    .replace(/[IL|!]/g, '1')
+    .replace(/S(?=\d)|(?<=\d)S/g, '5');
+  const now = Date.now();
+  const candidates = [];
+  // Loose label check (tie-breaker only): is something DOB-ish just before
+  // the date? OCR mangles "DOB" into "oB"/"D0B"/"08", so stay permissive.
+  const anchoredNear = (idx) => /(DOB|D0B|BIRTH|BORN|DBB|O0B|0B|OB)/.test(original.slice(Math.max(0, idx - 20), idx));
+  const push = (y, m, d, idx) => {
+    y = +y; m = +m; d = +d;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return;
+    // A date of birth is after 1900 and never in the future — this alone
+    // eliminates expiry dates (future) and most issue dates get sorted below
+    if (y < 1900 || dt.getTime() > now) return;
+    candidates.push({ y, m, d, t: dt.getTime(), anchored: anchoredNear(idx) });
+  };
+  // MM/DD/YYYY or MM-DD-YYYY (US licenses) — no \b before the month: the label
+  // is usually glued to it, and a letter before a digit breaks \b
+  for (const m of norm.matchAll(/(?<!\d)(0[1-9]|1[0-2])[\/.\- ]([0-2]\d|3[01])[\/.\- ]((?:19|20)\d{2})(?!\d)/g))
+    push(m[3], m[1], m[2], m.index);
   // YYYY-MM-DD (ISO, passports / some IDs)
-  m = text.match(/\b((19|20)\d{2})[\/.\- ](0[1-9]|1[0-2])[\/.\- ](0[1-9]|[12]\d|3[01])\b/);
-  if (m) return `${m[1]}-${m[3]}-${m[4]}`;
-  // DD MMM YYYY (e.g. 12 JAN 1990)
-  const months = { JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12' };
-  m = text.match(/\b([012]?\d|3[01])\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+((19|20)\d{2})\b/i);
-  if (m) return `${m[3]}-${months[m[2].toUpperCase()]}-${m[1].padStart(2, '0')}`;
-  return null;
+  for (const m of norm.matchAll(/(?<!\d)((?:19|20)\d{2})[\/.\- ](0[1-9]|1[0-2])[\/.\- ]([0-2]\d|3[01])(?!\d)/g))
+    push(m[1], m[2], m[3], m.index);
+  // DD MMM YYYY (e.g. 12 JAN 1990) — English and Spanish month names.
+  // Runs on the ORIGINAL text: digit-normalizing would mangle "AGO" → "AG0".
+  const months = { JAN: '01', ENE: '01', FEB: '02', MAR: '03', APR: '04', ABR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', AGO: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12', DIC: '12' };
+  for (const m of original.matchAll(/(?<![\dA-Z])([012]?\d|3[01])\s+(JAN|ENE|FEB|MAR|APR|ABR|MAY|JUN|JUL|AUG|AGO|SEP|OCT|NOV|DEC|DIC)[A-Z]*\s+((?:19|20)\d{2})(?!\d)/g))
+    push(m[3], months[m[2]], m[1], m.index);
+  if (candidates.length === 0) return null;
+  // Prefer the date sitting next to a DOB/BIRTH label; otherwise the earliest
+  // plausible date wins — issue dates are recent, expiry dates are future
+  // (already filtered), so the birth date is the oldest one on the card.
+  const pick = candidates.find(c => c.anchored)
+    || candidates.slice().sort((a, b) => a.t - b.t)[0];
+  return `${pick.y}-${String(pick.m).padStart(2, '0')}-${String(pick.d).padStart(2, '0')}`;
 }
 
 function parseName(text) {
-  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 1);
+  const lines = String(text).split('\n').map((l) => l.trim()).filter((l) => l.length > 1);
   let last = null, first = null;
-  // Labelled fields: "LN SMITH" / "FN JOHN" / "Last: Smith" — or the label alone
-  // on one line with the value on the next (passport-style)
-  const isNameLine = (v) => v && /^[A-Za-z''.\- ]{2,}$/.test(v) && !/(LICENSE|LICENCIA|PASSPORT|STATE|UNITED|USA|DATE|BIRTH|SEX|EXP|ISS|OF|THE)/i.test(v);
+  // Words that look name-ish but are card chrome, addresses or field labels.
+  // Anything containing a digit is never a name (kills "1234 PALM LN").
+  const SKIP = /(DRIVER|LICEN|PASSPORT|STATE|UNITED|USA|AMERICA|ESTADOS|DEPARTMENT|MOTOR|VEHICLE|IDENT|CARD|DOB|BIRTH|BORN|SEX|EXP|ISS|CLASS|RESTR|ENDORSE|HEIGHT|WEIGHT|HGT|WGT|EYES|HAIR|ADDR|STREET|AVENUE|DRIVE|ROAD|LANE|DONOR|VETERAN|ORGAN|ARIZONA|CALIFORNIA|TEXAS|FLORIDA|NEVADA|OHIO|MICHIGAN|WASHINGTON|COLORADO|ILLINOIS|PENNSYLVANIA|\bNEW\s|\bOF\b|\bTHE\b|\bAND\b|\d)/i;
+  const clean = (v) => {
+    if (!v) return null;
+    const c = v.replace(/[^A-Za-z''\- ]/g, '').trim().replace(/\s+/g, ' ');
+    if (c.length < 2 || c.length > 40 || SKIP.test(c)) return null;
+    return c.toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
+  };
+  const isNameValue = (v) => !!clean(v);
+  // 1. Labelled fields — "LN SMITH" / "FN JOHN" / "Last: Smith" inline, or a
+  // bare label with the value on the next line (passport-style)
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    // Bare label with the value on the next line (passport-style)
-    if (/^(LN|LAST( NAME)?|SURNAME|APELLIDO)\.?$/i.test(l) && isNameLine(lines[i + 1]) && !last) { last = lines[i + 1].trim(); continue; }
-    if (/^(FN|FIRST( NAME)?|GIVEN( NAMES)?|NOMBRE)\.?$/i.test(l) && isNameLine(lines[i + 1]) && !first) { first = lines[i + 1].trim(); continue; }
-    // Inline label: "LN SMITH" / "FN JOHN" / "Last: Smith"
-    let m = l.match(/^(LN|LAST|SURNAME|APELLIDO)[:\s]+([A-Z''\- ]{2,})$/i);
-    if (m && !last) last = m[2].trim().split(/\s{2,}/)[0];
-    m = l.match(/^(FN|FIRST|GIVEN|NOMBRE)[:\s]+([A-Z''\- ]{2,})$/i);
-    if (m && !first) first = m[2].trim().split(/\s{2,}/)[0];
+    if (/^(LN|LAST( NAME)?|SURNAME|APELLIDO)\.?$/i.test(l) && isNameValue(lines[i + 1]) && !last) { last = clean(lines[i + 1]); continue; }
+    if (/^(FN|FIRST( NAME)?|GIVEN( NAMES)?|NOMBRE)\.?$/i.test(l) && isNameValue(lines[i + 1]) && !first) { first = clean(lines[i + 1]); continue; }
+    let m = l.match(/(?:^|\s)(LN|LAST|SURNAME|APELLIDO)[:\s.]+(.+)$/i);
+    if (m && !last) {
+      // The value may swallow the next label: "LN SMYTHE FN JANE"
+      const emb = m[2].match(/^(.*?)\s+(?:FN|FIRST|GIVEN|NOMBRE)[:\s.]+(.+)$/i);
+      last = clean(emb ? emb[1] : m[2]);
+      if (emb && !first) first = clean(emb[2]);
+    }
+    m = l.match(/(?:^|\s)(FN|FIRST|GIVEN|NOMBRE)[:\s.]+(.+)$/i);
+    if (m && !first) {
+      const emb = m[2].match(/^(.*?)\s+(?:LN|LAST|SURNAME|APELLIDO)[:\s.]+(.+)$/i);
+      first = clean(emb ? emb[1] : m[2]);
+      if (emb && !last) last = clean(emb[2]);
+    }
   }
-  // "SMITH, JOHN" on one line
+  // 2. "SMITH, JOHN" — OCR just as often renders the comma as a period
   if (!first || !last) {
-    const m = text.match(/\b([A-Z][A-Z''\-]{2,}),\s*([A-Z][A-Z''\-]{2,})\b/);
-    if (m) { if (!last) last = m[1]; if (!first) first = m[2]; }
+    for (const l of lines) {
+      const m = l.match(/^([A-Z][A-Z''\-]{2,}(?:\s[A-Z][A-Z''\-]{2,})?)[,\.;]\s*([A-Z][A-Z''\-]{1,}(?:\s[A-Z][A-Z''\-]{1,})?)$/);
+      if (m && !SKIP.test(m[1]) && !SKIP.test(m[2])) {
+        if (!last) last = clean(m[1]);
+        if (!first) first = clean(m[2]);
+        if (last && first) break;
+      }
+    }
   }
-  // Fallback: first two fully-uppercase alpha lines that aren't keywords
+  // 3. Fallback: first fully-uppercase alpha lines that aren't card chrome —
+  // the name block usually sits above the address on US licenses
   if (!first || !last) {
-    const skip = /(DRIVER|LICENSE|LICENCIA|STATE|USA|UNITED|ID|CARD|DOB|BIRTH|SEX|EXP|ISS|CLASS|RESTRICTION|ENDORSEMENT|HEIGHT|WEIGHT|EYES|HAIR|ADDRESS|DONOR|VETERAN|ESTADOS|AMERICA|OF|THE|AND)/i;
-    const caps = lines.filter((l) => /^[A-Z][A-Z''.\- ]+$/.test(l) && !skip.test(l) && l.replace(/\s/g, '').length >= 2);
-    if (!last && caps.length >= 1) last = caps[0];
-    if (!first && caps.length >= 2) first = caps[1];
+    const caps = [];
+    for (const l of lines) {
+      const t = l.replace(/[^A-Za-z''\- ]/g, '').trim();
+      if (/^[A-Z][A-Z''\- ]+$/.test(t) && t.length >= 2 && t.length <= 40 && !SKIP.test(t)) caps.push(t);
+    }
+    if (!last && caps.length >= 1) last = clean(caps[0]);
+    if (!first && caps.length >= 2) first = clean(caps[1]);
   }
-  const clean = (v) => (v ? v.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim() : null);
-  return { first_name: clean(first), last_name: clean(last) };
+  return { first_name: first, last_name: last };
 }
-
 // PUBLIC: scan an ID at the kiosk → { first_name, last_name, dob }
 // Only runs when the org enabled it (Settings → Kiosk → ID scan).
 router.post('/scan-id', async (req, res) => {
@@ -194,8 +252,11 @@ router.post('/scan-id', async (req, res) => {
 
     let text = '';
     try {
-      const { createWorker } = require('tesseract.js');
+      const { createWorker, PSM } = require('tesseract.js');
       const worker = await createWorker('eng');
+      // Sparse text mode: kiosk captures are full webcam frames with the ID
+      // held up in a scene, not a clean cropped document
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
       const r = await worker.recognize(buffer);
       text = r.data.text || '';
       await worker.terminate();
