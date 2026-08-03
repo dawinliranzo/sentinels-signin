@@ -676,11 +676,27 @@ export default function Settings() {
               </label>
             );
           })}
+          {/* Date of birth is opt-in rather than hide-on: on by default for the
+              hospital profile, off for everyone else — and the ID scanner fills it */}
+          {(() => {
+            const shown = typeof settings.dob_enabled === 'boolean'
+              ? settings.dob_enabled
+              : settings.profile_type === 'hospital';
+            return (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${shown ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={shown}
+                  onChange={(e) => setSettings({ ...settings, dob_enabled: e.target.checked })} />
+                Date of birth
+              </label>
+            );
+          })()}
         </div>
         <p style={{ fontSize: 12, color: '#94A3B8', marginTop: -8, marginBottom: 18 }}>
           Only first and last name are mandatory — every other field is yours to show or hide.
           Hiding <strong>Host</strong> means visitors aren't asked who they're visiting and no arrival
           notifications go out. Hiding <strong>Visitor type</strong> removes the type buttons.
+          <strong>Date of birth</strong> starts on for hospitals and off for everyone else — the ID
+          scanner (Settings → Front Desk &amp; Integrations) fills it automatically when it's shown.
           The kiosk picks changes up within 30 seconds.
         </p>
 
