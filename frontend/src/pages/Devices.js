@@ -63,9 +63,9 @@ export default function Devices() {
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
-  const { data: devices, refetch } = useQuery('devices', () =>
+  const { data: devices, refetch, isError: devicesFailed, error: devicesError } = useQuery('devices', () =>
     api.get('/devices').then(r => r.data),
-    { refetchInterval: 15000 } // keep online status fresh
+    { refetchInterval: 15000, retry: 1 } // keep online status fresh
   );
 
   const addDevice = async (e) => {
@@ -213,11 +213,28 @@ export default function Devices() {
 
       {/* Device list */}
       <div style={{ background: '#fff', borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
-        {(!devices || devices.length === 0) ? (
+        {devicesFailed ? (
+          /* A failed load must NEVER look like "no devices" — that sends admins
+             re-adding kiosks that already exist */
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <WifiOff size={36} color="#FCA5A5" style={{ margin: '0 auto 12px' }} />
+            <div style={{ fontWeight: 700, color: '#991B1B', marginBottom: 6 }}>Couldn't load your kiosks</div>
+            <div style={{ fontSize: 13, color: '#B91C1C', marginBottom: 16 }}>
+              {devicesError?.response?.data?.error || 'Check your connection and try again'}
+            </div>
+            <button onClick={() => refetch()}
+              style={{ padding: '9px 22px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              Retry
+            </button>
+          </div>
+        ) : (!devices || devices.length === 0) ? (
           <div style={{ padding: 48, textAlign: 'center', color: '#64748B' }}>
             <Monitor size={40} color="#CBD5E1" style={{ margin: '0 auto 12px' }} />
             <div style={{ fontWeight: 600, color: '#334155', marginBottom: 4 }}>No kiosks registered yet</div>
-            <div style={{ fontSize: 14 }}>Add your first kiosk above, then enter its pairing code on the tablet.</div>
+            <div style={{ fontSize: 14, maxWidth: 420, margin: '0 auto' }}>
+              Add your first kiosk above, then open its pairing link (or scan the QR) on the tablet or
+              browser you want to use. Pairing updates the kiosk listed here — it doesn't create a new one.
+            </div>
           </div>
         ) : devices.map((d, i) => (
           <div key={d.id} style={{
