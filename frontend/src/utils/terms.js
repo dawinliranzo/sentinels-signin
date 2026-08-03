@@ -54,9 +54,7 @@ const PROFILES = {
     badgeTitle: 'STAFF BADGE',
     hostPageTitle: 'Doctors & Staff',
     hostPageSub: 'Doctors and staff visitors can check in to see',
-    kioskFields: [
-      { key: 'dob', label: 'Date of Birth', type: 'date', required: false },
-    ],
+    kioskFields: [],
     defaultTypes: [
       { name: 'Patient', color: '#0D7377' },
       { name: 'Family Member', color: '#9B59B6' },
