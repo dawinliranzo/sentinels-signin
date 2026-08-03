@@ -38,7 +38,7 @@ export default function KioskSignIn() {
   const [showScan, setShowScan] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState('');
-  const [visitorDob, setVisitorDob] = useState(null);
+  const [visitorDob, setVisitorDob] = useState('');
   const openScan = async () => {
     setShowScan(true);
     setScanError('');
@@ -70,7 +70,9 @@ export default function KioskSignIn() {
       }));
       if (d.first_name) filled.push('first name');
       if (d.last_name) filled.push('last name');
-      if (d.dob) { setVisitorDob(d.dob); filled.push('date of birth'); }
+      // The scanned DOB only lands when the org actually asks for it —
+      // collecting a birth date the visitor can't see would be a privacy trap
+      if (d.dob && dobShown) { setVisitorDob(d.dob); filled.push('date of birth'); }
       closeScan();
       if (filled.length > 0) {
         setScanError('');
@@ -101,6 +103,10 @@ export default function KioskSignIn() {
   };
   const [ocrNotice, setOcrNotice] = useState('');
   const [idScanEnabled, setIdScanEnabled] = useState(false);
+  // Date of birth is a standard kiosk field: on for hospitals unless the org
+  // switched it off, off for everyone else unless they switched it on
+  // (Settings → Registration Form → Date of birth)
+  const [dobShown, setDobShown] = useState(false);
   const [profileAnswers, setProfileAnswers] = useState({}); // industry-specific fields (unit #, student…)
 
   // Per-field validation — the kiosk is public, so garbage in = garbage in the visitor log
@@ -127,9 +133,9 @@ export default function KioskSignIn() {
     if (em && !EMAIL_RE.test(em)) e.email = "That email doesn't look valid — fix it or leave it empty";
     const ph = formData.phone.trim();
     if (ph && (!PHONE_RE.test(ph) || (ph.match(/\d/g) || []).length < 7)) e.phone = "That phone number doesn't look valid — fix it or leave it empty";
-    // Date of birth (hospital profile): a present value must be a real calendar
-    // date, after 1900 and not in the future — typed or scanned
-    const dobVal = visitorDob || String(profileAnswers.dob || '').trim();
+    // Date of birth (standard field, org-toggleable): a present value must be
+    // a real calendar date, after 1900 and not in the future — typed or scanned
+    const dobVal = String(visitorDob || '').trim();
     if (dobVal) {
       const m = dobVal.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       let bad = !m;
@@ -189,6 +195,7 @@ export default function KioskSignIn() {
       setHiddenFields(Array.isArray(r.data.hidden_fields) ? r.data.hidden_fields : []);
       setTerms(getTerms(r.data.profile_type));
       setIdScanEnabled(!!r.data.id_scan_enabled);
+      setDobShown(typeof r.data.dob_enabled === 'boolean' ? r.data.dob_enabled : r.data.profile_type === 'hospital');
       // pre-fill checkbox defaults (keep any values the visitor already typed)
       setCustomData(prev => {
         const next = { ...prev };
@@ -459,14 +466,13 @@ export default function KioskSignIn() {
     setLoading(true);
     setErrorMsg('');
     try {
-      // Industry fields: DOB maps to the visit's visitor_dob column; the rest
-      // ride along as labelled custom_data entries
+      // Industry fields (unit #, student…) ride along as labelled custom_data
+      // entries; date of birth maps to the visit's visitor_dob column
       const pf = terms.kioskFields || [];
-      const dobField = pf.find(f => f.key === 'dob');
-      const dobValue = visitorDob || (dobField && profileAnswers.dob) || undefined;
+      const dobValue = String(visitorDob || '').trim() || undefined;
       const profileCustom = {};
       pf.forEach(f => {
-        if (f.key !== 'dob' && String(profileAnswers[f.key] || '').trim()) profileCustom[f.label] = profileAnswers[f.key];
+        if (String(profileAnswers[f.key] || '').trim()) profileCustom[f.label] = profileAnswers[f.key];
       });
       const mergedCustom = { ...profileCustom, ...customData };
 
@@ -776,8 +782,24 @@ export default function KioskSignIn() {
             </div>
           </div>
 
-          {/* Industry identity fields (Organization Profile — DOB for hospitals,
-              unit # for buildings) live on step 1 with the rest of "who are you" */}
+          {/* Date of birth — a standard field the org toggles in Settings →
+              Registration Form (on by default for hospitals). Sits on step 1
+              with the rest of "who are you", and the ID scanner fills it. */}
+          {dobShown && (
+            <div>
+              <label style={labelStyle}>Date of Birth</label>
+              <input
+                type="date"
+                value={visitorDob}
+                onChange={(e) => setVisitorDob(e.target.value)}
+                style={{ ...inputStyle, ...errBorder('dob') }}
+              />
+              {errText('dob')}
+            </div>
+          )}
+
+          {/* Industry identity fields (Organization Profile — unit # for
+              buildings, student for schools) live on step 1 too */}
           {(terms.kioskFields || []).map((f) => (
             <div key={f.key}>
               <label style={labelStyle}>{f.label}{f.required ? ' *' : ''}</label>
@@ -788,7 +810,6 @@ export default function KioskSignIn() {
                 style={inputStyle}
                 placeholder={f.placeholder || f.label}
               />
-              {f.key === 'dob' && errText('dob')}
             </div>
           ))}
 
