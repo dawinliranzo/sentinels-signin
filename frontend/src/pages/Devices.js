@@ -289,24 +289,28 @@ export default function Devices() {
                       return;
                     }
                     refetch();
-                    toast(want ? `Printer linked to "${d.name}"` : `Printer unlinked from "${d.name}"`);
+                    toast(want
+                      ? `Auto-print ON for "${d.name}" — now open Devices on THAT kiosk computer and tap Test print to verify its printer`
+                      : `Auto-print OFF for "${d.name}"`);
                   } catch (err) {
                     toast(err.response?.data?.error || 'Failed to update device', 'error');
                   }
                 }}
-                title={d.print_badge ? 'Badge printer linked — badges auto-print at this kiosk on check-in' : 'Link a badge printer at this kiosk'}
+                title={d.print_badge
+                  ? 'Badges auto-print on this kiosk\'s own default printer at check-in — click to turn off'
+                  : 'Turn on auto-print: badges print on this kiosk\'s own default printer at check-in'}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
                   border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   background: d.print_badge ? '#0D7377' : '#F1F5F9',
                   color: d.print_badge ? '#fff' : '#64748B'
                 }}>
-                <Printer size={14} /> {d.print_badge ? 'Printer linked' : 'Link printer'}
+                <Printer size={14} /> {d.print_badge ? 'Auto-print on' : 'Print badges here'}
               </button>
             )}
 
             {canManage && d.print_badge && (
-              <button onClick={() => testPrint(d)} title="Print a sample badge from THIS browser to verify the printer chain"
+              <button onClick={() => testPrint(d)} title="Print a sample badge from THIS browser — run this ON the kiosk computer to prove its printer works"
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#FFFBEB', border: '1px solid #FDE68A', fontSize: 12, fontWeight: 700, color: '#B45309', cursor: 'pointer' }}>
                 Test print
               </button>
@@ -364,9 +368,17 @@ export default function Devices() {
         ))}
       </div>
 
-      <p style={{ fontSize: 13, color: '#94A3B8', marginTop: 16, textAlign: 'center' }}>
-        A kiosk counts as online while its screen is open and heartbeating (checked every 15s here). Offline kiosks also trigger your email alerts if enabled in Settings.
-      </p>
+      <div style={{ fontSize: 13, color: '#94A3B8', marginTop: 16, lineHeight: 1.7, background: '#F8FAFC', borderRadius: 12, padding: '14px 18px', border: '1px solid #E2E8F0' }}>
+        <strong style={{ color: '#64748B' }}>How badge printing works:</strong> there is no cloud printer to "link" — badges
+        print on the printer connected to the computer or tablet running each kiosk (its system default
+        printer, through the browser's print pipeline). <strong style={{ color: '#64748B' }}>Print badges here</strong> turns
+        auto-print on for that kiosk; also enable <strong style={{ color: '#64748B' }}>Settings → Front Desk &amp; Integrations →
+        auto-print</strong> for the org. To prove the chain works, open this page <em>on the kiosk computer itself</em> and
+        tap <strong style={{ color: '#64748B' }}>Test print</strong> — a sample badge should come out of its printer. For unattended
+        kiosks with no print dialog, launch the browser with silent/kiosk-mode printing
+        (Chrome <code style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: 4 }}>--kiosk-printing</code>).
+        Kiosks count as online while their screen is open and heartbeating; offline kiosks trigger your email alerts if enabled in Settings.
+      </div>
 
       {/* Pair / QR modal */}
       {pairDevice && (
