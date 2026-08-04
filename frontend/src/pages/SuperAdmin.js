@@ -51,6 +51,13 @@ export default function SuperAdmin() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
+  // Scale plumbing: with hundreds of orgs a single endless page stops working —
+  // status filter, sort and real pagination keep the list manageable
+  const [statusFilter, setStatusFilter] = useState('all'); // all | trial | expired | active | suspended | cancelled
+  const [sortBy, setSortBy] = useState('newest'); // newest | oldest | name | visits
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 15;
+  const [kioskUrlOrgId, setKioskUrlOrgId] = useState('');
   // Create-organization modal (manual provisioning for offline/paid signups)
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', plan: 'pro', admin_first_name: '', admin_last_name: '', admin_email: '', billing_email: '', trial_days: 14 });
@@ -371,12 +378,37 @@ export default function SuperAdmin() {
     }
   };
 
+  // Lifecycle buckets for filtering — mirrors the soft-paywall rules so what
+  // you see matches what the org experiences
+  const lifecycleOf = (o) => {
+    const now = new Date();
+    const trialEnd = o.trial_ends_at ? new Date(o.trial_ends_at) : null;
+    const renews = o.plan_renews_at ? new Date(o.plan_renews_at) : null;
+    if (o.plan === 'free') {
+      if (trialEnd) return trialEnd >= now ? 'trial' : 'expired';
+    } else if (o.status === 'active' && renews && renews < now) return 'expired';
+    return o.status || 'active';
+  };
+
   const filteredOrgs = orgs.filter(o => {
     const matchesSearch = o.name.toLowerCase().includes(search.toLowerCase()) ||
                          (o.billing_email || '').toLowerCase().includes(search.toLowerCase());
     const matchesPlan = planFilter === 'all' || o.plan === planFilter;
-    return matchesSearch && matchesPlan;
+    const matchesStatus = statusFilter === 'all' || lifecycleOf(o) === statusFilter;
+    return matchesSearch && matchesPlan && matchesStatus;
   });
+
+  const sortedOrgs = [...filteredOrgs].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    if (sortBy === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
+    if (sortBy === 'visits') return Number(b.visits_this_month || 0) - Number(a.visits_this_month || 0);
+    return new Date(b.created_at) - new Date(a.created_at); // newest
+  });
+
+  const pageCount = Math.max(1, Math.ceil(sortedOrgs.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagedOrgs = sortedOrgs.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const kioskUrlOrg = orgs.find(o => o.id === kioskUrlOrgId) || null;
 
   const copyKioskUrl = (url) => {
     navigator.clipboard.writeText(url);
@@ -538,21 +570,37 @@ export default function SuperAdmin() {
 
       {/* Filters */}
       <div style={{
-        display: 'flex', gap: 12, marginBottom: 24, marginTop: 20,
+        display: 'flex', gap: 12, marginBottom: 24, marginTop: 20, flexWrap: 'wrap',
         background: '#fff', padding: '16px 20px', borderRadius: 16,
         boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
       }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <Search size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-          <input type="text" placeholder="Search organizations..." value={search} onChange={(e) => setSearch(e.target.value)}
+          <input type="text" placeholder="Search organizations..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             style={{ width: '100%', padding: '12px 16px 12px 44px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }} />
         </div>
-        <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)}
+        <select value={planFilter} onChange={(e) => { setPlanFilter(e.target.value); setPage(1); }}
           style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
           <option value="all">All Plans</option>
           <option value="free">Free</option>
           <option value="pro">Pro</option>
           <option value="enterprise">Enterprise</option>
+        </select>
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
+          <option value="all">All Statuses</option>
+          <option value="trial">On trial</option>
+          <option value="active">Active</option>
+          <option value="expired">Trial/subscription expired</option>
+          <option value="suspended">Suspended</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+          style={{ padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff' }}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="name">Name A–Z</option>
+          <option value="visits">Most visits this month</option>
         </select>
         <button
           onClick={() => { setCreatedResult(null); setCreateForm({ name: '', plan: 'pro', admin_first_name: '', admin_last_name: '', admin_email: '', billing_email: '', trial_days: 14 }); setShowCreate(true); }}
@@ -580,7 +628,7 @@ export default function SuperAdmin() {
             </tr>
           </thead>
           <tbody>
-            {filteredOrgs.map(org => (
+            {pagedOrgs.map(org => (
               <tr key={org.id} style={{ borderTop: '1px solid #E2E8F0' }}>
                 <td style={{ padding: '16px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -669,36 +717,57 @@ export default function SuperAdmin() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination — hundreds of orgs stay navigable without endless scrolling */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderTop: '1px solid #E2E8F0', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ fontSize: 13, color: '#64748B' }}>
+            {sortedOrgs.length === 0 ? 'No organizations match these filters'
+              : `Showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, sortedOrgs.length)} of ${sortedOrgs.length} organizations`}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}
+              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: safePage <= 1 ? '#F8FAFC' : '#fff', color: safePage <= 1 ? '#CBD5E1' : '#334155', fontSize: 13, fontWeight: 700, cursor: safePage <= 1 ? 'not-allowed' : 'pointer' }}>
+              ← Prev
+            </button>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Page {safePage} of {pageCount}</span>
+            <button onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}
+              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: safePage >= pageCount ? '#F8FAFC' : '#fff', color: safePage >= pageCount ? '#CBD5E1' : '#334155', fontSize: 13, fontWeight: 700, cursor: safePage >= pageCount ? 'not-allowed' : 'pointer' }}>
+              Next →
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Kiosk URL Generator */}
+      {/* Kiosk URL Generator — pick one org, get its link (used to repeat the
+          entire org list a second time, which did not scale) */}
       <div style={{
         background: '#fff', borderRadius: 20, padding: 24, marginTop: 24,
         boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
       }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16 }}>Kiosk URL Generator</h3>
-        <p style={{ color: '#64748B', fontSize: 14, marginBottom: 16 }}>Share this URL with each organization for their kiosk:</p>
-        {filteredOrgs.map(org => {
-          const url = `https://www.sentinelskiosk.com/kiosk?org=${org.id}`;
-          return (
-            <div key={org.id} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 16px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8
-            }}>
-              <div>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{org.name}</span>
-                <span style={{ color: '#64748B', fontSize: 12, marginLeft: 8 }}>{org.plan}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <code style={{ fontSize: 12, background: '#E2E8F0', padding: '4px 8px', borderRadius: 6, fontFamily: 'monospace' }}>{url}</code>
-                <button onClick={() => copyKioskUrl(url)} style={{ padding: '6px 12px', borderRadius: 6, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        <p style={{ color: '#64748B', fontSize: 14, marginBottom: 16 }}>Pick an organization to get the kiosk URL to share with it:</p>
+        <select value={kioskUrlOrgId} onChange={(e) => setKioskUrlOrgId(e.target.value)}
+          style={{ width: '100%', maxWidth: 420, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, background: '#fff', marginBottom: 14 }}>
+          <option value="">— choose an organization —</option>
+          {[...orgs].sort((a, b) => a.name.localeCompare(b.name)).map(o => (
+            <option key={o.id} value={o.id}>{o.name} ({o.plan})</option>
+          ))}
+        </select>
+        {kioskUrlOrg && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            padding: '12px 16px', background: '#F8FAFC', borderRadius: 10, flexWrap: 'wrap'
+          }}>
+            <code style={{ fontSize: 13, background: '#E2E8F0', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              {`https://www.sentinelskiosk.com/kiosk?org=${kioskUrlOrg.id}`}
+            </code>
+            <button onClick={() => copyKioskUrl(`https://www.sentinelskiosk.com/kiosk?org=${kioskUrlOrg.id}`)}
+              style={{ padding: '8px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* STAT DETAIL MODAL (users / visits verification) */}
