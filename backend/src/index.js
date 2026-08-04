@@ -66,9 +66,12 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Stripe's webhook signature check needs the exact raw request body — mount it
+// BEFORE express.json, which would otherwise parse (and destroy) it
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Sentinels Kiosk API', version: '1.0.0' });
@@ -99,6 +102,7 @@ app.use('/api/flags', flagsRoutes);
 app.use('/api/frequent-visitors', frequentVisitorsRoutes);
 app.use('/api/rfid-cards', rfidRoutes);
 app.use('/api/api-keys', require('./routes/apiKeys'));
+app.use('/api/billing', require('./routes/billing'));
 
 // Error handling
 app.use((err, req, res, next) => {
