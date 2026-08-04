@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../utils/store';
 import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
-import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound, Users, Trash2, Pencil, Plus } from 'lucide-react';
+import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound, Users, Trash2, Pencil, Plus, CreditCard, CheckCircle2 } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
 
@@ -27,7 +27,64 @@ const DEFAULTS = (orgName) => ({
 export default function Settings() {
   const org = useStore((s) => s.organization);
   const user = useStore((s) => s.user);
+  const updateUser = useStore((s) => s.updateUser);
   const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.switched || (user?.permissions || []).includes('settings');
+
+  // ── Billing (Stripe) — fresh org billing state comes from /auth/me ──
+  const BILLING_PLANS = {
+    free:       { label: 'Free',       price: 0,   color: '#64748B', perks: ['5 users', '100 visits/mo', '1 kiosk device'] },
+    pro:        { label: 'Pro',        price: 49,  color: '#0D7377', perks: ['25 users', '2,000 visits/mo', '5 kiosk devices', 'Reports & analytics', 'Compliance / NDA records', 'SMS notifications', 'Bulk host import (CSV)'] },
+    enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: ['1,000 users', '100,000 visits/mo', '50 kiosk devices', 'Everything in Pro', 'Daily backups'] },
+  };
+  const [billing, setBilling] = useState(null); // flat /auth/me payload
+  const [billingBusy, setBillingBusy] = useState(''); // 'pro' | 'enterprise' | 'portal' | ''
+  const loadBilling = () => api.get('/auth/me').then(r => { setBilling(r.data); updateUser(r.data); }).catch(() => {});
+  useEffect(() => {
+    loadBilling();
+    // Return from Stripe Checkout: confirm, refresh, and clean the URL
+    const q = new URLSearchParams(window.location.search);
+    const b = q.get('billing');
+    if (b === 'success') {
+      const planLabel = q.get('plan') === 'enterprise' ? 'Enterprise' : 'Pro';
+      toast(`Welcome to ${planLabel}! Your subscription is active — new features unlock immediately.`);
+      loadBilling();
+    } else if (b === 'cancelled') {
+      toast('Checkout cancelled — nothing was charged', 'info');
+    }
+    if (b) {
+      q.delete('billing'); q.delete('plan');
+      const qs = q.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startCheckout = async (plan) => {
+    setBillingBusy(plan);
+    try {
+      const r = await api.post('/billing/checkout', { plan });
+      window.location.href = r.data.url; // → Stripe Checkout
+    } catch (err) {
+      const d = err.response?.data;
+      if (err.response?.status === 409 && d?.portal) {
+        toast(d.error, 'info');
+        openPortal();
+      } else {
+        toast(d?.error || 'Could not start checkout', 'error');
+      }
+      setBillingBusy('');
+    }
+  };
+  const openPortal = async () => {
+    setBillingBusy('portal');
+    try {
+      const r = await api.post('/billing/portal');
+      window.location.href = r.data.url; // → Stripe customer portal
+    } catch (err) {
+      toast(err.response?.data?.error || 'Could not open billing management', 'error');
+      setBillingBusy('');
+    }
+  };
 
 
   const [notifyOffline, setNotifyOffline] = useState(false);
@@ -303,6 +360,104 @@ export default function Settings() {
     <div>
       <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0F172A', marginBottom: 24 }}>Settings</h1>
 
+      {/* Billing & Plan — Stripe subscriptions. Paying is a choice: an org whose
+          subscription lapses keeps its kiosk/check-ins (limited mode) instead of
+          being locked out, and management access returns when billing is resolved. */}
+      <div style={sectionStyle}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CreditCard size={20} color="#0D7377" /> Billing &amp; Plan
+        </h3>
+        {(() => {
+          const planKey = billing?.org_plan || 'free';
+          const plan = BILLING_PLANS[planKey] || BILLING_PLANS.free;
+          const trialEnd = billing?.trial_ends_at ? new Date(billing.trial_ends_at) : null;
+          const trialActive = planKey === 'free' && trialEnd && trialEnd >= new Date();
+          const renews = billing?.plan_renews_at ? new Date(billing.plan_renews_at) : null;
+          const limited = billing?.billing_limited === true;
+          return (
+            <div>
+              {/* current plan */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', marginBottom: 14, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: plan.color }}>{plan.label}</span>
+                    <span style={{ fontSize: 13, color: '#64748B' }}>{plan.price > 0 ? `$${plan.price}/month` : 'no charge'}</span>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 4 }}>
+                    {plan.perks.join(' · ')}
+                  </div>
+                  {trialActive && (
+                    <div style={{ fontSize: 12.5, color: '#B45309', marginTop: 6, fontWeight: 600 }}>
+                      Free trial ends {trialEnd.toLocaleDateString()} — subscribe now and billing only starts when the trial ends.
+                    </div>
+                  )}
+                  {planKey !== 'free' && renews && !limited && (
+                    <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 6 }}>
+                      Renews {renews.toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                {canManage && planKey !== 'free' && (
+                  <button onClick={openPortal} disabled={billingBusy === 'portal'}
+                    style={{ padding: '11px 20px', borderRadius: 10, background: '#fff', border: '2px solid #E2E8F0', color: '#334155', fontWeight: 700, fontSize: 13, cursor: billingBusy === 'portal' ? 'wait' : 'pointer', opacity: billingBusy === 'portal' ? 0.7 : 1 }}>
+                    {billingBusy === 'portal' ? 'Opening…' : 'Manage billing (card, invoices, cancel)'}
+                  </button>
+                )}
+              </div>
+
+              {limited && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', marginBottom: 14, fontSize: 13, color: '#92400E', lineHeight: 1.55 }}>
+                  <strong>Payment needed — you're in limited mode.</strong> Your kiosk, check-ins and visitor data keep working,
+                  but management changes are paused until billing is resolved. Subscribe below (or update the card in Manage
+                  billing) and everything unlocks immediately.
+                </div>
+              )}
+
+              {/* upgrade cards — shown to free orgs and to lapsed subscribers re-subscribing */}
+              {canManage && (planKey === 'free' || limited) && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+                  {['pro', 'enterprise'].map(k => {
+                    const p = BILLING_PLANS[k];
+                    const current = k === planKey;
+                    return (
+                      <div key={k} style={{ border: `2px solid ${k === 'pro' ? '#99F6E4' : '#FED7AA'}`, borderRadius: 14, padding: '16px 18px', background: k === 'pro' ? '#F0FDFA' : '#FFF7ED' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontWeight: 800, fontSize: 16, color: p.color }}>{p.label}</span>
+                          <span style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>${p.price}<span style={{ fontSize: 12, fontWeight: 600, color: '#64748B' }}>/mo</span></span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: '#475569', margin: '8px 0 12px', lineHeight: 1.6 }}>
+                          {p.perks.map(perk => (
+                            <div key={perk} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <CheckCircle2 size={13} color={p.color} style={{ flexShrink: 0 }} /> {perk}
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={() => startCheckout(k)} disabled={!!billingBusy || current}
+                          style={{
+                            width: '100%', padding: '11px 16px', borderRadius: 10, border: 'none',
+                            background: current ? '#E2E8F0' : p.color, color: current ? '#94A3B8' : '#fff',
+                            fontWeight: 700, fontSize: 13, cursor: (billingBusy || current) ? 'not-allowed' : 'pointer'
+                          }}>
+                          {current ? 'Current plan' : billingBusy === k ? 'Opening Stripe…' : (limited ? `Re-subscribe — ${p.label}` : `Upgrade to ${p.label}`)}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {canManage && planKey !== 'free' && !limited && (
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>
+                  To switch between Pro and Enterprise, use Manage billing — plan changes prorate automatically.
+                </p>
+              )}
+              {!canManage && (
+                <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>Only admins can change billing.</p>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
       {/* Branding */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -487,8 +642,9 @@ export default function Settings() {
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Auto-print Visitor Badges</div>
               <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
                 Print the visitor's badge automatically right after kiosk check-in. <strong>Both switches are required:</strong>
-                ① this org switch (then Save Settings), and ② <strong>Devices → Link printer</strong> on each kiosk that should print.
-                Verify the chain any time with <strong>Devices → Test print</strong>, and reprint any visitor from the kiosk's
+                ① this org switch (then Save Settings), and ② <strong>Devices → Print badges here</strong> on each kiosk that should print.
+                Badges print on that kiosk's own default printer — verify the chain any time with <strong>Devices → Test print</strong>
+                (run it on the kiosk computer), and reprint any visitor from the kiosk's
                 success screen or <strong>Visits → printer icon</strong>. For unattended kiosks, run the browser with silent printing
                 (Chrome's <code>--kiosk-printing</code>) so no print dialog appears.
               </div>
