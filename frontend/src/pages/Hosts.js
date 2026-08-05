@@ -716,18 +716,27 @@ export default function Hosts() {
                       onChange={(e) => setForm({...form, notify_sms: e.target.checked})}
                       style={{ width: 20, height: 20 }} />
                     <span style={{ fontSize: 14, color: '#334155' }}>SMS arrival alerts</span>
+                    <span style={{ fontSize: 12, color: '#94A3B8' }}>(optional — off by default)</span>
                   </label>
-                  {form.notify_sms && (
-                    <div style={{ marginTop: 8, marginLeft: 28, padding: '10px 12px', background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 8, fontSize: 12, color: '#0F766E', lineHeight: 1.6 }}>
-                      By enabling SMS alerts you confirm that <strong>{form.first_name || 'this person'} {form.last_name || ''}</strong> has
-                      agreed to receive transactional text messages from Sentinels Kiosk at the number above — only to notify them
-                      when a visitor arrives for them. Message frequency varies. Message &amp; data rates may apply.
-                      They can reply <strong>STOP</strong> to opt out at any time, or <strong>HELP</strong> for help.
-                      Consent is not a condition of employment or service and is recorded with a timestamp when you save.
-                      See our <a href="https://www.sentinelskiosk.com/terms.html" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Terms &amp; Conditions</a> and{' '}
-                      <a href="https://www.sentinelskiosk.com/privacy" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Privacy Policy</a>.
-                    </div>
-                  )}
+                  {/* A2P 30925: the disclosure stays visible whether the box is checked or
+                      not, so the opt-in screen always shows the full consent language next
+                      to an unchecked-by-default checkbox. Checking the box is the
+                      affirmative act of consent; the timestamp is stamped server-side. */}
+                  <div style={{ marginTop: 8, marginLeft: 28, padding: '10px 12px', background: form.notify_sms ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${form.notify_sms ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12, color: form.notify_sms ? '#0F766E' : '#475569', lineHeight: 1.6 }}>
+                    {form.notify_sms && (
+                      <div style={{ marginBottom: 6, fontWeight: 700, color: '#0F766E' }}>
+                        ✓ SMS consent will be recorded with a timestamp when you save.
+                      </div>
+                    )}
+                    Checking this box confirms that <strong>{form.first_name || 'this person'} {form.last_name || ''}</strong> has
+                    agreed to receive transactional text messages from Sentinels Kiosk at the number above — only to notify them
+                    when a visitor arrives for them. Message frequency varies. Message &amp; data rates may apply.
+                    They can reply <strong>STOP</strong> to opt out at any time, or <strong>HELP</strong> for help.
+                    Consent is not a condition of employment or service. The checkbox is never pre-selected — it starts
+                    unchecked and must be ticked deliberately. See our{' '}
+                    <a href="https://www.sentinelskiosk.com/terms.html" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Terms &amp; Conditions</a> and{' '}
+                    <a href="https://www.sentinelskiosk.com/privacy" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Privacy Policy</a>.
+                  </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
@@ -994,6 +1003,8 @@ export default function Hosts() {
                 ['Phone', viewHost.phone],
                 ['Email alerts', viewHost.notify_email !== false ? 'On' : 'Off'],
                 ['SMS alerts', viewHost.notify_sms ? 'On' : 'Off'],
+                ['SMS consent recorded', viewHost.notify_sms && viewHost.sms_consent_at
+                  ? new Date(viewHost.sms_consent_at).toLocaleString() : null],
                 ['Notes', viewHost.notes],
               ].filter(([, v]) => v).map(([label, value]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid #F1F5F9' }}>
