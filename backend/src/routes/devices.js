@@ -54,13 +54,25 @@ router.post('/pair', async (req, res) => {
 // ─── AUTHENTICATED: list devices with live online status ───
 router.get('/', authenticate, requirePermission('devices'), async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT id, name, pair_code, paired_at, last_seen_at, created_at, is_active,
-              (last_seen_at > NOW() - INTERVAL '3 minutes') AS is_online
-       FROM devices WHERE org_id = $1 AND is_active = true
-       ORDER BY created_at ASC`,
-      [req.user.org_id]
-    );
+    let result;
+    try {
+      result = await db.query(
+        `SELECT id, name, pair_code, paired_at, last_seen_at, created_at, is_active, print_badge,
+                (last_seen_at > NOW() - INTERVAL '3 minutes') AS is_online
+         FROM devices WHERE org_id = $1 AND is_active = true
+         ORDER BY created_at ASC`,
+        [req.user.org_id]
+      );
+    } catch (e) {
+      if (e.code !== '42703') throw e; // print_badge not migrated yet — list without it
+      result = await db.query(
+        `SELECT id, name, pair_code, paired_at, last_seen_at, created_at, is_active,
+                (last_seen_at > NOW() - INTERVAL '3 minutes') AS is_online
+         FROM devices WHERE org_id = $1 AND is_active = true
+         ORDER BY created_at ASC`,
+        [req.user.org_id]
+      );
+    }
     res.json(result.rows);
   } catch (err) {
     console.error('Devices list error:', err);
