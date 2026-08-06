@@ -29,11 +29,12 @@ const FEATURE_LIST = [
   { key: 'bulk_import', label: 'Bulk host import (CSV)' },
   { key: 'custom_fields', label: 'Custom registration fields' },
   { key: 'backups', label: 'Daily backups' },
+  { key: 'unifi', label: 'UniFi camera check-in' },
 ];
 const PLAN_FEATURES = {
   free: [],
   pro: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields'],
-  enterprise: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields', 'backups'],
+  enterprise: ['reports', 'compliance', 'sms', 'bulk_import', 'custom_fields', 'backups', 'unifi'],
 };
 // Effective state of a feature = plan default, unless the org has an override
 const effectiveFeature = (plan, overrides, key) =>
@@ -990,7 +991,7 @@ export default function SuperAdmin() {
                 <input type="checkbox" checked={planEdit.complimentary === true} onChange={(e) => setPlanEdit({ ...planEdit, complimentary: e.target.checked })}
                   style={{ width: 18, height: 18 }} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: planEdit.complimentary ? '#0F766E' : '#475569' }}>Complimentary — never billed</span>
-                <span style={{ fontSize: 12, color: '#94A3B8' }}>skips the billing paywall and hides Stripe checkout (owner org, partners). Pair with the Enterprise plan for full features.</span>
+                <span style={{ fontSize: 12, color: '#94A3B8' }}>for the platform owner's own org and partners — skips the billing paywall and hides Stripe checkout. Pair with the Enterprise plan for full features.</span>
               </label>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div style={{ flex: '2 1 220px' }}>
