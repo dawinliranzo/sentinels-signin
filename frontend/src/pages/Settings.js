@@ -86,6 +86,69 @@ export default function Settings() {
     }
   };
 
+  // ── Enterprise features: Backups + UniFi Protect ──
+  const planFeatures = billing?.features || user?.features || [];
+  const hasBackups = planFeatures.includes('backups');
+  const hasUnifi = planFeatures.includes('unifi');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [unifiCfg, setUnifiCfg] = useState(null);
+  const [unifiEvents, setUnifiEvents] = useState([]);
+  const [unifiBusy, setUnifiBusy] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+
+  const loadBackups = () => api.get('/backups')
+    .then(r => { setBackups(r.data); setBackupsErr(null); })
+    .catch(e => setBackupsErr(e.response?.data?.error || 'Could not load backups'));
+  const loadUnifi = () => {
+    api.get('/integrations/unifi/config').then(r => setUnifiCfg(r.data)).catch(() => {});
+    api.get('/integrations/unifi/events').then(r => setUnifiEvents(r.data)).catch(() => {});
+  };
+  useEffect(() => { if (hasBackups) loadBackups(); }, [billing]);
+  useEffect(() => { if (hasUnifi) loadUnifi(); }, [billing]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+  const backupNow = async () => {
+    setBackupBusy(true);
+    try {
+      await api.post('/backups');
+      toast('Backup created — it appears in the list below');
+      loadBackups();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to create backup', 'error');
+    } finally { setBackupBusy(false); }
+  };
+  const saveBackupSchedule = async (v) => {
+    try {
+      await api.put('/backups/schedule', { schedule: v });
+      setSettings(prev => ({ ...prev, backup_schedule: v }));
+      toast(v === 'off' ? 'Automatic backups paused' : `Automatic backups: ${v}${v === 'weekly' ? ' (Sundays)' : ''}`);
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to save schedule', 'error');
+    }
+  };
+  const saveUnifi = async (enabled, cameras) => {
+    setUnifiBusy(true);
+    try {
+      const r = await api.put('/integrations/unifi/config', { enabled, cameras });
+      setUnifiCfg(r.data);
+      toast(enabled ? 'UniFi auto check-in is ON — paste the webhook URL into your UniFi console' : 'UniFi auto check-in is OFF');
+      loadUnifi();
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to save UniFi settings', 'error');
+    } finally { setUnifiBusy(false); }
+  };
+  const rotateUnifiSecret = async () => {
+    setUnifiBusy(true);
+    try {
+      const r = await api.post('/integrations/unifi/config/regenerate-secret');
+      setUnifiCfg(r.data);
+      setConfirmRotate(false);
+      toast('New webhook URL generated — update it in your UniFi console');
+    } catch (err) {
+      toast(err.response?.data?.error || 'Failed to rotate', 'error');
+    } finally { setUnifiBusy(false); }
+  };
+
 
   const [notifyOffline, setNotifyOffline] = useState(false);
 
@@ -389,12 +452,12 @@ export default function Settings() {
             return (
               <div style={{ padding: '16px 18px', borderRadius: 12, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 17, fontWeight: 800, color: '#0D7377' }}>Complimentary plan</span>
+                  <span style={{ fontSize: 17, fontWeight: 800, color: '#0D7377' }}>Owner account</span>
                   <span style={{ fontSize: 13, color: '#0F766E' }}>full access — never billed</span>
                 </div>
                 <div style={{ fontSize: 12.5, color: '#0F766E', marginTop: 6, lineHeight: 1.6 }}>
-                  This organization is comped by Sentinels: every feature of the {plan.label} plan is unlocked and no
-                  invoice will ever be generated. Managed from Super Admin → organization → Complimentary.
+                  This organization belongs to the platform owner: every feature of the {plan.label} plan is unlocked
+                  and no invoice will ever be generated. Managed from Super Admin → organization → Complimentary.
                 </div>
               </div>
             );
@@ -495,6 +558,134 @@ export default function Settings() {
           );
         })()}
       </div>
+
+      {/* UniFi Protect — enterprise: camera face events drive check-in/out */}
+      {canManage && hasUnifi && (
+        <div style={sectionStyle}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ScanFace size={20} color="#0D7377" /> UniFi Protect — camera auto check-in/out
+          </h3>
+          <p style={{ fontSize: 13, color: '#64748B', marginTop: 0, marginBottom: 16, lineHeight: 1.6 }}>
+            Door cameras with face recognition sign people in and out automatically: a recognized host or a
+            pre-registered visitor expected today is checked in when the camera sees them, and checked out when
+            they leave. Unrecognized faces are logged below so nothing passes the door unnoticed.
+            Requires UniFi Protect smart detections; automatic sign-in needs Known Faces (AI-capable camera, AI Port or AI Key)
+            enrolled with the same names used in Sentinels Kiosk.
+          </p>
+          {unifiCfg === null ? (
+            <div style={{ fontSize: 13, color: '#94A3B8' }}>Loading integration…</div>
+          ) : (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 14 }}>
+                <input type="checkbox" checked={unifiCfg.enabled === true}
+                  onChange={(e) => saveUnifi(e.target.checked, unifiCfg.cameras || [])}
+                  style={{ width: 20, height: 20 }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: unifiCfg.enabled ? '#0F766E' : '#334155' }}>
+                  Camera auto check-in/out is {unifiCfg.enabled ? 'ON' : 'OFF'}
+                </span>
+              </label>
+
+              {unifiCfg.enabled && (
+                <>
+                  <div style={{ background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E', marginBottom: 6 }}>
+                      1 · Paste this webhook URL into your UniFi console
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#134E4A', lineHeight: 1.7, marginBottom: 8 }}>
+                      UniFi console → <strong>Protect → Settings → System → Webhooks</strong> (or an Alarm rule on your door
+                      cameras) → add a webhook for <strong>smart detection / face events</strong> with this URL:
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <code style={{ flex: 1, minWidth: 240, fontSize: 11.5, background: '#fff', border: '1px solid #99F6E4', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all' }}>
+                        {unifiCfg.webhook_url}
+                      </code>
+                      <button onClick={() => { navigator.clipboard.writeText(unifiCfg.webhook_url); toast('Webhook URL copied'); }}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        Copy
+                      </button>
+                      {confirmRotate ? (
+                        <>
+                          <span style={{ fontSize: 12, color: '#991B1B', fontWeight: 600 }}>Old URL stops working — continue?</span>
+                          <button onClick={rotateUnifiSecret} disabled={unifiBusy}
+                            style={{ padding: '8px 12px', borderRadius: 8, background: '#DC2626', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Yes, rotate</button>
+                          <button onClick={() => setConfirmRotate(false)}
+                            style={{ padding: '8px 12px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setConfirmRotate(true)} title="Generate a new secret URL (the old one stops working)"
+                          style={{ padding: '8px 14px', borderRadius: 8, background: '#fff', border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, color: '#64748B', cursor: 'pointer' }}>
+                          Rotate URL
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#134E4A', lineHeight: 1.7, marginTop: 10 }}>
+                      2 · Enroll your people: in Protect, add each host and frequent visitor to <strong>Known Faces</strong>
+                      with exactly the same first and last name they have in Sentinels Kiosk. Pre-registered visitors are
+                      matched by name on their visit day.
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                      3 · Camera directions <span style={{ fontWeight: 500, color: '#94A3B8' }}>(optional — unmapped cameras toggle in/out automatically)</span>
+                    </div>
+                    {(unifiCfg.cameras || []).map((c, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input type="text" value={c.name} placeholder="Camera name exactly as in Protect (e.g. Front Door)"
+                          onChange={(e) => { const cs = [...unifiCfg.cameras]; cs[i] = { ...cs[i], name: e.target.value }; setUnifiCfg({ ...unifiCfg, cameras: cs }); }}
+                          style={{ flex: 1, minWidth: 220, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
+                        <select value={c.direction}
+                          onChange={(e) => { const cs = [...unifiCfg.cameras]; cs[i] = { ...cs[i], direction: e.target.value }; setUnifiCfg({ ...unifiCfg, cameras: cs }); }}
+                          style={{ padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                          <option value="both">Door (in &amp; out)</option>
+                          <option value="in">Entrance only</option>
+                          <option value="out">Exit only</option>
+                        </select>
+                        <button onClick={() => { const cs = unifiCfg.cameras.filter((_, j) => j !== i); setUnifiCfg({ ...unifiCfg, cameras: cs }); }}
+                          style={{ padding: '9px 12px', borderRadius: 8, background: '#FEF2F2', border: 'none', cursor: 'pointer' }}>
+                          <Trash2 size={14} color="#EF4444" />
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setUnifiCfg({ ...unifiCfg, cameras: [...(unifiCfg.cameras || []), { name: '', direction: 'both' }] })}
+                        style={{ padding: '9px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}>
+                        <Plus size={13} style={{ verticalAlign: -2 }} /> Add camera
+                      </button>
+                      <button onClick={() => saveUnifi(true, unifiCfg.cameras || [])} disabled={unifiBusy}
+                        style={{ padding: '9px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: unifiBusy ? 'wait' : 'pointer' }}>
+                        {unifiBusy ? 'Saving…' : 'Save cameras'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Recent door events</div>
+              {unifiEvents.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94A3B8', background: '#F8FAFC', borderRadius: 10, padding: '14px 16px' }}>
+                  No events yet — they appear here the moment a camera reports a person.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, overflowY: 'auto' }}>
+                  {unifiEvents.map(ev => (
+                    <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: '#F8FAFC', fontSize: 12.5, flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontWeight: 800, padding: '2px 10px', borderRadius: 12, fontSize: 11, textTransform: 'uppercase',
+                        background: ev.action === 'checked_in' ? '#DCFCE7' : ev.action === 'checked_out' ? '#EFF6FF' : ev.action === 'unidentified' ? '#FEF2F2' : '#F1F5F9',
+                        color: ev.action === 'checked_in' ? '#166534' : ev.action === 'checked_out' ? '#1D4ED8' : ev.action === 'unidentified' ? '#991B1B' : '#64748B'
+                      }}>{ev.action.replace('_', ' ')}</span>
+                      <span style={{ fontWeight: 700, color: '#0F172A' }}>{ev.person_name || 'Unknown person'}</span>
+                      <span style={{ color: '#64748B' }}>{ev.camera || 'camera'}</span>
+                      <span style={{ marginLeft: 'auto', color: '#94A3B8' }}>{new Date(ev.created_at).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Branding */}
       <div style={sectionStyle}>
@@ -1174,32 +1365,48 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Daily Backups — included in the plan (Enterprise / add-on) */}
+      {/* Backups — included in the plan (Enterprise / add-on): scheduled + manual snapshots, download, restore */}
       {(user?.features || []).includes('backups') && (
         <div style={{
           background: '#fff', borderRadius: 16, padding: 24, marginBottom: 20,
           boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
         }}>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <HardDrive size={20} color="#0D7377" /> Daily Backups
+            <HardDrive size={20} color="#0D7377" /> Backups
           </h3>
           <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
-            A full snapshot of your organization (users, hosts, visits, devices, settings) is taken every night at 03:00 UTC and kept for 30 days.
-            Download any snapshot for your records — or restore one if everything has been lost. A restore replaces ALL current data with the snapshot.
+            A full snapshot of your organization (users, hosts, visits, devices, settings) is taken automatically on the schedule below and kept for 30 days.
+            You can also take one right now, download any snapshot for your records — or restore one if data is ever lost. A restore replaces ALL current data with the snapshot.
           </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 4 }}>Automatic backups</label>
+              <select value={settings.backup_schedule || 'daily'} onChange={(e) => saveBackupSchedule(e.target.value)}
+                style={{ padding: '10px 14px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
+                <option value="daily">Daily (every night, 03:00 UTC)</option>
+                <option value="weekly">Weekly (Sunday nights, 03:00 UTC)</option>
+                <option value="off">Off — manual only</option>
+              </select>
+            </div>
+            <button onClick={backupNow} disabled={backupBusy}
+              style={{ padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: backupBusy ? 'wait' : 'pointer', opacity: backupBusy ? 0.7 : 1 }}>
+              {backupBusy ? 'Working…' : 'Back up now'}
+            </button>
+          </div>
           {backupsErr && (
             <div style={{ fontSize: 13, color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 12 }}>
               {backupsErr}
             </div>
           )}
           {backups.length === 0 && !backupsErr ? (
-            <p style={{ fontSize: 13, color: '#94A3B8' }}>No snapshots yet — the first one lands after tonight's 03:00 UTC run.</p>
+            <p style={{ fontSize: 13, color: '#94A3B8' }}>No snapshots yet — tap Back up now, or wait for the next scheduled run.</p>
           ) : (
             backups.slice(0, 10).map(b => (
               <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, color: '#0F172A' }}>{new Date(b.created_at).toLocaleString()}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 12, background: b.kind === 'manual' ? '#EFF6FF' : '#F0FDFA', color: b.kind === 'manual' ? '#1D4ED8' : '#0F766E', textTransform: 'uppercase' }}>{b.kind}</span>
                 <span style={{ fontSize: 12, color: '#64748B' }}>
-                  {b.kind}{b.counts ? ` · ${b.counts.users ?? 0} users, ${b.counts.hosts ?? 0} hosts, ${b.counts.visits ?? 0} visits` : ''}
+                  {b.counts ? `${b.counts.users ?? 0} users, ${b.counts.hosts ?? 0} hosts, ${b.counts.visits ?? 0} visits` : ''}
                 </span>
                 <button onClick={() => downloadBackup(b.id)}
                   style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
