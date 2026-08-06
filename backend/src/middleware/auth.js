@@ -12,7 +12,7 @@ async function loadOrg(req) {
   if (req.org !== undefined) return req.org;
   try {
     const r = await db.query(
-      'SELECT id, name, plan, status, trial_ends_at, features, max_users, max_visits_per_month, max_devices, plan_renews_at FROM organizations WHERE id = $1',
+      'SELECT id, name, plan, status, trial_ends_at, features, max_users, max_visits_per_month, max_devices, plan_renews_at, settings FROM organizations WHERE id = $1',
       [req.user.org_id]
     );
     req.org = r.rows[0] || null;
@@ -49,6 +49,9 @@ const LIMITED_OPEN = [
 ];
 const isBillingLimited = (org) => {
   if (!org || org.status !== 'active') return false;
+  // Complimentary orgs (set by a super admin: settings.complimentary = true) are
+  // never billing-limited — the platform owner's own org, partners, charities.
+  if (org.settings && org.settings.complimentary === true) return false;
   const now = new Date();
   if (org.plan === 'free') {
     return !!(org.trial_ends_at && new Date(org.trial_ends_at) < now);
