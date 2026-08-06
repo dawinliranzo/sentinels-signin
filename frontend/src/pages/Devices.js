@@ -277,36 +277,49 @@ export default function Devices() {
             </span>
 
             {canManage && (
-              <button
-                onClick={async () => {
-                  const want = !d.print_badge;
-                  try {
-                    // Send the current name along: older backends require it and
-                    // would otherwise reject the toggle with "Device name is required"
-                    const r = await api.patch(`/devices/${d.id}`, { name: d.name, print_badge: want });
-                    if (r.data && r.data.print_badge !== want) {
-                      toast('Server accepted the update but ignored the printer flag — deploy the latest devices backend first', 'error');
-                      return;
-                    }
-                    refetch();
-                    toast(want
-                      ? `Auto-print ON for "${d.name}" — now open Devices on THAT kiosk computer and tap Test print to verify its printer`
-                      : `Auto-print OFF for "${d.name}"`);
-                  } catch (err) {
-                    toast(err.response?.data?.error || 'Failed to update device', 'error');
-                  }
-                }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 title={d.print_badge
-                  ? 'Badges auto-print on this kiosk\'s own default printer at check-in — click to turn off'
-                  : 'Turn on auto-print: badges print on this kiosk\'s own default printer at check-in'}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
-                  border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                  background: d.print_badge ? '#0D7377' : '#F1F5F9',
-                  color: d.print_badge ? '#fff' : '#64748B'
-                }}>
-                <Printer size={14} /> {d.print_badge ? 'Auto-print on' : 'Print badges here'}
-              </button>
+                  ? 'Badges auto-print on this kiosk\'s own default printer at check-in — click the switch to turn off'
+                  : 'Turn on auto-print: badges print on this kiosk\'s own default printer at check-in'}>
+                <button role="switch" aria-checked={d.print_badge === true}
+                  onClick={async () => {
+                    const want = !d.print_badge;
+                    try {
+                      // Send the current name along: older backends require it and
+                      // would otherwise reject the toggle with "Device name is required"
+                      const r = await api.patch(`/devices/${d.id}`, { name: d.name, print_badge: want });
+                      if (r.data && r.data.print_badge !== want) {
+                        toast('Server accepted the update but ignored the printer flag — deploy the latest devices backend first', 'error');
+                        return;
+                      }
+                      refetch();
+                      toast(want
+                        ? `Badge printing ON for "${d.name}" — now open Devices on THAT kiosk computer and tap Test print to verify its printer`
+                        : `Badge printing OFF for "${d.name}"`);
+                    } catch (err) {
+                      toast(err.response?.data?.error || 'Failed to update device', 'error');
+                    }
+                  }}
+                  style={{
+                    position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0,
+                    cursor: 'pointer', padding: 0, transition: 'background 0.2s',
+                    background: d.print_badge ? '#0D7377' : '#CBD5E1'
+                  }}>
+                  <span style={{
+                    position: 'absolute', top: 3, left: d.print_badge ? 23 : 3, width: 18, height: 18,
+                    borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                  }} />
+                </button>
+                <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+                  <div style={{ fontWeight: 800, color: d.print_badge ? '#0F766E' : '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Printer size={12} /> Badge printing {d.print_badge ? 'ON' : 'OFF'}
+                  </div>
+                  <div style={{ color: '#94A3B8' }}>
+                    {d.print_badge ? 'auto-prints on this kiosk at check-in' : 'flip the switch to auto-print badges'}
+                  </div>
+                </div>
+              </div>
             )}
 
             {canManage && d.print_badge && (
@@ -371,7 +384,7 @@ export default function Devices() {
       <div style={{ fontSize: 13, color: '#94A3B8', marginTop: 16, lineHeight: 1.7, background: '#F8FAFC', borderRadius: 12, padding: '14px 18px', border: '1px solid #E2E8F0' }}>
         <strong style={{ color: '#64748B' }}>How badge printing works:</strong> there is no cloud printer to "link" — badges
         print on the printer connected to the computer or tablet running each kiosk (its system default
-        printer, through the browser's print pipeline). <strong style={{ color: '#64748B' }}>Print badges here</strong> turns
+        printer, through the browser's print pipeline). <strong style={{ color: '#64748B' }}>the Badge printing switch</strong> turns
         auto-print on for that kiosk; also enable <strong style={{ color: '#64748B' }}>Settings → Front Desk &amp; Integrations →
         auto-print</strong> for the org. To prove the chain works, open this page <em>on the kiosk computer itself</em> and
         tap <strong style={{ color: '#64748B' }}>Test print</strong> — a sample badge should come out of its printer. For unattended
