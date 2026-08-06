@@ -183,6 +183,7 @@ router.get('/me', authenticate, async (req, res) => {
     try {
       const f = await db.query(
         `SELECT o.parent_id, p.name AS parent_name, o.settings->>'profile_type' AS profile_type,
+                COALESCE((o.settings->>'complimentary')::boolean, false) AS complimentary,
                 EXISTS(SELECT 1 FROM organizations c WHERE c.parent_id = o.id) AS has_children
          FROM organizations o LEFT JOIN organizations p ON p.id = o.parent_id
          WHERE o.id = $1`, [req.user.org_id]);
@@ -210,6 +211,8 @@ router.get('/me', authenticate, async (req, res) => {
       features: org ? getOrgFeatures(org) : [],
       limits: org ? getOrgLimits(org) : null,
       profile_type: profileType,
+      // Complimentary orgs never see a bill, a checkout, or the paywall
+      complimentary: family.complimentary === true,
       parent_id: family.parent_id || null,
       parent_name: family.parent_name || null,
       has_children: family.has_children === true,
