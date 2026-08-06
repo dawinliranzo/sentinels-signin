@@ -160,6 +160,7 @@ export default function SuperAdmin() {
       profile_type: (o.settings && o.settings.profile_type) || 'other',
       trial_ends_at: o.trial_ends_at ? o.trial_ends_at.slice(0, 10) : '',
       status: o.status || 'active',
+      complimentary: !!(o.settings && o.settings.complimentary === true),
     });
     setPlanEdit(toEdit(org));
     setFeatureOverrides(org.features || {});
@@ -223,6 +224,7 @@ export default function SuperAdmin() {
         max_devices: planEdit.max_devices === '' ? null : Number(planEdit.max_devices),
         plan_renews_at: planEdit.plan_renews_at || null,
         profile_type: planEdit.profile_type || 'other',
+        complimentary: planEdit.complimentary === true,
       };
       // Only include when actually changed — otherwise a pending migration
       // would block unrelated plan saves with MIGRATION_PENDING
@@ -654,6 +656,11 @@ export default function SuperAdmin() {
                   <span style={{ fontSize: 12, fontWeight: 600, padding: '4px 12px', borderRadius: 20, background: `${PLANS[org.plan]?.color}15`, color: PLANS[org.plan]?.color }}>
                     {PLANS[org.plan]?.label} (${PLANS[org.plan]?.price}/mo)
                   </span>
+                  {org.settings && org.settings.complimentary === true && (
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: '#F0FDFA', color: '#0F766E', border: '1px solid #99F6E4', marginLeft: 6 }}>
+                      COMPED
+                    </span>
+                  )}
                   {org.plan === 'free' && org.trial_ends_at && (
                     <div style={{ fontSize: 11, marginTop: 4, fontWeight: 600, color: new Date(org.trial_ends_at) < new Date() ? '#991B1B' : '#B45309' }}>
                       {new Date(org.trial_ends_at) < new Date()
@@ -950,7 +957,7 @@ export default function SuperAdmin() {
                   <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Plan</label>
                   <select value={planEdit.plan} onChange={(e) => setPlanEdit({ ...planEdit, plan: e.target.value })}
                     style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, background: '#fff' }}>
-                    <option value="free">Free ($0/mo)</option>
+                    <option value="free">Free trial (14 days)</option>
                     <option value="pro">Pro ($49/mo)</option>
                     <option value="enterprise">Enterprise ($149/mo)</option>
                   </select>
@@ -979,6 +986,12 @@ export default function SuperAdmin() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                 </div>
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, marginBottom: 10, cursor: 'pointer', background: planEdit.complimentary ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${planEdit.complimentary ? '#99F6E4' : '#E2E8F0'}` }}>
+                <input type="checkbox" checked={planEdit.complimentary === true} onChange={(e) => setPlanEdit({ ...planEdit, complimentary: e.target.checked })}
+                  style={{ width: 18, height: 18 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: planEdit.complimentary ? '#0F766E' : '#475569' }}>Complimentary — never billed</span>
+                <span style={{ fontSize: 12, color: '#94A3B8' }}>skips the billing paywall and hides Stripe checkout (owner org, partners). Pair with the Enterprise plan for full features.</span>
+              </label>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <div style={{ flex: '2 1 220px' }}>
                   <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 4 }}>Billing Email</label>
