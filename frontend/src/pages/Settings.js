@@ -32,7 +32,7 @@ export default function Settings() {
 
   // ── Billing (Stripe) — fresh org billing state comes from /auth/me ──
   const BILLING_PLANS = {
-    free:       { label: 'Free',       price: 0,   color: '#64748B', perks: ['5 users', '100 visits/mo', '1 kiosk device'] },
+    free:       { label: 'Free trial', price: 0,   color: '#64748B', perks: ['5 users', '100 visits/mo', '1 kiosk device', '14 days with every feature'] },
     pro:        { label: 'Pro',        price: 49,  color: '#0D7377', perks: ['25 users', '2,000 visits/mo', '5 kiosk devices', 'Reports & analytics', 'Compliance / NDA records', 'SMS notifications', 'Bulk host import (CSV)'] },
     enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: ['1,000 users', '100,000 visits/mo', '50 kiosk devices', 'Everything in Pro', 'Daily backups'] },
   };
@@ -368,12 +368,37 @@ export default function Settings() {
           <CreditCard size={20} color="#0D7377" /> Billing &amp; Plan
         </h3>
         {(() => {
-          const planKey = billing?.org_plan || 'free';
-          const plan = BILLING_PLANS[planKey] || BILLING_PLANS.free;
-          const trialEnd = billing?.trial_ends_at ? new Date(billing.trial_ends_at) : null;
+          // Wait for /auth/me before choosing what to show — rendering the trial
+          // view first and swapping a second later made paid sections "disappear".
+          if (!billing) {
+            return <div style={{ fontSize: 13, color: '#94A3B8', padding: '8px 0' }}>Loading billing…</div>;
+          }
+          // Unknown/legacy plan values degrade to the trial view so the upgrade
+          // cards can never vanish because of an unexpected plan string.
+          const planKey = BILLING_PLANS[billing.org_plan] ? billing.org_plan : 'free';
+          const plan = BILLING_PLANS[planKey];
+          const comped = billing.complimentary === true;
+          const trialEnd = billing.trial_ends_at ? new Date(billing.trial_ends_at) : null;
           const trialActive = planKey === 'free' && trialEnd && trialEnd >= new Date();
-          const renews = billing?.plan_renews_at ? new Date(billing.plan_renews_at) : null;
-          const limited = billing?.billing_limited === true;
+          const renews = billing.plan_renews_at ? new Date(billing.plan_renews_at) : null;
+          const limited = billing.billing_limited === true;
+
+          // Complimentary orgs (owner, partners): full access, never billed —
+          // no checkout, no portal, no trial countdown.
+          if (comped) {
+            return (
+              <div style={{ padding: '16px 18px', borderRadius: 12, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 17, fontWeight: 800, color: '#0D7377' }}>Complimentary plan</span>
+                  <span style={{ fontSize: 13, color: '#0F766E' }}>full access — never billed</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: '#0F766E', marginTop: 6, lineHeight: 1.6 }}>
+                  This organization is comped by Sentinels: every feature of the {plan.label} plan is unlocked and no
+                  invoice will ever be generated. Managed from Super Admin → organization → Complimentary.
+                </div>
+              </div>
+            );
+          }
           return (
             <div>
               {/* current plan */}
@@ -381,7 +406,7 @@ export default function Settings() {
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontSize: 17, fontWeight: 800, color: plan.color }}>{plan.label}</span>
-                    <span style={{ fontSize: 13, color: '#64748B' }}>{plan.price > 0 ? `$${plan.price}/month` : 'no charge'}</span>
+                    <span style={{ fontSize: 13, color: '#64748B' }}>{plan.price > 0 ? `$${plan.price}/month` : 'no charge during trial'}</span>
                   </div>
                   <div style={{ fontSize: 12.5, color: '#64748B', marginTop: 4 }}>
                     {plan.perks.join(' · ')}
@@ -389,6 +414,13 @@ export default function Settings() {
                   {trialActive && (
                     <div style={{ fontSize: 12.5, color: '#B45309', marginTop: 6, fontWeight: 600 }}>
                       Free trial ends {trialEnd.toLocaleDateString()} — subscribe now and billing only starts when the trial ends.
+                    </div>
+                  )}
+                  {planKey === 'free' && !trialActive && (
+                    <div style={{ fontSize: 12.5, color: '#B45309', marginTop: 6, fontWeight: 600 }}>
+                      {trialEnd
+                        ? `Trial ended ${trialEnd.toLocaleDateString()} — pick a plan below to unlock management features.`
+                        : 'Pick a plan below to unlock management features.'}
                     </div>
                   )}
                   {planKey !== 'free' && renews && !limited && (
@@ -413,8 +445,9 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* upgrade cards — shown to free orgs and to lapsed subscribers re-subscribing */}
+              {/* upgrade cards — shown to trialing orgs and to lapsed subscribers re-subscribing */}
               {canManage && (planKey === 'free' || limited) && (
+                <div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
                   {['pro', 'enterprise'].map(k => {
                     const p = BILLING_PLANS[k];
@@ -438,11 +471,16 @@ export default function Settings() {
                             background: current ? '#E2E8F0' : p.color, color: current ? '#94A3B8' : '#fff',
                             fontWeight: 700, fontSize: 13, cursor: (billingBusy || current) ? 'not-allowed' : 'pointer'
                           }}>
-                          {current ? 'Current plan' : billingBusy === k ? 'Opening Stripe…' : (limited ? `Re-subscribe — ${p.label}` : `Upgrade to ${p.label}`)}
+                          {current ? 'Current plan' : billingBusy === k ? 'Opening Stripe…' : (limited && renews ? `Re-subscribe — ${p.label}` : `Subscribe — ${p.label}`)}
                         </button>
                       </div>
                     );
                   })}
+                </div>
+                <p style={{ fontSize: 12, color: '#94A3B8', margin: '10px 0 0' }}>
+                  All plans start with a 14-day free trial — nothing is charged until the trial ends. After the trial the
+                  kiosk and visitor log keep working while you decide; management features unlock the moment you subscribe.
+                </p>
                 </div>
               )}
               {canManage && planKey !== 'free' && !limited && (
@@ -642,7 +680,7 @@ export default function Settings() {
               <div style={{ fontWeight: 600, color: '#0F172A' }}>Auto-print Visitor Badges</div>
               <div style={{ fontSize: 13, color: '#64748B', lineHeight: 1.55 }}>
                 Print the visitor's badge automatically right after kiosk check-in. <strong>Both switches are required:</strong>
-                ① this org switch (then Save Settings), and ② <strong>Devices → Print badges here</strong> on each kiosk that should print.
+                ① this org switch (then Save Settings), and ② <strong>Devices → Badge printing switch</strong> ON on each kiosk that should print.
                 Badges print on that kiosk's own default printer — verify the chain any time with <strong>Devices → Test print</strong>
                 (run it on the kiosk computer), and reprint any visitor from the kiosk's
                 success screen or <strong>Visits → printer icon</strong>. For unattended kiosks, run the browser with silent printing
