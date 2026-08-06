@@ -402,7 +402,7 @@ router.post('/mfa/disable', authenticate, async (req, res) => {
   }
 });
 
-// ---- Demo request: auto-provision a 3-day trial and email the credentials ----
+// ---- Demo request: auto-provision a 14-day free trial and email the credentials ----
 // Public endpoint called from the marketing site's "Request a Demo" form.
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
@@ -435,10 +435,10 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
       return res.status(400).json({ error: 'That email already has an account — sign in instead, or contact us to reset it.' });
     }
 
-    // 3-day demo organization
+    // 14-day free trial organization (every feature, no card required)
     const baseSlug = company.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40) || 'demo';
     const slug = `${baseSlug}-${crypto.randomBytes(2).toString('hex')}`;
-    const trialEnds = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const trialEnds = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     const orgResult = await db.query(
       "INSERT INTO organizations (name, slug, plan, status, trial_ends_at) VALUES ($1, $2, 'free', 'active', $3) RETURNING id, name",
       [company.trim(), slug, trialEnds]
@@ -466,15 +466,15 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
     // Credentials to the requester
     sendEmail({
       to: cleanEmail,
-      subject: 'Your Sentinels Kiosk demo is ready (3-day access)',
+      subject: 'Your Sentinels Kiosk free trial is ready (14 days of full access)',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
           <div style="background:#0D7377;color:#fff;padding:20px 28px;border-radius:14px 14px 0 0">
-            <h2 style="margin:0;font-size:19px">Your demo is ready 🛡️</h2>
+            <h2 style="margin:0;font-size:19px">Your free trial is ready 🛡️</h2>
           </div>
           <div style="border:1px solid #E2E8F0;border-top:none;padding:26px 28px;border-radius:0 0 14px 14px;font-size:14px;color:#1E293B">
             <p>Hi ${escHtml(first_name)},</p>
-            <p>Your 3-day demo of <strong>Sentinels Kiosk</strong> for <strong>${escHtml(company)}</strong> is active right now. Sign in with:</p>
+            <p>Your 14-day free trial of <strong>Sentinels Kiosk</strong> for <strong>${escHtml(company)}</strong> is active right now. Sign in with:</p>
             <div style="background:#F1F5F9;border-radius:12px;padding:18px;margin:20px 0">
               <div style="font-size:13px;color:#64748B">Email</div>
               <div style="font-weight:700;margin-bottom:12px">${escHtml(cleanEmail)}</div>
@@ -482,9 +482,9 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
               <div style="font-size:24px;font-weight:800;letter-spacing:3px;font-family:monospace">${tempPassword}</div>
             </div>
             <p style="text-align:center">
-              <a href="${loginUrl}" style="display:inline-block;background:#0D7377;color:#fff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700">Sign In to Your Demo</a>
+              <a href="${loginUrl}" style="display:inline-block;background:#0D7377;color:#fff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700">Sign In to Your Trial</a>
             </p>
-            <p style="color:#64748B;font-size:12.5px;margin-top:22px">Your demo ends on <strong>${trialEnds.toUTCString()}</strong>. Want to keep going? Reply to this email and we'll set up your plan.</p>
+            <p style="color:#64748B;font-size:12.5px;margin-top:22px">Your trial ends on <strong>${trialEnds.toUTCString()}</strong>. Want to keep going? Reply to this email and we'll set up your plan.</p>
           </div>
         </div>`
     }).catch(e => console.error('Demo credentials email failed:', e.message));
@@ -493,9 +493,9 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
     const notifyTo = process.env.ACCESS_REQUEST_EMAIL || 'info@sentinelsit.com';
     sendEmail({
       to: notifyTo,
-      subject: `New demo started: ${escHtml(company)}`,
+      subject: `New free trial started: ${escHtml(company)}`,
       html: `<div style="font-family:Arial;font-size:14px">
-        <p><b>${escHtml(first_name)} ${escHtml(last_name)}</b> (${escHtml(cleanEmail)}) just started a 3-day demo for <b>${escHtml(company)}</b>.</p>
+        <p><b>${escHtml(first_name)} ${escHtml(last_name)}</b> (${escHtml(cleanEmail)}) just started a 14-day free trial for <b>${escHtml(company)}</b>.</p>
         <p>Team size: ${escHtml(team_size || '—')} · Interested plan: ${escHtml(plan_interest || '—')}</p>
         <p>Trial ends: ${trialEnds.toUTCString()}</p>
       </div>`
