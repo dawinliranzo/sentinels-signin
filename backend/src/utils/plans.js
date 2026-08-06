@@ -13,6 +13,7 @@ const FEATURE_DEFS = [
   { key: 'sms',           label: 'SMS notifications (Twilio)' },
   { key: 'bulk_import',   label: 'Bulk host import (CSV)' },
   { key: 'backups',       label: 'Daily backups (snapshot + download)' },
+  { key: 'unifi',         label: 'UniFi Protect camera auto check-in/out' },
 ];
 
 const PLANS = {
@@ -35,7 +36,7 @@ const PLANS = {
     max_users: 1000,
     max_visits_per_month: 100000,
     max_devices: 50,
-    features: ['reports', 'compliance', 'sms', 'bulk_import', 'backups'],
+    features: ['reports', 'compliance', 'sms', 'bulk_import', 'backups', 'unifi'],
   },
 };
 
