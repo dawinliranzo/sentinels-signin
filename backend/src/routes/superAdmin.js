@@ -285,6 +285,17 @@ router.patch('/organizations/:id', authenticate, requireRole('super_admin'), asy
       }
     }
 
+    // Complimentary (never billed): lives in settings.complimentary, merged.
+    // A complimentary org skips the billing paywall (auth middleware) and cannot
+    // start Stripe checkout or open the billing portal (billing routes).
+    if (Object.prototype.hasOwnProperty.call(req.body, 'complimentary')) {
+      await db.query(
+        `UPDATE organizations
+         SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('complimentary', $1::boolean)
+         WHERE id = $2`, [req.body.complimentary === true, req.params.id]);
+      result = await db.query('SELECT * FROM organizations WHERE id = $1', [req.params.id]);
+    }
+
     // Family link: parent_id present in body means set (a UUID) or clear (null)
     if (Object.prototype.hasOwnProperty.call(req.body, 'parent_id')) {
       const newParent = req.body.parent_id || null;
