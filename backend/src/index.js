@@ -103,6 +103,7 @@ app.use('/api/frequent-visitors', frequentVisitorsRoutes);
 app.use('/api/rfid-cards', rfidRoutes);
 app.use('/api/api-keys', require('./routes/apiKeys'));
 app.use('/api/billing', require('./routes/billing'));
+app.use('/api/integrations', require('./routes/integrations'));
 
 // Error handling
 app.use((err, req, res, next) => {
