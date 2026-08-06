@@ -26,10 +26,20 @@ const PRICES = {
 };
 
 const stripe = () => require('stripe')(process.env.STRIPE_SECRET_KEY);
-const stripeReady = () => !!(process.env.STRIPE_SECRET_KEY && PRICES.pro && PRICES.enterprise);
-const notConfigured = (res) => res.status(503).json({
-  error: 'Card payments are not configured on the server yet (missing STRIPE_* environment variables). Contact Sentinels support to upgrade manually.'
-});
+const stripeReady = () => !!(process.env.STRIPE_SECRET_KEY && PRICES.pro && PRICES.enterprise) && !keyIsPublishable();
+// A pk_ key in STRIPE_SECRET_KEY is the classic misconfiguration — call it out
+// with an actionable message instead of letting Stripe 500 the request.
+const keyIsPublishable = () => (process.env.STRIPE_SECRET_KEY || '').startsWith('pk_');
+const notConfigured = (res) => {
+  if (keyIsPublishable()) {
+    return res.status(503).json({
+      error: 'STRIPE_SECRET_KEY starts with "pk_" — that is the PUBLISHABLE key. In Render → Environment, set STRIPE_SECRET_KEY to the SECRET key instead (it starts with "sk_test_" or "sk_live_"): Stripe Dashboard → Developers → API keys → Secret key.'
+    });
+  }
+  return res.status(503).json({
+    error: 'Card payments are not configured on the server yet (missing STRIPE_* environment variables). Contact Sentinels support to upgrade manually.'
+  });
+};
 
 const loadOrgFull = async (orgId) => {
   const r = await db.query(
