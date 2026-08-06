@@ -63,13 +63,17 @@ async function runNightlyBackups() {
   try {
     let orgs;
     try {
-      orgs = await db.query('SELECT id, plan, features FROM organizations');
+      orgs = await db.query('SELECT id, plan, features, settings FROM organizations');
     } catch (e) {
-      if (e.code === '42703') orgs = await db.query('SELECT id, plan FROM organizations');
+      if (e.code === '42703') orgs = await db.query('SELECT id, plan, features FROM organizations');
       else throw e;
     }
     for (const org of orgs.rows) {
       if (!hasFeature(org, 'backups')) continue;
+      // Per-org schedule (Settings → Backups): daily (default) / weekly (Sundays UTC) / off
+      const sched = (org.settings && org.settings.backup_schedule) || 'daily';
+      if (sched === 'off') continue;
+      if (sched === 'weekly' && new Date().getUTCDay() !== 0) continue;
       // One nightly snapshot per org per day
       const today = await db.query(
         "SELECT 1 FROM org_backups WHERE org_id = $1 AND kind = 'nightly' AND created_at::date = CURRENT_DATE LIMIT 1",
@@ -167,6 +171,44 @@ router.get('/', authenticate, requirePermission('settings'), requireFeature('bac
     if (e.code === '42P01') return res.status(500).json({ error: 'Backups table is missing — run migration-plans-backups.txt in Render PSQL' });
     console.error(e);
     res.status(500).json({ error: 'Failed to load backups' });
+  }
+});
+
+// Back up now — org self-serve manual snapshot (max one manual per hour per org)
+router.post('/', authenticate, requirePermission('settings'), requireFeature('backups'), async (req, res) => {
+  try {
+    const recent = await db.query(
+      "SELECT created_at FROM org_backups WHERE org_id = $1 AND kind = 'manual' AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1",
+      [req.user.org_id]
+    );
+    if (recent.rows.length > 0) {
+      return res.status(429).json({ error: 'A manual backup was made less than an hour ago — the next one unlocks shortly. Automatic snapshots keep running either way.' });
+    }
+    const meta = await generateOrgBackup(req.user.org_id, 'manual');
+    res.status(201).json(meta);
+  } catch (e) {
+    if (e.code === '42P01') return res.status(500).json({ error: 'Backups table is missing — run migration-plans-backups.txt in Render PSQL' });
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create backup' });
+  }
+});
+
+// Automatic schedule preference: daily (default) / weekly (Sundays UTC) / off.
+// Merged into settings JSONB (never replaces other keys); the nightly job reads it.
+router.put('/schedule', authenticate, requirePermission('settings'), requireFeature('backups'), async (req, res) => {
+  try {
+    const s = req.body && req.body.schedule;
+    if (!['daily', 'weekly', 'off'].includes(s)) {
+      return res.status(400).json({ error: 'Choose daily, weekly or off' });
+    }
+    await db.query(
+      `UPDATE organizations SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('backup_schedule', $1::text) WHERE id = $2`,
+      [s, req.user.org_id]
+    );
+    res.json({ schedule: s });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to save schedule' });
   }
 });
 
