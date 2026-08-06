@@ -85,6 +85,13 @@ router.post('/checkout', authenticate, requireRole('admin', 'super_admin'), asyn
     if (!org) return res.status(404).json({ error: 'Organization not found' });
     const st = org.settings || {};
 
+    // Complimentary orgs (platform owner, partners) are never billed — there is
+    // nothing to buy. The Settings UI hides checkout for them; this is the
+    // server-side guarantee.
+    if (st.complimentary === true) {
+      return res.status(400).json({ error: 'This organization is complimentary — full access, never billed. Nothing to check out.' });
+    }
+
     // An existing subscriber changes plans in the customer portal — a second
     // Checkout would create a duplicate subscription
     if (st.stripe_subscription_id) {
@@ -115,7 +122,10 @@ router.post('/checkout', authenticate, requireRole('admin', 'super_admin'), asyn
     res.json({ url: session.url });
   } catch (err) {
     console.error('Billing checkout error:', err);
-    res.status(500).json({ error: 'Could not start checkout — try again, or contact support' });
+    // Surface Stripe's own message to admins (it names the exact problem — wrong
+    // price ID, test/live key mismatch…). Stripe errors carry no secrets.
+    const stripeMsg = err && err.type && String(err.type).startsWith('Stripe') ? err.message : null;
+    res.status(500).json({ error: stripeMsg || 'Could not start checkout — try again, or contact support' });
   }
 });
 
@@ -125,6 +135,9 @@ router.post('/portal', authenticate, requireRole('admin', 'super_admin'), async 
   try {
     if (!stripeReady()) return notConfigured(res);
     const org = await loadOrgFull(req.user.org_id);
+    if (org && org.settings && org.settings.complimentary === true) {
+      return res.status(400).json({ error: 'This organization is complimentary — full access, never billed. No billing account to manage.' });
+    }
     const customerId = (org && org.settings && org.settings.stripe_customer_id) || null;
     if (!customerId) {
       return res.status(400).json({ error: 'No billing account yet — choose a plan first and check out once.' });
@@ -136,7 +149,8 @@ router.post('/portal', authenticate, requireRole('admin', 'super_admin'), async 
     res.json({ url: session.url });
   } catch (err) {
     console.error('Billing portal error:', err);
-    res.status(500).json({ error: 'Could not open the billing portal — try again later' });
+    const stripeMsg = err && err.type && String(err.type).startsWith('Stripe') ? err.message : null;
+    res.status(500).json({ error: stripeMsg || 'Could not open the billing portal — try again later' });
   }
 });
 
