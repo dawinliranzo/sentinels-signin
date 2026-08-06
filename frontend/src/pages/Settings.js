@@ -34,7 +34,7 @@ export default function Settings() {
   const BILLING_PLANS = {
     free:       { label: 'Free trial', price: 0,   color: '#64748B', perks: ['5 users', '100 visits/mo', '1 kiosk device', '14 days with every feature'] },
     pro:        { label: 'Pro',        price: 49,  color: '#0D7377', perks: ['25 users', '2,000 visits/mo', '5 kiosk devices', 'Reports & analytics', 'Compliance / NDA records', 'SMS notifications', 'Bulk host import (CSV)'] },
-    enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: ['1,000 users', '100,000 visits/mo', '50 kiosk devices', 'Everything in Pro', 'Daily backups'] },
+    enterprise: { label: 'Enterprise', price: 149, color: '#FF6B35', perks: ['1,000 users', '100,000 visits/mo', '50 kiosk devices', 'Everything in Pro', 'Scheduled backups & restore', 'UniFi camera auto check-in/out'] },
   };
   const [billing, setBilling] = useState(null); // flat /auth/me payload
   const [billingBusy, setBillingBusy] = useState(''); // 'pro' | 'enterprise' | 'portal' | ''
