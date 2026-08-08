@@ -508,4 +508,47 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
   }
 });
 
+
+// ---- Public SMS opt-in (A2P 10DLC CTA) ----
+// Unauthenticated page at https://www.sentinelskiosk.com/sms-opt-in.html posts
+// here. Records provable consent (exact disclosure text + IP + timestamp).
+// This endpoint ONLY records consent — messages are still only sent to phone
+// numbers an organization has configured as hosts/users with SMS enabled.
+const SMS_CONSENT_TEXT = 'I agree to receive recurring transactional SMS notifications from Sentinels Kiosk on behalf of my organization (visitor arrival alerts and security/offline notifications). Message frequency varies. Message and data rates may apply. Reply STOP to cancel, HELP for help. Consent is not a condition of purchase.';
+
+const smsConsentLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many requests. Please try again later.' }
+});
+
+router.post('/sms-consent', smsConsentLimiter, async (req, res) => {
+  try {
+    const { phone, consent } = req.body || {};
+    // Normalize: keep digits and a single leading +
+    const raw = String(phone || '').trim();
+    const normalized = raw.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+    const digits = normalized.replace(/\D/g, '');
+    if (digits.length < 7 || digits.length > 15) {
+      return res.status(400).json({ error: 'Enter a valid mobile number, including country code (e.g. +1...)' });
+    }
+    if (consent !== true) {
+      return res.status(400).json({ error: 'Please check the consent box to opt in' });
+    }
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || null;
+    const ua = String(req.headers['user-agent'] || '').slice(0, 500) || null;
+    await db.query(
+      'INSERT INTO sms_consents (phone, consent_text, source, ip, user_agent) VALUES ($1, $2, $3, $4, $5)',
+      [normalized, SMS_CONSENT_TEXT, 'website', ip, ua]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    if (err && err.code === '42P01') {
+      return res.status(500).json({ error: 'Consent store is not initialized yet — please try again later' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Could not record your consent. Please try again.' });
+  }
+});
+
 module.exports = router;
