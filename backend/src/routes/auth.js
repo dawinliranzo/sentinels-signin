@@ -421,7 +421,7 @@ const escHtml = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt
 
 router.post('/demo-request', demoLimiter, async (req, res) => {
   try {
-    const { first_name, last_name, email, company, team_size, plan_interest } = req.body || {};
+    const { first_name, last_name, email, company, team_size, plan_interest, phone, sms_consent } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
     if (!first_name?.trim() || !last_name?.trim() || !company?.trim()) {
       return res.status(400).json({ error: 'First name, last name and company are required' });
@@ -460,6 +460,26 @@ router.post('/demo-request', demoLimiter, async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, 'admin')`,
         [org.id, cleanEmail, hashed, first_name.trim(), last_name.trim()]
       );
+    }
+
+    // Optional SMS opt-in from the trial form — only when the box was actively
+    // checked and a valid number was given. Never required: the form submits
+    // fine without it (A2P 30923 — consent must be voluntary).
+    if (sms_consent === true && phone) {
+      try {
+        const normalized = String(phone).trim().replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '');
+        const digits = normalized.replace(/\D/g, '');
+        if (digits.length >= 7 && digits.length <= 15) {
+          const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || null;
+          const ua = String(req.headers['user-agent'] || '').slice(0, 500) || null;
+          await db.query(
+            'INSERT INTO sms_consents (phone, consent_text, source, ip, user_agent) VALUES ($1, $2, $3, $4, $5)',
+            [normalized, SMS_CONSENT_TEXT, 'trial_signup', ip, ua]
+          );
+        }
+      } catch (e) {
+        if (e.code !== '42P01') console.error('Trial SMS consent record failed:', e.message);
+      }
     }
 
     const loginUrl = (process.env.FRONTEND_URL || 'https://app.sentinelskiosk.com') + '/login';
