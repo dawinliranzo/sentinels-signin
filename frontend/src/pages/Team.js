@@ -230,7 +230,7 @@ export default function Team() {
       {/* Invite — at the top so it's always one click away, no scrolling */}
       <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', marginBottom: 20 }}>
         <h4 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <UserPlus size={18} color="#0D7377" /> Invite Member
+          <UserPlus size={18} color="var(--brand)" /> Invite Member
         </h4>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 12 }}>
           <input type="text" placeholder="First name" value={newUser.first_name} onChange={(e) => setNewUser({...newUser, first_name: e.target.value})} style={inputStyle} />
@@ -254,7 +254,7 @@ export default function Team() {
         {teamMsg && (
           <div style={{ fontSize: 13, fontWeight: 600, color: teamMsg.ok ? '#166534' : '#991B1B', marginBottom: 12 }}>{teamMsg.text}</div>
         )}
-        <button onClick={addUser} disabled={savingUser} style={{ padding: '12px 24px', borderRadius: 10, background: savingUser ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+        <button onClick={addUser} disabled={savingUser} style={{ padding: '12px 24px', borderRadius: 10, background: savingUser ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
           {savingUser ? 'Sending invite...' : 'Invite Member'}
         </button>
       </div>
@@ -278,12 +278,12 @@ export default function Team() {
       )}
 
       {/* Role legend */}
-      <div style={{ background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 16, padding: '16px 20px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#0F766E', fontSize: 14, marginBottom: 8 }}>
+      <div style={{ background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', borderRadius: 16, padding: '16px 20px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: 'var(--brand-deep)', fontSize: 14, marginBottom: 8 }}>
           <Info size={16} /> What each role can do
         </div>
         {ROLE_INFO.map(r => (
-          <div key={r.role} style={{ fontSize: 13, color: '#134E4A', marginBottom: 4, lineHeight: 1.5 }}>
+          <div key={r.role} style={{ fontSize: 13, color: 'var(--brand-dark)', marginBottom: 4, lineHeight: 1.5 }}>
             <strong>{r.label}:</strong> {r.text}
           </div>
         ))}
@@ -292,7 +292,7 @@ export default function Team() {
       {/* Members */}
       <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Users size={20} color="#0D7377" /> Team Members <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>({team.length})</span>
+          <Users size={20} color="var(--brand)" /> Team Members <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>({team.length})</span>
         </h3>
 
         {team.map(u => (
@@ -354,7 +354,7 @@ export default function Team() {
                     )}
                   </select>
                   {u.custom_role_name && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#F0FDFA', color: '#0F766E', border: '1px solid #99F6E4' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: 'var(--brand-wash)', color: 'var(--brand-deep)', border: '1px solid var(--brand-border)' }}>
                       <KeyRound size={11} /> {u.custom_role_name}
                     </span>
                   )}
@@ -414,7 +414,7 @@ export default function Team() {
       {/* Custom Roles — build your own roles by picking exactly which functions they unlock */}
       <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', marginTop: 20 }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <KeyRound size={20} color="#0D7377" /> Custom Roles <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>({roles.length})</span>
+          <KeyRound size={20} color="var(--brand)" /> Custom Roles <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 500 }}>({roles.length})</span>
         </h3>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
           Create roles like "Security Guard" or "Office Manager" with exactly the functions they need — nothing more.
@@ -436,7 +436,7 @@ export default function Team() {
               style={{ ...inputStyle, flex: '1 1 240px' }}
             />
             <button onClick={createRole} disabled={roleBusy}
-              style={{ padding: '12px 20px', borderRadius: 10, background: roleBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              style={{ padding: '12px 20px', borderRadius: 10, background: roleBusy ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
               <Plus size={15} /> {roleBusy ? 'Creating…' : 'Create Role'}
             </button>
           </div>
@@ -446,8 +446,8 @@ export default function Team() {
               <label key={p.key} style={{
                 display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer',
                 padding: '8px 10px', borderRadius: 8,
-                background: roleForm.permissions.includes(p.key) ? '#F0FDFA' : '#fff',
-                border: roleForm.permissions.includes(p.key) ? '1px solid #5EEAD4' : '1px solid #E2E8F0'
+                background: roleForm.permissions.includes(p.key) ? 'var(--brand-wash)' : '#fff',
+                border: roleForm.permissions.includes(p.key) ? '1px solid var(--brand-border)' : '1px solid #E2E8F0'
               }}>
                 <input type="checkbox" checked={roleForm.permissions.includes(p.key)} onChange={() => togglePerm(p.key)} />
                 {p.label}
@@ -473,8 +473,8 @@ export default function Team() {
                   title="Edit role name and functions"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8,
-                    background: editingRole?.id === r.id ? '#0D7377' : '#F0FDFA', border: 'none',
-                    color: editingRole?.id === r.id ? '#fff' : '#0D7377', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                    background: editingRole?.id === r.id ? 'var(--brand)' : 'var(--brand-wash)', border: 'none',
+                    color: editingRole?.id === r.id ? '#fff' : 'var(--brand)', fontSize: 12, fontWeight: 600, cursor: 'pointer'
                   }}>
                   <Pencil size={13} /> Edit
                 </button>
@@ -493,7 +493,7 @@ export default function Team() {
               </div>
             </div>
             {editingRole?.id === r.id ? (
-              <div style={{ marginTop: 10, padding: '12px 14px', background: '#fff', borderRadius: 10, border: '2px solid #99F6E4' }}>
+              <div style={{ marginTop: 10, padding: '12px 14px', background: '#fff', borderRadius: 10, border: '2px solid var(--brand-border)' }}>
                 <input type="text" value={editingRole.name} onChange={(e) => setEditingRole({ ...editingRole, name: e.target.value })}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13, fontWeight: 600, marginBottom: 10 }} />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 6, marginBottom: 12 }}>
@@ -510,7 +510,7 @@ export default function Team() {
                     Cancel
                   </button>
                   <button onClick={saveRoleEdit} disabled={roleBusy}
-                    style={{ flex: 1, padding: '9px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '9px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                     {roleBusy ? 'Saving…' : 'Save changes'}
                   </button>
                 </div>
@@ -518,7 +518,7 @@ export default function Team() {
             ) : (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
               {(r.permissions || []).map(p => (
-                <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E0F2F1', color: '#0F766E' }}>
+                <span key={p} style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E0F2F1', color: 'var(--brand-deep)' }}>
                   {PERMISSION_OPTIONS.find(o => o.key === p)?.label || p}
                 </span>
               ))}
