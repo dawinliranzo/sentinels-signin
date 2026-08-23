@@ -101,3 +101,33 @@ img { max-width: 100%; }
      anywhere-breaking turns headers into vertical letter soup */
   td, th { overflow-wrap: normal; }
 }
+
+/* ─── Organization palette (Settings → Branding → Theme palette) ───
+   Defaults = the original Sentinels look. portalTheme.js overwrites these
+   on :root when an organization picks a different palette. */
+:root {
+  --brand: #0D7377;
+  --brand-soft: #14919B;
+  --brand-bright: #14FFEC;
+  --brand-dark: #0A5C5F;
+  --brand-deep: #0F766E;
+  --brand-wash: #F0FDFA;
+  --brand-border: #99F6E4;
+  --brand-ghost: rgba(13,115,119,0.1);
+  --brand-halo: rgba(13,115,119,0.15);
+  --bright-soft: rgba(20,255,236,0.12);
+  --bright-mid: rgba(20,255,236,0.4);
+  --accent: #FF6B35;
+  --accent-soft: #FF8C5A;
+}
+
+/* ─── Sidebar: always-visible slim scrollbar so users can tell the menu
+   continues below the fold ─── */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.28) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 8px; }
+.sidebar-nav::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 4px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 4px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--brand-bright); }
