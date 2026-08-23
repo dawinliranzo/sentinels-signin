@@ -250,7 +250,7 @@ export default function PreRegistered() {
   const errorStyle = { color: '#EF4444', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 };
 
   const statusColors = {
-    pending: '#F59E0B', sent: '#0D7377', opened: '#3B82F6', used: '#10B981',
+    pending: '#F59E0B', sent: 'var(--brand)', opened: '#3B82F6', used: '#10B981',
     checked_in: '#10B981', checked_out: '#64748B'
   };
   const statusLabels = {
@@ -266,7 +266,7 @@ export default function PreRegistered() {
           <p style={{ color: '#64748B', marginTop: 4 }}>Invite visitors ahead of time with QR codes</p>
         </div>
         <button onClick={() => { setEditingId(null); setForm({ first_name: '', last_name: '', email: '', phone: '', company: '', host_id: '', visitor_type_id: '', purpose: '', expected_date: '', expected_time_start: '', expected_time_end: '' }); setErrors({}); setShowModal(true); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
           <Plus size={18} /> Pre-Register Visitor
         </button>
       </div>
@@ -418,7 +418,7 @@ export default function PreRegistered() {
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                 <button type="button" onClick={closeModal} style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', borderRadius: 10, background: submitting ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                <button type="submit" disabled={submitting} style={{ flex: 1, padding: '14px', borderRadius: 10, background: submitting ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer' }}>
                   {submitting ? 'Saving...' : (editingId ? 'Update' : 'Send Invitation')}
                 </button>
               </div>
@@ -438,7 +438,7 @@ export default function PreRegistered() {
             <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Scan this QR code or share the link below</p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F1F5F9', padding: '12px 16px', borderRadius: 10, marginBottom: 16 }}>
               <input type="text" readOnly value={`${window.location.origin}/check-in/${showQR.qr_code}`} style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, outline: 'none' }} />
-              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/check-in/${showQR.qr_code}`); toast('Link copied'); }} style={{ padding: '6px 12px', borderRadius: 6, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/check-in/${showQR.qr_code}`); toast('Link copied'); }} style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, cursor: 'pointer' }}>
                 <Copy size={14} /> Copy
               </button>
             </div>
@@ -485,7 +485,7 @@ export default function PreRegistered() {
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={addFrequentVisitor} disabled={fvBusy}
-                style={{ padding: '11px 24px', borderRadius: 10, background: fvBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                style={{ padding: '11px 24px', borderRadius: 10, background: fvBusy ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                 {fvBusy ? 'Adding…' : 'Add & Generate Badge'}
               </button>
               <button onClick={() => setShowFVForm(false)}
@@ -539,8 +539,8 @@ export default function PreRegistered() {
                           <QRCodeSVG value={`FV:${fv.code}`} size={220} level="H" includeMargin={true} />
                         </span>
                         <button onClick={() => setFvBadge(fv)} title="Show QR badge"
-                          style={{ padding: '8px 10px', borderRadius: 8, background: '#F0FDFA', border: 'none', cursor: 'pointer' }}>
-                          <QrCode size={15} color="#0D7377" />
+                          style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--brand-wash)', border: 'none', cursor: 'pointer' }}>
+                          <QrCode size={15} color="var(--brand)" />
                         </button>
                         <button onClick={() => printFVBadge(fv)} title="Print badge"
                           style={{ padding: '8px 10px', borderRadius: 8, background: '#F1F5F9', border: 'none', cursor: 'pointer' }}>
@@ -595,7 +595,7 @@ export default function PreRegistered() {
             <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>Scan at the kiosk to sign in — scan again to sign out.</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button onClick={() => printFVBadge(fvBadge)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
                 <Printer size={16} /> Print Badge
               </button>
               <button onClick={() => setFvBadge(null)} style={{ padding: '12px 24px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
@@ -632,7 +632,7 @@ export default function PreRegistered() {
                 style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 15, fontFamily: 'monospace', fontWeight: 700 }}
               />
               <button onClick={enrollFvCard} disabled={fvRfidBusy}
-                style={{ padding: '12px 22px', borderRadius: 10, background: fvRfidBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                style={{ padding: '12px 22px', borderRadius: 10, background: fvRfidBusy ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                 {fvRfidBusy ? 'Saving…' : 'Enroll'}
               </button>
             </div>
