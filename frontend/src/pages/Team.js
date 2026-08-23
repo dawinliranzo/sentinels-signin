@@ -27,6 +27,7 @@ const PERMISSION_OPTIONS = [
   { key: 'compliance', label: 'Compliance / NDAs' },
   { key: 'settings', label: 'Settings' },
   { key: 'deliveries', label: 'Deliveries' },
+  { key: 'security', label: 'Security alerts (dashboard feed)' },
 ];
 
 export default function Team() {
