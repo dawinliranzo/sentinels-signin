@@ -42,11 +42,37 @@ async function passbackViolation(orgId, matchSql, matchParams, windowMin) {
   return null;
 }
 
+// Direction-aware entry check (the kiosk told us the person wants IN): there
+// is no open visit, but a very recent CHECK-OUT within the window means this
+// badge was most likely carried back outside and handed to a second person.
+async function reentryViolation(orgId, matchSql, matchParams, windowMin) {
+  const last = await db.query(
+    `SELECT id, checked_out_at FROM visits
+     WHERE org_id = $1 AND status = 'checked_out' AND ${matchSql} AND checked_out_at IS NOT NULL
+     ORDER BY checked_out_at DESC LIMIT 1`,
+    matchParams
+  );
+  if (last.rows.length > 0) {
+    const ageMs = Date.now() - new Date(last.rows[0].checked_out_at).getTime();
+    if (ageMs < windowMin * 60000) return { kind: 'quick_in', visit: last.rows[0], ageMin: Math.max(1, Math.round(ageMs / 60000)) };
+  }
+  return null;
+}
+
+// The kiosk screens know the user's intent: entry screens (Welcome / Sign In)
+// send direction 'in', the Sign Out screen sends 'out'. Older cached kiosk
+// pages send nothing — those keep the legacy toggle behaviour.
+function tapDirection(body) {
+  return body?.direction === 'in' ? 'in' : body?.direction === 'out' ? 'out' : null;
+}
+
 // Raises the staff alert for a passback violation (fire-and-forget safe)
 async function alertPassback(orgId, personName, violation, method) {
   const what = violation.kind === 'quick_out'
     ? `tapped again ${violation.ageMin} min after entering`
-    : `tapped to re-enter ${violation.ageMin} min after exiting`;
+    : violation.kind === 'double_entry'
+      ? `tapped to enter again ${violation.ageMin} min after their first entry`
+      : `tapped to re-enter ${violation.ageMin} min after exiting`;
   await raiseSecurityAlert(orgId, 'anti_passback',
     `Possible badge pass-back: ${personName} ${what} — entry refused at the kiosk (front desk notified).`,
     { person: personName, kind: violation.kind, method, visit_id: violation.visit.id });
@@ -310,24 +336,24 @@ router.post('/staff-checkin', async (req, res) => {
       return res.status(404).json({ error: 'Badge not recognized for this kiosk' });
     }
     const staffEmail = host.email || `host-${host.id}@staff.local`;
+    const direction = tapDirection(req.body);
+    const staffName = `${host.first_name} ${host.last_name}`;
+    const staffMatchSql = `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`;
+    const staffMatchParams = [org_id, staffEmail];
 
-    // Anti-passback (Settings → Access Security): a tap that would flip this
-    // badge again within the window is refused — one card can't walk two
-    // people in, and a fresh entrant can't hand their badge back outside.
+    // Anti-passback (Settings → Access Security). Direction-aware:
+    //  • EXIT screen ('out') — leaving is ALWAYS allowed, never blocked, and
+    //    a tap there can never create a visit.
+    //  • ENTRY screens ('in') — a tap never signs anyone out; within the
+    //    window a second entry is refused (badge hand-off), and re-entering
+    //    moments after an exit is refused (badge carried back outside).
+    //  • No direction (cached legacy kiosk) — old toggle + both blocks.
+    let apm = 0;
     try {
       const s = await db.query('SELECT settings FROM organizations WHERE id = $1', [org_id]);
-      const apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
-      if (apm > 0) {
-        const violation = await passbackViolation(org_id,
-          `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`,
-          [org_id, staffEmail], apm);
-        if (violation) {
-          alertPassback(org_id, `${host.first_name} ${host.last_name}`, violation, 'staff_badge').catch(() => {});
-          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
-        }
-      }
+      apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
     } catch (pbErr) {
-      console.error('Anti-passback check failed (continuing):', pbErr.message);
+      console.error('Anti-passback settings load failed (continuing):', pbErr.message);
     }
 
     // Active staff visit for this employee?
@@ -337,12 +363,62 @@ router.post('/staff-checkin', async (req, res) => {
        ORDER BY checked_in_at DESC LIMIT 1`,
       [org_id, staffEmail]
     );
+    const openVisit = active.rows[0];
 
-    if (active.rows.length > 0) {
+    if (direction === 'out') {
+      if (!openVisit) {
+        return res.json({ action: 'no_open_visit', name: host.first_name, photo: host.photo_data || null });
+      }
       const out = await db.query(
         `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
          WHERE id = $1 RETURNING *`,
-        [active.rows[0].id]
+        [openVisit.id]
+      );
+      return res.json({
+        action: 'checked_out',
+        name: host.first_name,
+        photo: host.photo_data || null,
+        notes: host.notes || null,
+        visit: out.rows[0]
+      });
+    }
+
+    if (direction === 'in' && openVisit) {
+      const ageMs = Date.now() - new Date(openVisit.checked_in_at).getTime();
+      if (apm > 0 && ageMs < apm * 60000) {
+        alertPassback(org_id, staffName, { kind: 'double_entry', visit: openVisit, ageMin: Math.max(1, Math.round(ageMs / 60000)) }, 'staff_badge').catch(() => {});
+        return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+      }
+      // Older open visit — they simply never signed out. Confirm, don't flip.
+      return res.json({
+        action: 'already_in',
+        name: host.first_name,
+        photo: host.photo_data || null,
+        badge: openVisit.badge_number,
+        visit: openVisit
+      });
+    }
+
+    if (apm > 0) {
+      try {
+        const violation = direction === 'in'
+          ? await reentryViolation(org_id, staffMatchSql, staffMatchParams, apm)
+          : await passbackViolation(org_id, staffMatchSql, staffMatchParams, apm);
+        if (violation) {
+          alertPassback(org_id, staffName, violation, 'staff_badge').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+      } catch (pbErr) {
+        console.error('Anti-passback check failed (continuing):', pbErr.message);
+      }
+    }
+
+    if (!direction && openVisit) {
+      // Legacy kiosk page (no direction): toggle them out as before
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
+         WHERE id = $1 RETURNING *`,
+        [openVisit.id]
       );
       return res.json({
         action: 'checked_out',
@@ -435,35 +511,70 @@ router.post('/fv-checkin', async (req, res) => {
       return res.status(403).json({ error: 'This visitor is not permitted on site. Please see the front desk.', code: 'VISITOR_BLACKLISTED' });
     }
 
-    // Toggle: already on site (matched by email, or by name when no email)? → sign out
+    // Already on site (matched by email, or by name when no email)?
     const matchClause = fvRow.email
       ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, fvRow.email] }
       : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, fvRow.first_name, fvRow.last_name] };
+    const direction = tapDirection(req.body);
+    const fvName = `${fvRow.first_name} ${fvRow.last_name}`;
 
-    // Anti-passback — same rule as staff badges: no re-flip within the window
+    // Anti-passback — direction-aware, same rules as staff badges
+    let apm = 0;
     try {
       const s = await db.query('SELECT settings FROM organizations WHERE id = $1', [org_id]);
-      const apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
-      if (apm > 0) {
-        const violation = await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
-        if (violation) {
-          alertPassback(org_id, `${fvRow.first_name} ${fvRow.last_name}`, violation, 'frequent_badge').catch(() => {});
-          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
-        }
-      }
+      apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
     } catch (pbErr) {
-      console.error('Anti-passback check failed (continuing):', pbErr.message);
+      console.error('Anti-passback settings load failed (continuing):', pbErr.message);
     }
 
     const active = await db.query(
-      `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
+      `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
        ORDER BY checked_in_at DESC LIMIT 1`,
       matchClause.params
     );
-    if (active.rows.length > 0) {
+    const openVisit = active.rows[0];
+
+    if (direction === 'out') {
+      // EXIT screen: sign out if on site, never blocked, never signs in
+      if (!openVisit) {
+        return res.json({ action: 'no_open_visit', name: fvRow.first_name, code: fvRow.code });
+      }
       const out = await db.query(
         `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
-        [active.rows[0].id]
+        [openVisit.id]
+      );
+      return res.json({ action: 'checked_out', name: fvRow.first_name, code: fvRow.code, visit: out.rows[0] });
+    }
+
+    if (direction === 'in' && openVisit) {
+      // ENTRY screen + already on site: never sign them out
+      const ageMs = Date.now() - new Date(openVisit.checked_in_at).getTime();
+      if (apm > 0 && ageMs < apm * 60000) {
+        alertPassback(org_id, fvName, { kind: 'double_entry', visit: openVisit, ageMin: Math.max(1, Math.round(ageMs / 60000)) }, 'frequent_badge').catch(() => {});
+        return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+      }
+      return res.json({ action: 'already_in', name: fvRow.first_name, code: fvRow.code, badge: openVisit.badge_number, visit: openVisit });
+    }
+
+    if (apm > 0) {
+      try {
+        const violation = direction === 'in'
+          ? await reentryViolation(org_id, matchClause.sql, matchClause.params, apm)
+          : await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
+        if (violation) {
+          alertPassback(org_id, fvName, violation, 'frequent_badge').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+      } catch (pbErr) {
+        console.error('Anti-passback check failed (continuing):', pbErr.message);
+      }
+    }
+
+    if (!direction && openVisit) {
+      // Legacy kiosk page (no direction): toggle them out as before
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
+        [openVisit.id]
       );
       return res.json({ action: 'checked_out', name: fvRow.first_name, code: fvRow.code, visit: out.rows[0] });
     }
@@ -512,6 +623,7 @@ router.post('/fv-checkin', async (req, res) => {
 router.post('/rfid-tap', async (req, res) => {
   try {
     const { org_id, uid, device_id } = req.body;
+    const direction = tapDirection(req.body);
     if (!org_id || !uid) {
       return res.status(400).json({ error: 'Organization ID and card UID are required' });
     }
@@ -549,30 +661,60 @@ router.post('/rfid-tap', async (req, res) => {
     } catch (e) { console.error('Anti-passback settings load failed:', e.message); }
 
     if (resolved.kind === 'staff') {
-      // ─── Staff toggle (same rules as the STAFF: QR badge) ───
+      // ─── Staff badge (same rules as the STAFF: QR badge) ───
       const staffEmail = p.email || `host-${p.id}@staff.local`;
-      if (apm > 0) {
-        try {
-          const violation = await passbackViolation(org_id,
-            `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`,
-            [org_id, staffEmail], apm);
-          if (violation) {
-            alertPassback(org_id, `${p.first_name} ${p.last_name}`, violation, 'rfid_staff').catch(() => {});
-            return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
-          }
-        } catch (pbErr) { console.error('Anti-passback check failed (continuing):', pbErr.message); }
-      }
+      const staffName = `${p.first_name} ${p.last_name}`;
+      const staffMatchSql = `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`;
+      const staffMatchParams = [org_id, staffEmail];
       const active = await db.query(
         `SELECT * FROM visits WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)
            AND sign_in_method = 'staff_qr' AND status = 'checked_in'
          ORDER BY checked_in_at DESC LIMIT 1`,
         [org_id, staffEmail]
       );
-      if (active.rows.length > 0) {
+      const openVisit = active.rows[0];
+
+      if (direction === 'out') {
+        // EXIT screen: sign out if on site — never blocked, never signs in
+        if (!openVisit) {
+          return res.json({ action: 'no_open_visit', card_type: 'staff', name: p.first_name, photo: p.photo_data || null });
+        }
         const out = await db.query(
           `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
            WHERE id = $1 RETURNING *`,
-          [active.rows[0].id]
+          [openVisit.id]
+        );
+        return res.json({ action: 'checked_out', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, notes: p.notes || null, visit: out.rows[0] });
+      }
+
+      if (direction === 'in' && openVisit) {
+        // ENTRY screen + already on site: never sign them out
+        const ageMs = Date.now() - new Date(openVisit.checked_in_at).getTime();
+        if (apm > 0 && ageMs < apm * 60000) {
+          alertPassback(org_id, staffName, { kind: 'double_entry', visit: openVisit, ageMin: Math.max(1, Math.round(ageMs / 60000)) }, 'rfid_staff').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+        return res.json({ action: 'already_in', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, badge: openVisit.badge_number, visit: openVisit });
+      }
+
+      if (apm > 0) {
+        try {
+          const violation = direction === 'in'
+            ? await reentryViolation(org_id, staffMatchSql, staffMatchParams, apm)
+            : await passbackViolation(org_id, staffMatchSql, staffMatchParams, apm);
+          if (violation) {
+            alertPassback(org_id, staffName, violation, 'rfid_staff').catch(() => {});
+            return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+          }
+        } catch (pbErr) { console.error('Anti-passback check failed (continuing):', pbErr.message); }
+      }
+
+      if (!direction && openVisit) {
+        // Legacy kiosk page (no direction): toggle them out as before
+        const out = await db.query(
+          `UPDATE visits SET status = 'checked_out', checked_out_at = NOW(), check_out_notes = 'Staff badge check-out'
+           WHERE id = $1 RETURNING *`,
+          [openVisit.id]
         );
         return res.json({ action: 'checked_out', card_type: 'staff', name: p.first_name, photo: p.photo_data || null, notes: p.notes || null, visit: out.rows[0] });
       }
@@ -607,24 +749,53 @@ router.post('/rfid-tap', async (req, res) => {
     const matchClause = p.email
       ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, p.email] }
       : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, p.first_name, p.last_name] };
+    const fvName = `${p.first_name} ${p.last_name}`;
+    const active = await db.query(
+      `SELECT * FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
+       ORDER BY checked_in_at DESC LIMIT 1`,
+      matchClause.params
+    );
+    const openVisit = active.rows[0];
+
+    if (direction === 'out') {
+      // EXIT screen: sign out if on site — never blocked, never signs in
+      if (!openVisit) {
+        return res.json({ action: 'no_open_visit', card_type: 'frequent', name: p.first_name, code: p.code });
+      }
+      const out = await db.query(
+        `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
+        [openVisit.id]
+      );
+      return res.json({ action: 'checked_out', card_type: 'frequent', name: p.first_name, code: p.code, visit: out.rows[0] });
+    }
+
+    if (direction === 'in' && openVisit) {
+      // ENTRY screen + already on site: never sign them out
+      const ageMs = Date.now() - new Date(openVisit.checked_in_at).getTime();
+      if (apm > 0 && ageMs < apm * 60000) {
+        alertPassback(org_id, fvName, { kind: 'double_entry', visit: openVisit, ageMin: Math.max(1, Math.round(ageMs / 60000)) }, 'rfid_frequent').catch(() => {});
+        return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+      }
+      return res.json({ action: 'already_in', card_type: 'frequent', name: p.first_name, code: p.code, badge: openVisit.badge_number, visit: openVisit });
+    }
+
     if (apm > 0) {
       try {
-        const violation = await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
+        const violation = direction === 'in'
+          ? await reentryViolation(org_id, matchClause.sql, matchClause.params, apm)
+          : await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
         if (violation) {
-          alertPassback(org_id, `${p.first_name} ${p.last_name}`, violation, 'rfid_frequent').catch(() => {});
+          alertPassback(org_id, fvName, violation, 'rfid_frequent').catch(() => {});
           return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
         }
       } catch (pbErr) { console.error('Anti-passback check failed (continuing):', pbErr.message); }
     }
-    const active = await db.query(
-      `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
-       ORDER BY checked_in_at DESC LIMIT 1`,
-      matchClause.params
-    );
-    if (active.rows.length > 0) {
+
+    if (!direction && openVisit) {
+      // Legacy kiosk page (no direction): toggle them out as before
       const out = await db.query(
         `UPDATE visits SET status = 'checked_out', checked_out_at = NOW() WHERE id = $1 RETURNING *`,
-        [active.rows[0].id]
+        [openVisit.id]
       );
       return res.json({ action: 'checked_out', card_type: 'frequent', name: p.first_name, code: p.code, visit: out.rows[0] });
     }
