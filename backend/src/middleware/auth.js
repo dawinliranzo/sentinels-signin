@@ -108,7 +108,7 @@ const requireFeature = (feature) => {
 };
 
 // Permission keys used across the app (nav sections + backend route guards)
-const ALL_PERMISSIONS = ['visits', 'prereg', 'hosts', 'devices', 'team', 'reports', 'compliance', 'settings', 'deliveries'];
+const ALL_PERMISSIONS = ['visits', 'prereg', 'hosts', 'devices', 'team', 'reports', 'compliance', 'settings', 'deliveries', 'security'];
 const RECEPTIONIST_PERMISSIONS = ['visits', 'prereg'];
 
 // Resolve a user's effective permissions + display label.
