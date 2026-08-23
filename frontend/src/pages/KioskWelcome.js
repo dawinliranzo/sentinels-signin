@@ -4,6 +4,7 @@ import { ArrowRight, LogIn, LogOut, QrCode, CheckCircle, XCircle, PenLine, Nfc }
 import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
+import { getCachedTheme, buildTheme, cacheTheme } from '../utils/kioskTheme';
 import SignaturePad from '../components/SignaturePad';
 
 // Same fallback as the backend — used when NDA is on but no custom text is saved yet.
@@ -37,6 +38,7 @@ export default function KioskWelcome() {
   const [ndaRequired, setNdaRequired] = useState(false);
   const [ndaText, setNdaText] = useState('');
   const [logoData, setLogoData] = useState('');
+  const [T, setT] = useState(getCachedTheme); // org theme colors (from /kiosk/config)
   const [pendingVisitor, setPendingVisitor] = useState(null);
   const [ndaSig, setNdaSig] = useState(null);
   const [ndaName, setNdaName] = useState('');
@@ -61,6 +63,10 @@ export default function KioskWelcome() {
       ndaRequiredRef.current = !!r.data.nda_required;
       setNdaText(r.data.nda_text || '');
       setLogoData(r.data.logo_data || '');
+      if (r.data.primary_color || r.data.accent_color) {
+        setT(buildTheme(r.data.primary_color, r.data.accent_color));
+        cacheTheme(r.data.primary_color, r.data.accent_color);
+      }
     }).catch(() => {});
     loadConfig();
     const t = setInterval(loadConfig, 5 * 60 * 1000);
@@ -265,7 +271,7 @@ export default function KioskWelcome() {
       }}>
         <div style={{
           width: 80, height: 80, borderRadius: 20,
-          background: 'rgba(255,107,53,0.2)',
+          background: T.accentDim,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginBottom: 24
         }}>
@@ -297,7 +303,7 @@ export default function KioskWelcome() {
             placeholder="ABC123"
             style={{
               width: '100%', padding: '14px', borderRadius: 12, border: '2px solid rgba(20,255,236,0.4)',
-              background: 'rgba(0,0,0,0.3)', color: '#14FFEC', fontSize: 26, fontWeight: 800,
+              background: 'rgba(0,0,0,0.3)', color: T.primaryBright, fontSize: 26, fontWeight: 800,
               textAlign: 'center', letterSpacing: 8, fontFamily: 'monospace', outline: 'none', marginBottom: 12
             }}
           />
@@ -305,7 +311,7 @@ export default function KioskWelcome() {
           <button onClick={submitPair} disabled={pairBusy || pairCode.length < 6}
             style={{
               width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-              background: pairCode.length < 6 ? 'rgba(13,115,119,0.4)' : '#0D7377',
+              background: pairCode.length < 6 ? T.primaryDim : T.primary,
               color: '#fff', fontSize: 16, fontWeight: 700, cursor: pairCode.length < 6 ? 'not-allowed' : 'pointer'
             }}>
             {pairBusy ? 'Pairing…' : 'Pair Kiosk'}
@@ -324,12 +330,12 @@ export default function KioskWelcome() {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0F172A 0%, #0D7377 100%)', color: '#fff', padding: 24, textAlign: 'center'
+        background: `linear-gradient(135deg, #0F172A 0%, ${T.primary} 100%)`, color: '#fff', padding: 24, textAlign: 'center'
       }}>
         {pairFlow === 'pairing' && (
           <>
             <div style={{
-              width: 64, height: 64, border: '5px solid rgba(255,255,255,0.2)', borderTopColor: '#14FFEC',
+              width: 64, height: 64, border: '5px solid rgba(255,255,255,0.2)', borderTopColor: T.primaryBright,
               borderRadius: '50%', animation: 'spin 0.9s linear infinite', marginBottom: 28
             }} />
             <style>{'@keyframes spin { to { transform: rotate(360deg); } }'}</style>
@@ -338,7 +344,7 @@ export default function KioskWelcome() {
         )}
         {pairFlow === 'paired' && (
           <>
-            <CheckCircle size={72} color="#14FFEC" style={{ marginBottom: 24 }} />
+            <CheckCircle size={72} color={T.primaryBright} style={{ marginBottom: 24 }} />
             <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>Kiosk Paired!</h1>
             <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.75)' }}>This device is now <strong>{pairFlowMsg}</strong></p>
             <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginTop: 12 }}>Bookmark or add this page to the home screen — you're all set.</p>
@@ -388,7 +394,7 @@ export default function KioskWelcome() {
   if (mode === 'nda' && pendingVisitor) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, maxWidth: 620, width: '100%', padding: '0 16px' }}>
-        <PenLine size={40} color="#14FFEC" style={{ marginBottom: 12 }} />
+        <PenLine size={40} color={T.primaryBright} style={{ marginBottom: 12 }} />
         <h1 style={{ fontSize: 32, fontWeight: 800, color: '#fff', marginBottom: 6, textAlign: 'center' }}>
           One more step, {pendingVisitor.first_name}
         </h1>
@@ -441,7 +447,7 @@ export default function KioskWelcome() {
             disabled={ndaBusy || !ndaSig || !ndaName.trim()}
             style={{
               flex: 2, padding: '16px', borderRadius: 14, border: 'none',
-              background: (ndaBusy || !ndaSig || !ndaName.trim()) ? 'rgba(255,107,53,0.35)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (ndaBusy || !ndaSig || !ndaName.trim()) ? T.accentDim : `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
               color: '#fff', fontSize: 17, fontWeight: 700,
               cursor: (ndaBusy || !ndaSig || !ndaName.trim()) ? 'not-allowed' : 'pointer'
             }}
@@ -461,16 +467,16 @@ export default function KioskWelcome() {
         {result?.photo ? (
           <img src={result.photo} alt="" style={{
             width: 170, height: 170, borderRadius: '50%', objectFit: 'cover',
-            border: `5px solid ${isIn ? '#2ECC71' : '#14FFEC'}`,
+            border: `5px solid ${isIn ? '#2ECC71' : T.primaryBright}`,
             boxShadow: '0 20px 60px rgba(0,0,0,0.4)', marginBottom: 20
           }} />
         ) : (
           <div style={{
             width: 170, height: 170, borderRadius: '50%', marginBottom: 20,
-            background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+            background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 64, fontWeight: 800, color: '#fff',
-            border: `5px solid ${isIn ? '#2ECC71' : '#14FFEC'}`
+            border: `5px solid ${isIn ? '#2ECC71' : T.primaryBright}`
           }}>
             {result?.name?.[0] || '?'}
           </div>
@@ -485,7 +491,7 @@ export default function KioskWelcome() {
           onClick={() => setMode('welcome')}
           style={{
             padding: '16px 48px', borderRadius: 14, border: 'none',
-            background: 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+            background: `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
             color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer'
           }}
         >
@@ -499,9 +505,9 @@ export default function KioskWelcome() {
   if (mode === 'done' || mode === 'already' || mode === 'error' || mode === 'bye') {
     const conf = {
       done:    { icon: <CheckCircle size={90} color="#2ECC71" />, title: `Welcome, ${result?.name || 'visitor'}!`, sub: result?.badge ? `Your badge: ${result.badge}` : "You're checked in" },
-      already: { icon: <CheckCircle size={90} color="#14FFEC" />, title: 'Already checked in', sub: result?.badge ? `Active badge: ${result.badge}` : 'Your visit is already active' },
-      bye:     { icon: <LogOut size={90} color="#14FFEC" />, title: `Goodbye, ${result?.name || ''}!`, sub: "You're checked out. Have a great day!" },
-      error:   { icon: <XCircle size={90} color="#FF6B35" />, title: 'Cannot check in', sub: result?.message || 'Invalid QR code for this kiosk' },
+      already: { icon: <CheckCircle size={90} color={T.primaryBright} />, title: 'Already checked in', sub: result?.badge ? `Active badge: ${result.badge}` : 'Your visit is already active' },
+      bye:     { icon: <LogOut size={90} color={T.primaryBright} />, title: `Goodbye, ${result?.name || ''}!`, sub: "You're checked out. Have a great day!" },
+      error:   { icon: <XCircle size={90} color={T.accent} />, title: 'Cannot check in', sub: result?.message || 'Invalid QR code for this kiosk' },
     }[mode];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, textAlign: 'center', padding: 40 }}>
@@ -512,7 +518,7 @@ export default function KioskWelcome() {
           onClick={() => setMode('welcome')}
           style={{
             padding: '16px 48px', borderRadius: 14, border: 'none',
-            background: 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+            background: `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
             color: '#fff', fontSize: 18, fontWeight: 700, cursor: 'pointer'
           }}
         >
@@ -539,7 +545,7 @@ export default function KioskWelcome() {
       ) : (
         <div style={{
           width: 120, height: 120, borderRadius: 30,
-          background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+          background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           marginBottom: 40, boxShadow: '0 20px 60px rgba(13, 115, 119, 0.4)',
           fontSize: 60, fontWeight: 800, color: '#fff'
@@ -568,7 +574,7 @@ export default function KioskWelcome() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '26px 40px', borderRadius: 20,
-            background: 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+            background: `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
             border: 'none', color: '#fff', cursor: 'pointer',
             fontSize: 24, fontWeight: 700,
             boxShadow: '0 12px 40px rgba(255, 107, 53, 0.4)'
@@ -584,7 +590,7 @@ export default function KioskWelcome() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16,
             padding: '22px 40px', borderRadius: 20,
-            background: 'linear-gradient(135deg, #0D7377, #14919B)',
+            background: `linear-gradient(135deg, ${T.primary}, ${T.primarySoft})`,
             border: 'none', color: '#fff', cursor: 'pointer',
             fontSize: 22, fontWeight: 700,
             boxShadow: '0 12px 40px rgba(13, 115, 119, 0.4)'
@@ -658,7 +664,7 @@ export default function KioskWelcome() {
               placeholder="ABC123"
               style={{
                 width: 200, padding: '12px', borderRadius: 12, border: '2px solid rgba(20,255,236,0.4)',
-                background: 'rgba(0,0,0,0.3)', color: '#14FFEC', fontSize: 24, fontWeight: 800,
+                background: 'rgba(0,0,0,0.3)', color: T.primaryBright, fontSize: 24, fontWeight: 800,
                 textAlign: 'center', letterSpacing: 8, fontFamily: 'monospace', outline: 'none'
               }}
             />
@@ -669,7 +675,7 @@ export default function KioskWelcome() {
                 Cancel
               </button>
               <button onClick={submitPair} disabled={pairBusy || pairCode.length < 6}
-                style={{ padding: '10px 24px', borderRadius: 10, background: pairCode.length < 6 ? 'rgba(13,115,119,0.4)' : '#0D7377', border: 'none', color: '#fff', fontSize: 14, fontWeight: 700, cursor: pairCode.length < 6 ? 'not-allowed' : 'pointer' }}>
+                style={{ padding: '10px 24px', borderRadius: 10, background: pairCode.length < 6 ? T.primaryDim : T.primary, border: 'none', color: '#fff', fontSize: 14, fontWeight: 700, cursor: pairCode.length < 6 ? 'not-allowed' : 'pointer' }}>
                 {pairBusy ? 'Pairing…' : 'Pair'}
               </button>
             </div>
