@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace, Printer } from 'lucide-react';
+import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace, Printer, UserPlus, Users } from 'lucide-react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
 import { getCachedTheme, buildTheme, cacheTheme } from '../utils/kioskTheme';
@@ -35,6 +35,11 @@ export default function KioskSignIn() {
   });
   const [visitResult, setVisitResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  // Group check-in: people arriving WITH the main visitor. Each becomes a real
+  // visit with its own badge — everyone is counted on the evacuation list.
+  const [companions, setCompanions] = useState([]);
+  // Anti-passback refusal: neutral full-screen message, no security details
+  const [passback, setPassback] = useState(false);
 
   // ID scan (OCR) — admin enables it in Settings → Front Desk & Integrations
   const [showScan, setShowScan] = useState(false);
@@ -158,6 +163,13 @@ export default function KioskSignIn() {
     if (formData.purpose.trim().length > 300) e.purpose = 'Please keep it under 300 characters';
     const vp = formData.vehicle_plate.trim();
     if (vp && !/^[A-Za-z0-9\s-]{2,20}$/.test(vp)) e.vehicle_plate = 'Letters, numbers and dashes only';
+    // Companions: a half-filled row must be completed or removed
+    companions.forEach((c, i) => {
+      const cf = c.first_name.trim(), cl = c.last_name.trim();
+      if ((cf || cl) && (cf.length < 2 || !NAME_RE.test(cf) || cl.length < 2 || !NAME_RE.test(cl))) {
+        e[`companion_${i}`] = 'Letters only, at least 2 characters — or remove this row';
+      }
+    });
     setFieldErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -261,6 +273,15 @@ export default function KioskSignIn() {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done]);
+
+  // Anti-passback refusal screen: back to welcome after 10s (a staff member
+  // intercepts the visitor before then — the kiosk must not linger on it)
+  useEffect(() => {
+    if (!passback) return;
+    const t = setTimeout(() => navigate(`/kiosk?org=${orgId}`), 10000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passback]);
 
   // ─── RFID tap on this screen: staff/FV badges sign in (or out) without
   // touching the visitor form — whatever was typed stays exactly as it was
@@ -475,6 +496,23 @@ export default function KioskSignIn() {
     });
   };
 
+  // Group check-in: one badge per person. Slightly staggered so each badge
+  // prints from its own hidden frame without trampling the previous job.
+  const printGroupBadges = (data) => {
+    printVisitorBadge(data);
+    ((data && data.companions) || []).forEach((c, i) => {
+      setTimeout(() => printBadge({
+        title: 'VISITOR',
+        firstName: c.first_name,
+        lastName: c.last_name,
+        company: formData.company,
+        hostName: selectedHost ? `${selectedHost.first_name} ${selectedHost.last_name}` : '',
+        hostLabel: 'Visiting',
+        badgeNo: c.badge_number || '',
+      }), 400 * (i + 1));
+    });
+  };
+
   const handleSubmit = async () => {
     if (!validateStep2()) return;
     setLoading(true);
@@ -503,15 +541,24 @@ export default function KioskSignIn() {
         sign_in_method: 'kiosk',
         photo_data: photo,
         custom_data: Object.keys(mergedCustom).length > 0 ? mergedCustom : undefined,
+        // Group check-in — fully empty rows are dropped here AND server-side
+        companions: companions
+          .map(c => ({ first_name: c.first_name.trim(), last_name: c.last_name.trim() }))
+          .filter(c => c.first_name && c.last_name),
         nda_signature: ndaRequired ? ndaSig : undefined,
         nda_signed_name: ndaRequired ? ndaName : undefined
       });
       setVisitResult(res.data);
       setDone(true);
-      // Auto-print the visitor badge when this kiosk has a printer linked
+      // Auto-print badges (one per person) when this kiosk has a printer linked
       // (Settings → Front Desk & Integrations + Devices → Link printer)
-      if (res.data.print_badge) printVisitorBadge(res.data);
+      if (res.data.print_badge) printGroupBadges(res.data);
     } catch (err) {
+      if (err.response?.data?.code === 'PASSBACK') {
+        // Anti-passback refusal — neutral screen, security details stay with staff
+        setPassback(true);
+        return;
+      }
       if (err.response?.data?.nda_required && ndaRequired) {
         setStep(3); // server still demands the NDA — send them to the signing step
       }
@@ -566,6 +613,38 @@ export default function KioskSignIn() {
     fontSize: 14, fontWeight: 500, marginBottom: 8
   };
 
+  // Anti-passback refusal: calm, neutral, no security wording — the visitor
+  // must not learn WHY. Staff get the real alert on their dashboard + email.
+  if (passback) {
+    return (
+      <div style={{ textAlign: 'center', zIndex: 1, maxWidth: 520 }}>
+        <div style={{
+          width: 100, height: 100, borderRadius: '50%', margin: '0 auto 30px',
+          background: 'rgba(255,255,255,0.12)', border: '3px solid rgba(255,255,255,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <Users size={46} color="#fff" />
+        </div>
+        <h2 style={{ fontSize: 36, fontWeight: 800, color: '#fff', marginBottom: 14 }}>
+          Please see the front desk
+        </h2>
+        <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6, marginBottom: 30 }}>
+          A staff member will complete your sign-in — it only takes a moment.
+        </p>
+        <button
+          onClick={() => navigate(`/kiosk?org=${orgId}`)}
+          style={{
+            padding: '16px 44px', borderRadius: 14,
+            background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.3)',
+            color: '#fff', fontSize: 17, fontWeight: 600, cursor: 'pointer'
+          }}
+        >
+          OK
+        </button>
+      </div>
+    );
+  }
+
   if (done && visitResult) {
     return (
       <div style={{ textAlign: 'center', zIndex: 1 }}>
@@ -584,7 +663,9 @@ export default function KioskSignIn() {
           You're Checked In!
         </h2>
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)', marginBottom: 40 }}>
-          {formData.host_id && `Notifying your host...`}
+          {visitResult.companions?.length > 0
+            ? `${1 + visitResult.companions.length} people signed in — everyone gets their own badge.`
+            : formData.host_id ? 'Notifying your host...' : ''}
         </p>
 
         {photo && (
@@ -607,10 +688,29 @@ export default function KioskSignIn() {
           </div>
         </div>
 
+        {/* The rest of the party — each with their own badge number */}
+        {visitResult.companions?.length > 0 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.07)', borderRadius: 16,
+            padding: '20px 28px', border: '1px solid rgba(255,255,255,0.18)',
+            marginBottom: 32, textAlign: 'left', maxWidth: 460, margin: '0 auto 32px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+              <Users size={16} /> With you today
+            </div>
+            {visitResult.companions.map((c) => (
+              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <span style={{ color: '#fff', fontSize: 16, fontWeight: 600 }}>{c.first_name} {c.last_name}</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 800, color: T.primaryBright, letterSpacing: '0.08em' }}>{c.badge_number}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Manual print — the safety net when auto-print didn't fire (printer not
             linked to this device, dialog dismissed, or paper jam) */}
         <button
-          onClick={() => printVisitorBadge(visitResult)}
+          onClick={() => printGroupBadges(visitResult)}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 30,
             padding: '16px 28px', borderRadius: 14, fontSize: 17, fontWeight: 700,
@@ -618,7 +718,7 @@ export default function KioskSignIn() {
             border: '2px solid rgba(255,255,255,0.3)'
           }}
         >
-          <Printer size={20} /> Print Badge
+          <Printer size={20} /> Print Badge{visitResult.companions?.length > 0 ? `s (${1 + visitResult.companions.length})` : ''}
         </button>
 
         <div style={{
@@ -1031,6 +1131,65 @@ export default function KioskSignIn() {
               {errText('purpose')}
             </div>
           )}
+
+          {/* Group check-in — the anti-tailgating answer: everyone walking in
+              gets logged and badged, so "one check-in, three people" never
+              leaves the evacuation list short. */}
+          <div>
+            <label style={labelStyle}><Users size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />People with you (optional)</label>
+            {companions.map((c, i) => (
+              <div key={i} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="text" value={c.first_name} placeholder="First name"
+                    onChange={(e) => {
+                      const next = [...companions];
+                      next[i] = { ...next[i], first_name: e.target.value };
+                      setCompanions(next);
+                      if (fieldErrors[`companion_${i}`]) setFieldErrors(prev => ({ ...prev, [`companion_${i}`]: undefined }));
+                    }}
+                    style={{ ...inputStyle, flex: 1, padding: '14px 16px', fontSize: 16 }}
+                  />
+                  <input
+                    type="text" value={c.last_name} placeholder="Last name"
+                    onChange={(e) => {
+                      const next = [...companions];
+                      next[i] = { ...next[i], last_name: e.target.value };
+                      setCompanions(next);
+                      if (fieldErrors[`companion_${i}`]) setFieldErrors(prev => ({ ...prev, [`companion_${i}`]: undefined }));
+                    }}
+                    style={{ ...inputStyle, flex: 1, padding: '14px 16px', fontSize: 16 }}
+                  />
+                  <button type="button" onClick={() => setCompanions(companions.filter((_, j) => j !== i))}
+                    title="Remove this person"
+                    style={{
+                      width: 46, height: 46, borderRadius: 12, flexShrink: 0,
+                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                      color: '#FCA5A5', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                    <X size={18} />
+                  </button>
+                </div>
+                {errText(`companion_${i}`)}
+              </div>
+            ))}
+            {companions.length < 9 && (
+              <button type="button" onClick={() => setCompanions([...companions, { first_name: '', last_name: '' }])}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14, cursor: 'pointer',
+                  border: `2px dashed ${T.primaryDim}`, background: T.brightDim,
+                  color: T.primaryBright, fontSize: 16, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                }}>
+                <UserPlus size={18} /> Add a person
+              </button>
+            )}
+            {companions.length > 0 && (
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 8, lineHeight: 1.5 }}>
+                Each person gets their own badge and is counted separately on the on-site list.
+              </div>
+            )}
+          </div>
 
           {/* Org-defined custom registration fields */}
           {customFields.map((f) => (
