@@ -4,6 +4,7 @@ import { ArrowLeft, Search, CheckCircle, User, Clock, QrCode } from 'lucide-reac
 import { Html5Qrcode } from 'html5-qrcode';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
+import { getCachedTheme, buildTheme, cacheTheme } from '../utils/kioskTheme';
 
 export default function KioskSignOut() {
   const navigate = useNavigate();
@@ -20,6 +21,19 @@ export default function KioskSignOut() {
 
   // CRITICAL FIX: No fallback to demo org. Must have org ID.
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
+  const [T, setT] = useState(getCachedTheme); // org theme colors
+
+  // Org theme: instant from cache, refreshed from the kiosk config
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/kiosk/config/${orgId}`).then(r => {
+      if (r.data.primary_color || r.data.accent_color) {
+        setT(buildTheme(r.data.primary_color, r.data.accent_color));
+        cacheTheme(r.data.primary_color, r.data.accent_color);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
 
   // ─── RFID tap: a staff/FV badge tap signs that person out (the endpoint
   // toggles, so if they somehow weren't signed in it signs them in and says so)
@@ -168,7 +182,7 @@ export default function KioskSignOut() {
         </p>
         <button onClick={() => navigate('/kiosk')}
           style={{
-            padding: '14px 32px', borderRadius: 12, background: '#FF6B35',
+            padding: '14px 32px', borderRadius: 12, background: T.accent,
             border: 'none', color: '#fff', fontSize: 16, fontWeight: 600,
             cursor: 'pointer'
           }}>
@@ -216,7 +230,7 @@ export default function KioskSignOut() {
               </>
             ) : (
               <>
-                <CheckCircle size={90} color={rfidResult.action === 'checked_out' ? '#14FFEC' : '#2ECC71'} style={{ marginBottom: 20 }} />
+                <CheckCircle size={90} color={rfidResult.action === 'checked_out' ? T.primaryBright : '#2ECC71'} style={{ marginBottom: 20 }} />
                 <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
                   {rfidResult.action === 'checked_out' ? `Goodbye, ${rfidResult.name}!` : `Welcome, ${rfidResult.name}!`}
                 </div>
@@ -271,7 +285,7 @@ export default function KioskSignOut() {
           style={{
             position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
             padding: '12px 20px', borderRadius: 12,
-            background: '#FF6B35', border: 'none', color: '#fff',
+            background: T.accent, border: 'none', color: '#fff',
             fontWeight: 600, cursor: 'pointer', fontSize: 16
           }}
         >
@@ -283,7 +297,7 @@ export default function KioskSignOut() {
         style={{
           width: '100%', marginBottom: 24, padding: '14px', borderRadius: 14,
           background: 'rgba(20,255,236,0.12)', border: '2px solid rgba(20,255,236,0.4)',
-          color: '#14FFEC', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+          color: T.primaryBright, fontSize: 16, fontWeight: 700, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
         }}>
         <QrCode size={20} /> Sign out with QR instead
@@ -358,7 +372,7 @@ export default function KioskSignOut() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{
                 width: 48, height: 48, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 700, fontSize: 16, color: '#fff'
               }}>
@@ -370,7 +384,7 @@ export default function KioskSignOut() {
                 </div>
                 <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', marginTop: 4 }}>
                   {v.visitor_company && `${v.visitor_company} • `}
-                  Badge: <span style={{ fontFamily: 'monospace', color: '#14FFEC' }}>{v.badge_number}</span>
+                  Badge: <span style={{ fontFamily: 'monospace', color: T.primaryBright }}>{v.badge_number}</span>
                 </div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Clock size={12} /> Checked in at {v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
@@ -381,7 +395,7 @@ export default function KioskSignOut() {
               onClick={() => handleCheckOut(v.id)}
               style={{
                 padding: '12px 24px', borderRadius: 12,
-                background: '#FF6B35', border: 'none', color: '#fff',
+                background: T.accent, border: 'none', color: '#fff',
                 fontWeight: 600, cursor: 'pointer', fontSize: 16,
                 boxShadow: '0 4px 15px rgba(255, 107, 53, 0.3)'
               }}
