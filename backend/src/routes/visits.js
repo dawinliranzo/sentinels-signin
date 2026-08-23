@@ -1,10 +1,56 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const db = require('../utils/db');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { checkVisitCap } = require('../utils/limits');
 const { getFlagsForVisitor } = require('./flags');
 const { getCardForTap, getStaffCardGlobal } = require('./rfid');
+const { raiseSecurityAlert } = require('../utils/security');
+
+// Neutral message shown at the kiosk when anti-passback refuses an entry.
+// NEVER say why — the person holding a borrowed badge must learn nothing.
+const PASSBACK_MESSAGE = 'Please see the front desk to complete your sign-in.';
+
+// Anti-passback: a badge/identity that entered (or exited) less than
+// `windowMin` ago may not do the opposite action again — that is the classic
+// "one card, two people" pattern. Returns { kind, visit } or null.
+//   kind 'quick_out' = tap would sign OUT someone who entered moments ago
+//   kind 'quick_in'  = tap would sign IN someone who exited moments ago
+async function passbackViolation(orgId, matchSql, matchParams, windowMin) {
+  const open = await db.query(
+    `SELECT id, checked_in_at FROM visits
+     WHERE org_id = $1 AND status = 'checked_in' AND ${matchSql}
+     ORDER BY checked_in_at DESC LIMIT 1`,
+    matchParams
+  );
+  if (open.rows.length > 0) {
+    const ageMs = Date.now() - new Date(open.rows[0].checked_in_at).getTime();
+    if (ageMs < windowMin * 60000) return { kind: 'quick_out', visit: open.rows[0], ageMin: Math.max(1, Math.round(ageMs / 60000)) };
+    return null; // old open visit — normal toggle-out
+  }
+  const last = await db.query(
+    `SELECT id, checked_out_at FROM visits
+     WHERE org_id = $1 AND status = 'checked_out' AND ${matchSql} AND checked_out_at IS NOT NULL
+     ORDER BY checked_out_at DESC LIMIT 1`,
+    matchParams
+  );
+  if (last.rows.length > 0) {
+    const ageMs = Date.now() - new Date(last.rows[0].checked_out_at).getTime();
+    if (ageMs < windowMin * 60000) return { kind: 'quick_in', visit: last.rows[0], ageMin: Math.max(1, Math.round(ageMs / 60000)) };
+  }
+  return null;
+}
+
+// Raises the staff alert for a passback violation (fire-and-forget safe)
+async function alertPassback(orgId, personName, violation, method) {
+  const what = violation.kind === 'quick_out'
+    ? `tapped again ${violation.ageMin} min after entering`
+    : `tapped to re-enter ${violation.ageMin} min after exiting`;
+  await raiseSecurityAlert(orgId, 'anti_passback',
+    `Possible badge pass-back: ${personName} ${what} — entry refused at the kiosk (front desk notified).`,
+    { person: personName, kind: violation.kind, method, visit_id: violation.visit.id });
+}
 
 // ─── SHARED STAFF (parent/child organizations) ─────────────────────────────
 // A badge may be scanned at any kiosk in the same "family": the host's own org,
@@ -57,6 +103,21 @@ async function hasDeviceColumn() {
   try {
     await db.query('SELECT device_id FROM visits LIMIT 0');
     deviceColumnKnown = true;
+    return true;
+  } catch (e) {
+    if (e.code === '42703') return false;
+    throw e;
+  }
+}
+
+// Same pattern for visits.group_id (migration-security-groups.txt). Pre-migration
+// the group check-in still works — companions get real visit rows, just ungrouped.
+let groupColumnKnown = null;
+async function hasGroupColumn() {
+  if (groupColumnKnown) return true;
+  try {
+    await db.query('SELECT group_id FROM visits LIMIT 0');
+    groupColumnKnown = true;
     return true;
   } catch (e) {
     if (e.code === '42703') return false;
@@ -250,6 +311,25 @@ router.post('/staff-checkin', async (req, res) => {
     }
     const staffEmail = host.email || `host-${host.id}@staff.local`;
 
+    // Anti-passback (Settings → Access Security): a tap that would flip this
+    // badge again within the window is refused — one card can't walk two
+    // people in, and a fresh entrant can't hand their badge back outside.
+    try {
+      const s = await db.query('SELECT settings FROM organizations WHERE id = $1', [org_id]);
+      const apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
+      if (apm > 0) {
+        const violation = await passbackViolation(org_id,
+          `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`,
+          [org_id, staffEmail], apm);
+        if (violation) {
+          alertPassback(org_id, `${host.first_name} ${host.last_name}`, violation, 'staff_badge').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+      }
+    } catch (pbErr) {
+      console.error('Anti-passback check failed (continuing):', pbErr.message);
+    }
+
     // Active staff visit for this employee?
     const active = await db.query(
       `SELECT * FROM visits WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)
@@ -359,6 +439,22 @@ router.post('/fv-checkin', async (req, res) => {
     const matchClause = fvRow.email
       ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, fvRow.email] }
       : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, fvRow.first_name, fvRow.last_name] };
+
+    // Anti-passback — same rule as staff badges: no re-flip within the window
+    try {
+      const s = await db.query('SELECT settings FROM organizations WHERE id = $1', [org_id]);
+      const apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
+      if (apm > 0) {
+        const violation = await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
+        if (violation) {
+          alertPassback(org_id, `${fvRow.first_name} ${fvRow.last_name}`, violation, 'frequent_badge').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+      }
+    } catch (pbErr) {
+      console.error('Anti-passback check failed (continuing):', pbErr.message);
+    }
+
     const active = await db.query(
       `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
        ORDER BY checked_in_at DESC LIMIT 1`,
@@ -445,9 +541,27 @@ router.post('/rfid-tap', async (req, res) => {
     }
     const crossOrg = !!crossOrgStaff;
 
+    // Anti-passback window for this org (0 = off) — fetched once for both branches
+    let apm = 0;
+    try {
+      const s = await db.query('SELECT settings FROM organizations WHERE id = $1', [org_id]);
+      apm = parseInt((s.rows[0]?.settings || {}).anti_passback_minutes, 10) || 0;
+    } catch (e) { console.error('Anti-passback settings load failed:', e.message); }
+
     if (resolved.kind === 'staff') {
       // ─── Staff toggle (same rules as the STAFF: QR badge) ───
       const staffEmail = p.email || `host-${p.id}@staff.local`;
+      if (apm > 0) {
+        try {
+          const violation = await passbackViolation(org_id,
+            `LOWER(visitor_email) = LOWER($2) AND sign_in_method = 'staff_qr'`,
+            [org_id, staffEmail], apm);
+          if (violation) {
+            alertPassback(org_id, `${p.first_name} ${p.last_name}`, violation, 'rfid_staff').catch(() => {});
+            return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+          }
+        } catch (pbErr) { console.error('Anti-passback check failed (continuing):', pbErr.message); }
+      }
       const active = await db.query(
         `SELECT * FROM visits WHERE org_id = $1 AND LOWER(visitor_email) = LOWER($2)
            AND sign_in_method = 'staff_qr' AND status = 'checked_in'
@@ -493,6 +607,15 @@ router.post('/rfid-tap', async (req, res) => {
     const matchClause = p.email
       ? { sql: 'LOWER(visitor_email) = LOWER($2)', params: [org_id, p.email] }
       : { sql: 'LOWER(visitor_first_name) = LOWER($2) AND LOWER(visitor_last_name) = LOWER($3)', params: [org_id, p.first_name, p.last_name] };
+    if (apm > 0) {
+      try {
+        const violation = await passbackViolation(org_id, matchClause.sql, matchClause.params, apm);
+        if (violation) {
+          alertPassback(org_id, `${p.first_name} ${p.last_name}`, violation, 'rfid_frequent').catch(() => {});
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
+      } catch (pbErr) { console.error('Anti-passback check failed (continuing):', pbErr.message); }
+    }
     const active = await db.query(
       `SELECT id FROM visits WHERE org_id = $1 AND status = 'checked_in' AND ${matchClause.sql}
        ORDER BY checked_in_at DESC LIMIT 1`,
@@ -533,11 +656,13 @@ router.post('/rfid-tap', async (req, res) => {
 // AUTHENTICATED ENDPOINTS
 router.get('/active', flexAuth, requirePermission('visits'), async (req, res) => {
   try {
+    const withGroup = await hasGroupColumn();
     const result = await db.query(`
-      SELECT v.*, 
+      SELECT v.*,
         h.first_name as host_first_name, h.last_name as host_last_name, h.email as host_email, h.phone as host_phone,
         vt.name as visitor_type_name, vt.badge_color,
-        d.name as device_name
+        d.name as device_name${withGroup ? `,
+        (SELECT COUNT(*) FROM visits g WHERE g.group_id = v.group_id) AS group_size` : ''}
       FROM visits v
       LEFT JOIN hosts h ON v.host_id = h.id
       LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id
@@ -576,11 +701,13 @@ router.get('/', flexAuth, requirePermission('visits'), async (req, res) => {
   try {
     const { date, status, host_id, search, from, to } = req.query;
     const withDevice = await hasDeviceColumn();
+    const withGroup = await hasGroupColumn();
     let query = `
-      SELECT v.*, 
+      SELECT v.*,
         h.first_name as host_first_name, h.last_name as host_last_name,
         vt.name as visitor_type_name${withDevice ? `,
-        d.name as device_name` : ''}
+        d.name as device_name` : ''}${withGroup ? `,
+        (SELECT COUNT(*) FROM visits g WHERE g.group_id = v.group_id) AS group_size` : ''}
       FROM visits v
       LEFT JOIN hosts h ON v.host_id = h.id
       LEFT JOIN visitor_types vt ON v.visitor_type_id = vt.id${withDevice ? `
@@ -740,6 +867,23 @@ router.post('/check-in', async (req, res) => {
     if (vehicle_plate && !/^[A-Z0-9\s-]{2,20}$/.test(vehicle_plate)) {
       return res.status(400).json({ error: 'Vehicle plate: letters, numbers and dashes only' });
     }
+
+    // ─── GROUP CHECK-IN: companions arriving WITH the main visitor ───
+    // Each companion becomes a real visit row (own badge, own evacuation-list
+    // entry) sharing one group_id. Max 9 — a bigger party needs the front desk.
+    const companions = [];
+    if (Array.isArray(req.body.companions)) {
+      for (const c of req.body.companions.slice(0, 9)) {
+        if (!c || typeof c !== 'object') continue;
+        const cf = String(c.first_name || '').trim().replace(/\s+/g, ' ');
+        const cl = String(c.last_name || '').trim().replace(/\s+/g, ' ');
+        if (!cf && !cl) continue; // empty row — the kiosk sends these freely
+        if (!NAME_RE.test(cf) || cf.length < 2 || !NAME_RE.test(cl) || cl.length < 2) {
+          return res.status(400).json({ error: `Companion name "${cf || cl}" doesn't look valid — letters only, at least 2 characters` });
+        }
+        companions.push({ first_name: cf, last_name: cl });
+      }
+    }
     // ─── END INPUT VALIDATION ───
 
     // ─── NDA: when the org requires it, a signature must accompany check-in ───
@@ -780,6 +924,10 @@ router.post('/check-in', async (req, res) => {
     // ─── END AUTO-LINK ───
 
     // ─── DUPLICATE GUARD: one active visit per visitor per org ───
+    // With anti-passback ON (Settings → Access Security) a SECOND entry for an
+    // identity that walked in moments ago is refused with a neutral message +
+    // a silent security alert — that's the "one badge, two people" pattern.
+    // An older open visit keeps the legacy friendly behavior (badge reminder).
     try {
       let dupQuery, dupParams;
       if (linkedPreRegId) {
@@ -795,6 +943,14 @@ router.post('/check-in', async (req, res) => {
       const dup = await db.query(dupQuery, dupParams);
       if (dup.rows.length > 0) {
         const existing = dup.rows[0];
+        const apm = parseInt(orgSettings.anti_passback_minutes, 10) || 0;
+        const ageMs = Date.now() - new Date(existing.checked_in_at).getTime();
+        if (apm > 0 && ageMs < apm * 60000) {
+          await raiseSecurityAlert(org_id, 'anti_passback',
+            `Possible pass-back: ${first_name} ${last_name} tried to sign in ${Math.max(1, Math.round(ageMs / 60000))} min after an active entry — refused at the kiosk (front desk notified).`,
+            { person: `${first_name} ${last_name}`, kind: 'double_entry', method: sign_in_method, visit_id: existing.id });
+          return res.status(409).json({ error: PASSBACK_MESSAGE, code: 'PASSBACK' });
+        }
         return res.json({ ...existing, already_checked_in: true, message: `Already checked in — badge ${existing.badge_number}` });
       }
     } catch (dupErr) {
@@ -805,6 +961,14 @@ router.post('/check-in', async (req, res) => {
     const cap = await checkVisitCap(org_id);
     if (!cap.allowed) {
       return res.status(429).json({ error: `Monthly visit limit reached (${cap.cap}). Please contact the front desk — the organization needs to upgrade its plan.`, code: 'VISIT_CAP' });
+    }
+    // Group check-in: the whole party must fit under the monthly cap
+    if (companions.length > 0 && typeof cap.used === 'number' && typeof cap.cap === 'number'
+        && cap.used + 1 + companions.length > cap.cap) {
+      return res.status(429).json({
+        error: `A group of ${1 + companions.length} would exceed the monthly visit limit (${cap.cap}) — please see the front desk.`,
+        code: 'VISIT_CAP'
+      });
     }
 
     // ─── VISITOR FLAGS: staff watchlist / blacklist (migration-visitor-alerts) ───
@@ -886,6 +1050,54 @@ router.post('/check-in', async (req, res) => {
 
     const visit = result.rows[0];
 
+    // ─── GROUP CHECK-IN: one visit row per companion, same group_id ───
+    // Each companion gets their own badge number and appears individually on
+    // the on-site / evacuation lists — a party of 4 counts as 4 people.
+    const groupId = companions.length > 0 ? crypto.randomUUID() : null;
+    const companionVisits = [];
+    if (groupId) {
+      const withGroup = await hasGroupColumn();
+      if (withGroup) {
+        try {
+          await db.query('UPDATE visits SET group_id = $1 WHERE id = $2', [groupId, visit.id]);
+          visit.group_id = groupId;
+        } catch (e) { if (e.code !== '42703') throw e; }
+      }
+      const usedSuffixes = new Set([parseInt(badgeNum.split('-')[1], 10)]);
+      const nextBadge = () => {
+        let n;
+        do { n = Math.floor(1000 + Math.random() * 9000); } while (usedSuffixes.has(n));
+        usedSuffixes.add(n);
+        return `${badgeNum.split('-')[0]}-${n}`;
+      };
+      for (const c of companions) {
+        try {
+          const cBadge = nextBadge();
+          const cData = { ...customDataOut, companion_of: `${first_name} ${last_name}` };
+          const pairs = [
+            ['org_id', org_id], ['visitor_type_id', visitor_type_id], ['host_id', host_id],
+            ['visitor_first_name', c.first_name], ['visitor_last_name', c.last_name],
+            ['visitor_email', null], ['visitor_phone', null], ['visitor_company', company],
+            ['purpose', purpose], ['badge_number', cBadge], ['vehicle_plate', null],
+            ['custom_data', JSON.stringify(cData)], ['sign_in_method', sign_in_method], ['status', 'checked_in'],
+          ];
+          if (withDevice && deviceId) pairs.push(['device_id', deviceId]);
+          if (withGroup) pairs.push(['group_id', groupId]);
+          const cols = pairs.map(([col]) => col).concat('checked_in_at');
+          const phList = pairs.map((_, i) => `$${i + 1}`).concat('NOW()');
+          const insC = await db.query(
+            `INSERT INTO visits (${cols.join(', ')}) VALUES (${phList.join(', ')}) RETURNING id, badge_number`,
+            pairs.map(([, v]) => v)
+          );
+          companionVisits.push({ id: insC.rows[0].id, first_name: c.first_name, last_name: c.last_name, badge_number: insC.rows[0].badge_number });
+        } catch (cErr) {
+          // A companion insert must never fail the whole party — log loudly;
+          // the front desk sees the main visitor and can add the person manually.
+          console.error(`Companion check-in failed for ${c.first_name} ${c.last_name}:`, cErr.message);
+        }
+      }
+    }
+
     // Store the signed NDA linked to this visit (with a snapshot of the exact text signed)
     if (orgSettings.require_nda && nda_signature) {
       try {
@@ -928,13 +1140,17 @@ router.post('/check-in', async (req, res) => {
             try {
               await sendEmail({
                 to: host.email,
-                subject: `Visitor Arrived: ${first_name} ${last_name}`,
+                subject: `Visitor Arrived: ${first_name} ${last_name}${companionVisits.length > 0 ? ` (+${companionVisits.length})` : ''}`,
                 html: `
                   <h2>Your visitor has arrived</h2>
                   <p><strong>Name:</strong> ${first_name} ${last_name}</p>
                   <p><strong>Company:</strong> ${company || 'N/A'}</p>
                   <p><strong>Purpose:</strong> ${purpose || 'N/A'}</p>
                   <p><strong>Badge #:</strong> ${badgeNum}</p>
+                  ${companionVisits.length > 0 ? `
+                  <p><strong>Arrived with ${companionVisits.length} ${companionVisits.length === 1 ? 'companion' : 'companions'}:</strong><br>
+                  ${companionVisits.map(c => `&bull; ${c.first_name} ${c.last_name} — badge ${c.badge_number}`).join('<br>')}</p>
+                  <p style="color:#B45309"><strong>${1 + companionVisits.length} people total</strong> are on site under this visit — all appear on the evacuation list.</p>` : ''}
                   <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                 `
               });
@@ -1003,6 +1219,9 @@ router.post('/check-in', async (req, res) => {
       visit: visit,
       badge_number: badgeNum,
       print_badge: shouldPrintBadge,
+      // Group check-in: the rest of the party, each with their own badge
+      companions: companionVisits,
+      group_id: groupId,
       // Only the severity reaches the kiosk so staff get a heads-up —
       // the note text itself stays private to the admin dashboard.
       flag_severity: visitorFlags[0]?.severity || null,
