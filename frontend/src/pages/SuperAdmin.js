@@ -499,11 +499,11 @@ export default function SuperAdmin() {
   orgs.forEach(o => { planCounts[o.plan] = (planCounts[o.plan] || 0) + 1; });
 
   const statCards = [
-    { title: 'Organizations', value: stats.total_orgs, icon: Building2, color: '#0D7377', trend: '+2', onClick: () => tableRef.current?.scrollIntoView({ behavior: 'smooth' }), hint: 'Click to view list' },
-    { title: 'Total Users', value: stats.total_users, icon: Users, color: '#FF6B35', trend: '+5', onClick: () => openStatModal('users'), hint: 'Click to verify' },
+    { title: 'Organizations', value: stats.total_orgs, icon: Building2, color: 'var(--brand)', trend: '+2', onClick: () => tableRef.current?.scrollIntoView({ behavior: 'smooth' }), hint: 'Click to view list' },
+    { title: 'Total Users', value: stats.total_users, icon: Users, color: 'var(--accent)', trend: '+5', onClick: () => openStatModal('users'), hint: 'Click to verify' },
     { title: 'Monthly Visits', value: stats.total_visits, icon: Activity, color: '#9B59B6', trend: '+23%', onClick: () => openStatModal('visits'), hint: 'Click to verify' },
     { title: 'Active Now', value: stats.active_visits, icon: TrendingUp, color: '#2ECC71', trend: '0', onClick: () => openStatModal('visits'), hint: 'Click to verify' },
-    { title: 'MRR', value: `$${stats.revenue}`, icon: DollarSign, color: '#0D7377', trend: '+$49', onClick: () => setShowPlans(!showPlans), hint: 'Click for plans' },
+    { title: 'MRR', value: `$${stats.revenue}`, icon: DollarSign, color: 'var(--brand)', trend: '+$49', onClick: () => setShowPlans(!showPlans), hint: 'Click for plans' },
   ];
 
   return (
@@ -608,7 +608,7 @@ export default function SuperAdmin() {
         <button
           onClick={() => { setCreatedResult(null); setCreateForm({ name: '', plan: 'pro', admin_first_name: '', admin_last_name: '', admin_email: '', billing_email: '', trial_days: 14 }); setShowCreate(true); }}
           style={{
-            padding: '12px 20px', borderRadius: 12, background: '#0D7377', border: 'none',
+            padding: '12px 20px', borderRadius: 12, background: 'var(--brand)', border: 'none',
             color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap'
           }}
@@ -637,7 +637,7 @@ export default function SuperAdmin() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{
                       width: 40, height: 40, borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                      background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontWeight: 700, fontSize: 14, color: '#fff'
                     }}>{org.name[0]}</div>
@@ -648,7 +648,7 @@ export default function SuperAdmin() {
                         <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: '#1D4ED8' }}>↳ location of {org.parent_name}</div>
                       )}
                       {Number(org.children_count) > 0 && (
-                        <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: '#0D7377' }}>{org.children_count} location{Number(org.children_count) === 1 ? '' : 's'}</div>
+                        <div style={{ fontSize: 11, marginTop: 3, fontWeight: 600, color: 'var(--brand)' }}>{org.children_count} location{Number(org.children_count) === 1 ? '' : 's'}</div>
                       )}
                     </div>
                   </div>
@@ -658,7 +658,7 @@ export default function SuperAdmin() {
                     {PLANS[org.plan]?.label} (${PLANS[org.plan]?.price}/mo)
                   </span>
                   {org.settings && org.settings.complimentary === true && (
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: '#F0FDFA', color: '#0F766E', border: '1px solid #99F6E4', marginLeft: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: 'var(--brand-wash)', color: 'var(--brand-deep)', border: '1px solid var(--brand-border)', marginLeft: 6 }}>
                       COMPED
                     </span>
                   )}
@@ -770,7 +770,7 @@ export default function SuperAdmin() {
               {`https://www.sentinelskiosk.com/kiosk?org=${kioskUrlOrg.id}`}
             </code>
             <button onClick={() => copyKioskUrl(`https://www.sentinelskiosk.com/kiosk?org=${kioskUrlOrg.id}`)}
-              style={{ padding: '8px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
@@ -850,7 +850,7 @@ export default function SuperAdmin() {
 
             {/* Usage — how they're actually using the product */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Activity size={16} color="#0D7377" /> Usage
+              <Activity size={16} color="var(--brand)" /> Usage
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 24 }}>
               {[
@@ -861,8 +861,8 @@ export default function SuperAdmin() {
                 ['Kiosk devices', viewOrgUsage?.devices],
                 ['Hosts', viewOrgHosts.length],
               ].map(([label, val]) => (
-                <div key={label} style={{ padding: '12px 14px', background: '#F0FDFA', borderRadius: 10, textAlign: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#0D7377' }}>{val ?? '—'}</div>
+                <div key={label} style={{ padding: '12px 14px', background: 'var(--brand-wash)', borderRadius: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--brand)' }}>{val ?? '—'}</div>
                   <div style={{ fontSize: 11, color: '#64748B' }}>{label}</div>
                 </div>
               ))}
@@ -870,14 +870,14 @@ export default function SuperAdmin() {
 
             {/* Industry / org profile — drives terminology across the customer's app */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Tag size={16} color="#0D7377" /> Industry / Profile
+              <Tag size={16} color="var(--brand)" /> Industry / Profile
             </h3>
-            <div style={{ padding: 14, background: '#F0FDFA', borderRadius: 12, marginBottom: 16, border: '1px solid #99F6E4' }}>
+            <div style={{ padding: 14, background: 'var(--brand-wash)', borderRadius: 12, marginBottom: 16, border: '1px solid var(--brand-border)' }}>
               <select value={planEdit.profile_type || 'other'} onChange={(e) => setPlanEdit({ ...planEdit, profile_type: e.target.value })}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid #5EEAD4', fontSize: 13, background: '#fff' }}>
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '2px solid var(--brand-border)', fontSize: 13, background: '#fff' }}>
                 {PROFILE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <div style={{ fontSize: 11, color: '#0F766E', marginTop: 6, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 11, color: 'var(--brand-deep)', marginTop: 6, lineHeight: 1.5 }}>
                 Menus and labels in this customer's app adapt: a building manages <strong>tenants</strong>, a business <strong>employees</strong>,
                 a hospital <strong>doctors &amp; staff</strong>. Currently: <strong>{getTerms(planEdit.profile_type).hosts}</strong>. Save with "Save Plan &amp; Limits" below.
               </div>
@@ -885,7 +885,7 @@ export default function SuperAdmin() {
 
             {/* Trial & status — extend, customize, or reactivate an expired org */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Calendar size={16} color="#0D7377" /> Trial &amp; Status
+              <Calendar size={16} color="var(--brand)" /> Trial &amp; Status
             </h3>
             <div style={{ padding: 14, background: '#FFFBEB', borderRadius: 12, marginBottom: 16, border: '1px solid #FDE68A' }}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -923,7 +923,7 @@ export default function SuperAdmin() {
 
             {/* Organization family — link locations under a parent company */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Building2 size={16} color="#0D7377" /> Organization Family
+              <Building2 size={16} color="var(--brand)" /> Organization Family
             </h3>
             <div style={{ padding: 14, background: '#F0F9FF', borderRadius: 12, marginBottom: 16, border: '1px solid #BAE6FD' }}>
               <label style={{ fontSize: 11, color: '#0369A1', display: 'block', marginBottom: 4, fontWeight: 700 }}>Parent Organization</label>
@@ -945,7 +945,7 @@ export default function SuperAdmin() {
 
             {/* Plan, limits & billing — editable */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <CreditCard size={16} color="#0D7377" /> Plan, Limits & Billing
+              <CreditCard size={16} color="var(--brand)" /> Plan, Limits & Billing
             </h3>
             <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 16 }}>
               <div style={{ marginBottom: 10 }}>
@@ -987,10 +987,10 @@ export default function SuperAdmin() {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                 </div>
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, marginBottom: 10, cursor: 'pointer', background: planEdit.complimentary ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${planEdit.complimentary ? '#99F6E4' : '#E2E8F0'}` }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, marginBottom: 10, cursor: 'pointer', background: planEdit.complimentary ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${planEdit.complimentary ? 'var(--brand-border)' : '#E2E8F0'}` }}>
                 <input type="checkbox" checked={planEdit.complimentary === true} onChange={(e) => setPlanEdit({ ...planEdit, complimentary: e.target.checked })}
                   style={{ width: 18, height: 18 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: planEdit.complimentary ? '#0F766E' : '#475569' }}>Complimentary — never billed</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: planEdit.complimentary ? 'var(--brand-deep)' : '#475569' }}>Complimentary — never billed</span>
                 <span style={{ fontSize: 12, color: '#94A3B8' }}>for the platform owner's own org and partners — skips the billing paywall and hides Stripe checkout. Pair with the Enterprise plan for full features.</span>
               </label>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -1001,7 +1001,7 @@ export default function SuperAdmin() {
                 </div>
 
                 <button onClick={savePlanEdit} disabled={savingPlan}
-                  style={{ padding: '10px 18px', borderRadius: 8, background: planDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
+                  style={{ padding: '10px 18px', borderRadius: 8, background: planDirty ? '#D97706' : 'var(--brand)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: savingPlan ? 'not-allowed' : 'pointer', opacity: savingPlan ? 0.7 : 1 }}>
                   {savingPlan ? 'Saving…' : planDirty ? 'Save Plan & Limits •' : 'Save Plan & Limits'}
                 </button>
               </div>
@@ -1012,7 +1012,7 @@ export default function SuperAdmin() {
 
             {/* Feature access — per-org overrides on top of the plan */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Shield size={16} color="#0D7377" /> Feature Access
+              <Shield size={16} color="var(--brand)" /> Feature Access
             </h3>
             <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 12, marginBottom: 24 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8, marginBottom: 12 }}>
@@ -1023,8 +1023,8 @@ export default function SuperAdmin() {
                     <label key={f.key} style={{
                       display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer',
                       padding: '9px 11px', borderRadius: 8,
-                      background: on ? '#F0FDFA' : '#fff',
-                      border: on ? '1px solid #5EEAD4' : '1px solid #E2E8F0'
+                      background: on ? 'var(--brand-wash)' : '#fff',
+                      border: on ? '1px solid var(--brand-border)' : '1px solid #E2E8F0'
                     }}>
                       <input type="checkbox" checked={on} onChange={() => toggleFeature(f.key)} />
                       <span style={{ flex: 1 }}>{f.label}</span>
@@ -1039,7 +1039,7 @@ export default function SuperAdmin() {
                   The {PLANS[planEdit.plan]?.label} plan includes: {PLAN_FEATURES[planEdit.plan]?.length ? PLAN_FEATURES[planEdit.plan].join(', ') : 'no paid features'}. Checking a box grants or removes that feature for this customer only.
                 </div>
                 <button onClick={saveFeatures} disabled={savingFeatures}
-                  style={{ padding: '9px 16px', borderRadius: 8, background: featuresDirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingFeatures ? 'not-allowed' : 'pointer', opacity: savingFeatures ? 0.7 : 1 }}>
+                  style={{ padding: '9px 16px', borderRadius: 8, background: featuresDirty ? '#D97706' : 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: savingFeatures ? 'not-allowed' : 'pointer', opacity: savingFeatures ? 0.7 : 1 }}>
                   {savingFeatures ? 'Saving…' : featuresDirty ? 'Save Features •' : 'Save Features'}
                 </button>
               </div>
@@ -1047,9 +1047,9 @@ export default function SuperAdmin() {
 
             {/* Backups — nightly snapshots for orgs with the backups feature */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Activity size={16} color="#0D7377" /> Backups
+              <Activity size={16} color="var(--brand)" /> Backups
               <button onClick={generateBackup} disabled={backupBusy}
-                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: backupBusy ? 'not-allowed' : 'pointer' }}>
+                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 700, cursor: backupBusy ? 'not-allowed' : 'pointer' }}>
                 {backupBusy ? 'Working…' : 'Snapshot Now'}
               </button>
             </h3>
@@ -1115,39 +1115,39 @@ export default function SuperAdmin() {
 
             {/* Users */}
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={16} color="#0D7377" /> Users ({viewOrgUsers.length})
+              <Users size={16} color="var(--brand)" /> Users ({viewOrgUsers.length})
               <button onClick={() => setShowInvite(!showInvite)}
-                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ marginLeft: 'auto', padding: '7px 12px', borderRadius: 8, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 {showInvite ? '− Cancel' : '+ Invite User'}
               </button>
             </h3>
             {showInvite && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12, background: '#F0FDFA', borderRadius: 10, marginBottom: 12, border: '1px solid #99F6E4' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', padding: 12, background: 'var(--brand-wash)', borderRadius: 10, marginBottom: 12, border: '1px solid var(--brand-border)' }}>
                 <div style={{ flex: '1 1 110px' }}>
-                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>First name</label>
+                  <label style={{ fontSize: 11, color: 'var(--brand-deep)', display: 'block', marginBottom: 3 }}>First name</label>
                   <input type="text" value={inviteForm.first_name} onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
-                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--brand-border)', fontSize: 13 }} />
                 </div>
                 <div style={{ flex: '1 1 110px' }}>
-                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Last name</label>
+                  <label style={{ fontSize: 11, color: 'var(--brand-deep)', display: 'block', marginBottom: 3 }}>Last name</label>
                   <input type="text" value={inviteForm.last_name} onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
-                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--brand-border)', fontSize: 13 }} />
                 </div>
                 <div style={{ flex: '2 1 180px' }}>
-                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Email</label>
+                  <label style={{ fontSize: 11, color: 'var(--brand-deep)', display: 'block', marginBottom: 3 }}>Email</label>
                   <input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13 }} />
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--brand-border)', fontSize: 13 }} />
                 </div>
                 <div style={{ flex: '0 1 130px' }}>
-                  <label style={{ fontSize: 11, color: '#0F766E', display: 'block', marginBottom: 3 }}>Role</label>
+                  <label style={{ fontSize: 11, color: 'var(--brand-deep)', display: 'block', marginBottom: 3 }}>Role</label>
                   <select value={inviteForm.role} onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid #99F6E4', fontSize: 13, background: '#fff' }}>
+                    style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1px solid var(--brand-border)', fontSize: 13, background: '#fff' }}>
                     <option value="receptionist">Receptionist</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
                 <button onClick={inviteUser} disabled={inviteBusy}
-                  style={{ padding: '9px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: inviteBusy ? 'not-allowed' : 'pointer', opacity: inviteBusy ? 0.7 : 1 }}>
+                  style={{ padding: '9px 16px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: inviteBusy ? 'not-allowed' : 'pointer', opacity: inviteBusy ? 0.7 : 1 }}>
                   {inviteBusy ? 'Inviting…' : 'Send Invite'}
                 </button>
               </div>
@@ -1187,7 +1187,7 @@ export default function SuperAdmin() {
                       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                         <input type="email" value={changeEmail.value} onChange={(e) => setChangeEmail({ ...changeEmail, value: e.target.value })}
                           style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
-                        <button onClick={saveEmailChange} style={{ padding: '10px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+                        <button onClick={saveEmailChange} style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save</button>
                         <button onClick={() => setChangeEmail(null)} style={{ padding: '10px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
                       </div>
                     )}
@@ -1273,7 +1273,7 @@ export default function SuperAdmin() {
                       onChange={(e) => setSupportForm({ ...supportForm, email: e.target.value })}
                       style={{ flex: 1, minWidth: 200, padding: '10px 12px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 13 }} />
                     <button onClick={createSupportAdmin}
-                      style={{ padding: '10px 16px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ padding: '10px 16px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                       Create
                     </button>
                   </div>
@@ -1341,7 +1341,7 @@ export default function SuperAdmin() {
                   )}
                 </div>
                 <button onClick={() => setShowCreate(false)}
-                  style={{ width: '100%', padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ width: '100%', padding: '13px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
                   Done
                 </button>
               </div>
@@ -1403,7 +1403,7 @@ export default function SuperAdmin() {
                     Cancel
                   </button>
                   <button onClick={createOrganization} disabled={createBusy}
-                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, cursor: createBusy ? 'not-allowed' : 'pointer', opacity: createBusy ? 0.7 : 1 }}>
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, cursor: createBusy ? 'not-allowed' : 'pointer', opacity: createBusy ? 0.7 : 1 }}>
                     {createBusy ? 'Creating…' : 'Create Organization'}
                   </button>
                 </div>
