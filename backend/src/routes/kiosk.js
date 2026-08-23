@@ -112,6 +112,9 @@ router.get('/config/:orgId', async (req, res) => {
       nda_required: !!s.require_nda,
       nda_text: s.nda_text || '',
       logo_data: s.logo_data || '',
+      // Org theme — the kiosk screens recolor themselves from these two brand colors
+      primary_color: s.primary_color || null,
+      accent_color: s.accent_color || null,
       custom_fields: Array.isArray(s.custom_fields) ? s.custom_fields : [],
       hidden_fields: Array.isArray(s.hidden_fields) ? s.hidden_fields : [],
       profile_type: s.profile_type || 'other',
