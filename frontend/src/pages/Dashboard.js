@@ -153,6 +153,17 @@ export default function Dashboard() {
     api.get('/visits/alerts/today').then(r => r.data),
     { refetchInterval: 30000, retry: false }
   );
+
+  // Entry alerts — anti-passback blocks + UniFi tailgating mismatches
+  // (silently empty until migration-security-groups.txt has been run)
+  const { data: entryAlertsRaw, refetch: refetchEntryAlerts } = useQuery('security-alerts', () =>
+    api.get('/security/alerts').then(r => r.data),
+    { refetchInterval: 30000, retry: false }
+  );
+  const entryAlerts = (Array.isArray(entryAlertsRaw) ? entryAlertsRaw : []).filter(a => !a.acknowledged_at);
+  const ackEntryAlert = async (id) => {
+    try { await api.patch(`/security/alerts/${id}/acknowledge`); refetchEntryAlerts(); } catch { /* next poll re-shows it */ }
+  };
   const { data: activeVisits } = useQuery('active-visits', () =>
     api.get('/visits/active').then(r => r.data),
     { refetchInterval: 15000, retry: false }
@@ -190,7 +201,7 @@ export default function Dashboard() {
   );
   const flaggedToday = alerts?.flagged || [];
   const staffAlerts = alerts?.staff || [];
-  const hasAlerts = flaggedToday.length > 0 || staffAlerts.length > 0 || overstaying.length > 0;
+  const hasAlerts = flaggedToday.length > 0 || staffAlerts.length > 0 || overstaying.length > 0 || entryAlerts.length > 0;
 
   const statCards = [
     { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: 'var(--brand)', link: '/visits?status=checked_in' },
@@ -294,10 +305,38 @@ export default function Dashboard() {
             <ShieldAlert size={20} color="#DC2626" />
             <h3 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0 }}>Security Alerts</h3>
             <span style={{ fontSize: 12, fontWeight: 700, background: '#FEE2E2', color: '#991B1B', borderRadius: 20, padding: '3px 12px' }}>
-              {flaggedToday.length + staffAlerts.length + overstaying.length}
+              {flaggedToday.length + staffAlerts.length + overstaying.length + entryAlerts.length}
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+            {/* Entry alerts — anti-passback blocks & UniFi tailgating mismatches.
+                These are the "someone walked in without their own check-in" feed. */}
+            {entryAlerts.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '2px solid #FECACA' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <ScanFace size={18} color="#DC2626" />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: '#991B1B' }}>Entry Alerts</span>
+                </div>
+                {entryAlerts.slice(0, 5).map((a) => (
+                  <div key={a.id} style={{ padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#DC2626' }}>
+                        {a.type === 'tailgating' ? 'Tailgating' : 'Pass-back'}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#94A3B8' }}>
+                        {new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#475569', marginTop: 4, lineHeight: 1.45 }}>{a.message}</div>
+                    <button onClick={() => ackEntryAlert(a.id)}
+                      style={{ marginTop: 8, background: 'none', border: '1px solid #FECACA', borderRadius: 8, color: '#B91C1C', fontSize: 12, fontWeight: 700, padding: '5px 12px', cursor: 'pointer' }}>
+                      Acknowledge
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Flagged visitors on site / arrived today (watchlist + blacklist) */}
             {flaggedToday.length > 0 && (
               <div style={{ background: '#fff', borderRadius: 20, padding: 20, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '2px solid #FECACA' }}>
