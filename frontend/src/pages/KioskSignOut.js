@@ -35,13 +35,15 @@ export default function KioskSignOut() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
-  // ─── RFID tap: a staff/FV badge tap signs that person out (the endpoint
-  // toggles, so if they somehow weren't signed in it signs them in and says so)
+  // ─── RFID tap: a staff/FV badge tap signs that person out. This is the
+  // EXIT screen → direction 'out': leaving is always allowed and never
+  // blocked, and a tap here can never create a visit — if the badge isn't
+  // signed in we say so instead of silently signing them in.
   const [rfidResult, setRfidResult] = useState(null); // { name, action } | { error }
   const rfidTimerRef = useRef(null);
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, direction: 'out', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       setRfidResult({ name: r.data.name, action: r.data.action });
     } catch (err) {
       setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
@@ -76,11 +78,13 @@ export default function KioskSignOut() {
       }
       try {
         if (token.startsWith('FV:')) {
-          // Frequent-visitor badge: toggles them out (in on the sign-in screen)
-          await api.post('/visits/fv-checkin', { org_id: orgId, code: token, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          // Frequent-visitor badge: EXIT screen → direction 'out' (never signs in)
+          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token, direction: 'out', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          if (r.data.action === 'no_open_visit') throw new Error('no active visit');
         } else if (token.startsWith('STAFF:')) {
-          // Employee badge: toggles them out (the endpoint flips in->out)
-          await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          // Employee badge: EXIT screen → direction 'out' (never signs in)
+          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), direction: 'out', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          if (r.data.action === 'no_open_visit') throw new Error('no active visit');
         } else {
           // Pre-registration QR: find the person's active visit and check it out
           const v = await api.get(`/pre-registered/validate-qr/${token}`);
@@ -230,12 +234,14 @@ export default function KioskSignOut() {
               </>
             ) : (
               <>
-                <CheckCircle size={90} color={rfidResult.action === 'checked_out' ? T.primaryBright : '#2ECC71'} style={{ marginBottom: 20 }} />
+                <CheckCircle size={90} color={rfidResult.action === 'checked_out' ? T.primaryBright : '#FBBF24'} style={{ marginBottom: 20 }} />
                 <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-                  {rfidResult.action === 'checked_out' ? `Goodbye, ${rfidResult.name}!` : `Welcome, ${rfidResult.name}!`}
+                  {rfidResult.action === 'checked_out' ? `Goodbye, ${rfidResult.name}!` : `${rfidResult.name}, you're not signed in`}
                 </div>
                 <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }}>
-                  {rfidResult.action === 'checked_out' ? "You're signed out. Have a great day!" : "You weren't signed in — you're signed in now."}
+                  {rfidResult.action === 'checked_out'
+                    ? "You're signed out. Have a great day!"
+                    : 'Nothing to sign out from — please use the Sign In screen first, or see the front desk.'}
                 </div>
               </>
             )}
