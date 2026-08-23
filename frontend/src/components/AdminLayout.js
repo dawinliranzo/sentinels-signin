@@ -5,6 +5,7 @@ import { useStore } from '../utils/store';
 import { getTerms } from '../utils/terms';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
+import { applyPortalTheme, applyCachedPortalTheme } from '../utils/portalTheme';
 import Toaster from './Toaster';
 import {
   LayoutDashboard, Users, Calendar, Settings, LogOut, Monitor, UserPlus,
@@ -22,6 +23,16 @@ export default function AdminLayout() {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Org palette: cached colors paint instantly (index.js), then we refresh
+  // from the org's saved settings so a palette chosen on another device applies here too
+  React.useEffect(() => {
+    applyCachedPortalTheme();
+    api.get('/settings').then(r => {
+      const st = r.data || {};
+      if (st.primary_color || st.accent_color) applyPortalTheme(st.primary_color, st.accent_color);
+    }).catch(() => {});
   }, []);
   const logout = useStore((s) => s.logout);
   const user = useStore((s) => s.user);
@@ -136,7 +147,7 @@ export default function AdminLayout() {
         <div style={{ padding: '24px 20px', borderBottom: '1px solid #1E293B', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 40, height: 40, borderRadius: 10,
-            background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+            background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 800, fontSize: 20, color: '#fff'
           }}>
@@ -156,7 +167,7 @@ export default function AdminLayout() {
           style={{
             position: 'absolute', right: -12, top: 28,
             width: 24, height: 24, borderRadius: '50%',
-            background: '#0D7377', border: 'none', color: '#fff',
+            background: 'var(--brand)', border: 'none', color: '#fff',
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 12
           }}
@@ -189,7 +200,7 @@ export default function AdminLayout() {
         )}
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto', minHeight: 0 }}>
+        <nav className="sidebar-nav" style={{ flex: 1, padding: '16px 12px', overflowY: 'auto', minHeight: 0 }}>
           {visibleNav.map((item) => (
             <NavLink
               key={item.path}
@@ -204,7 +215,7 @@ export default function AdminLayout() {
                 return {
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '12px 16px', borderRadius: 10,
-                color: active ? '#14FFEC' : '#94A3B8',
+                color: active ? 'var(--brand-bright)' : '#94A3B8',
                 background: active ? 'rgba(13, 115, 119, 0.2)' : 'transparent',
                 textDecoration: 'none',
                 fontSize: 14, fontWeight: 500,
@@ -234,7 +245,7 @@ export default function AdminLayout() {
           >
             <div style={{
               width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+              background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontWeight: 600, fontSize: 14
             }}>
