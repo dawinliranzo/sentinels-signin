@@ -4,6 +4,7 @@ import { PROFILE_OPTIONS, getTerms } from '../utils/terms';
 import { Upload, Palette, Bell, Shield, Save, X, PenLine, HardDrive, RotateCcw, AlertTriangle , ScanFace , Webhook , KeyRound, Users, Trash2, Pencil, Plus, CreditCard, CheckCircle2 } from 'lucide-react';
 import api from '../utils/api';
 import { toast } from '../utils/toast';
+import { applyPortalTheme } from '../utils/portalTheme';
 
 // Default org settings blob — keep in one place so the "unsaved changes"
 // tracker compares against a stable shape
@@ -405,6 +406,8 @@ export default function Settings() {
     try {
       await api.patch('/settings', settings);
       savedSnapshot.current = JSON.stringify(settings); // no longer dirty
+      // Repaint the whole portal with the chosen palette right away
+      applyPortalTheme(settings.primary_color, settings.accent_color);
       // Profile type drives terminology across the app — refresh the session copy
       try {
         const me = await api.get('/auth/me');
@@ -439,7 +442,7 @@ export default function Settings() {
           being locked out, and management access returns when billing is resolved. */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <CreditCard size={20} color="#0D7377" /> Billing &amp; Plan
+          <CreditCard size={20} color="var(--brand)" /> Billing &amp; Plan
         </h3>
         {(() => {
           // Wait for /auth/me before choosing what to show — rendering the trial
@@ -461,12 +464,12 @@ export default function Settings() {
           // no checkout, no portal, no trial countdown.
           if (comped) {
             return (
-              <div style={{ padding: '16px 18px', borderRadius: 12, background: '#F0FDFA', border: '1px solid #99F6E4' }}>
+              <div style={{ padding: '16px 18px', borderRadius: 12, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 17, fontWeight: 800, color: '#0D7377' }}>Owner account</span>
-                  <span style={{ fontSize: 13, color: '#0F766E' }}>full access — never billed</span>
+                  <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--brand)' }}>Owner account</span>
+                  <span style={{ fontSize: 13, color: 'var(--brand-deep)' }}>full access — never billed</span>
                 </div>
-                <div style={{ fontSize: 12.5, color: '#0F766E', marginTop: 6, lineHeight: 1.6 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--brand-deep)', marginTop: 6, lineHeight: 1.6 }}>
                   This organization belongs to the platform owner: every feature of the {plan.label} plan is unlocked
                   and no invoice will ever be generated. Managed from Super Admin → organization → Complimentary.
                 </div>
@@ -527,7 +530,7 @@ export default function Settings() {
                     const p = BILLING_PLANS[k];
                     const current = k === planKey;
                     return (
-                      <div key={k} style={{ border: `2px solid ${k === 'pro' ? '#99F6E4' : '#FED7AA'}`, borderRadius: 14, padding: '16px 18px', background: k === 'pro' ? '#F0FDFA' : '#FFF7ED' }}>
+                      <div key={k} style={{ border: `2px solid ${k === 'pro' ? 'var(--brand-border)' : '#FED7AA'}`, borderRadius: 14, padding: '16px 18px', background: k === 'pro' ? 'var(--brand-wash)' : '#FFF7ED' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                           <span style={{ fontWeight: 800, fontSize: 16, color: p.color }}>{p.label}</span>
                           <span style={{ fontWeight: 800, fontSize: 15, color: '#0F172A' }}>${p.price}<span style={{ fontSize: 12, fontWeight: 600, color: '#64748B' }}>/mo</span></span>
@@ -574,7 +577,7 @@ export default function Settings() {
       {canManage && hasUnifi && (
         <div style={sectionStyle}>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ScanFace size={20} color="#0D7377" /> UniFi Protect — camera auto check-in/out
+            <ScanFace size={20} color="var(--brand)" /> UniFi Protect — camera auto check-in/out
           </h3>
           <p style={{ fontSize: 13, color: '#64748B', marginTop: 0, marginBottom: 16, lineHeight: 1.6 }}>
             Door cameras with face recognition sign people in and out automatically: a recognized host or a
@@ -591,27 +594,27 @@ export default function Settings() {
                 <input type="checkbox" checked={unifiCfg.enabled === true}
                   onChange={(e) => saveUnifi(e.target.checked, unifiCfg.cameras || [])}
                   style={{ width: 20, height: 20 }} />
-                <span style={{ fontSize: 14, fontWeight: 700, color: unifiCfg.enabled ? '#0F766E' : '#334155' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: unifiCfg.enabled ? 'var(--brand-deep)' : '#334155' }}>
                   Camera auto check-in/out is {unifiCfg.enabled ? 'ON' : 'OFF'}
                 </span>
               </label>
 
               {unifiCfg.enabled && (
                 <>
-                  <div style={{ background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E', marginBottom: 6 }}>
+                  <div style={{ background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand-deep)', marginBottom: 6 }}>
                       1 · Paste this webhook URL into your UniFi console
                     </div>
-                    <div style={{ fontSize: 12.5, color: '#134E4A', lineHeight: 1.7, marginBottom: 8 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--brand-dark)', lineHeight: 1.7, marginBottom: 8 }}>
                       UniFi console → <strong>Protect → Settings → System → Webhooks</strong> (or an Alarm rule on your door
                       cameras) → add a webhook for <strong>smart detection / face events</strong> with this URL:
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <code style={{ flex: 1, minWidth: 240, fontSize: 11.5, background: '#fff', border: '1px solid #99F6E4', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all' }}>
+                      <code style={{ flex: 1, minWidth: 240, fontSize: 11.5, background: '#fff', border: '1px solid var(--brand-border)', padding: '8px 10px', borderRadius: 8, wordBreak: 'break-all' }}>
                         {unifiCfg.webhook_url}
                       </code>
                       <button onClick={() => { navigator.clipboard.writeText(unifiCfg.webhook_url); toast('Webhook URL copied'); }}
-                        style={{ padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                         Copy
                       </button>
                       {confirmRotate ? (
@@ -629,7 +632,7 @@ export default function Settings() {
                         </button>
                       )}
                     </div>
-                    <div style={{ fontSize: 12.5, color: '#134E4A', lineHeight: 1.7, marginTop: 10 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--brand-dark)', lineHeight: 1.7, marginTop: 10 }}>
                       2 · Enroll your people: in Protect, add each host and frequent visitor to <strong>Known Faces</strong>
                       with exactly the same first and last name they have in Sentinels Kiosk. Pre-registered visitors are
                       matched by name on their visit day.
@@ -664,7 +667,7 @@ export default function Settings() {
                         <Plus size={13} style={{ verticalAlign: -2 }} /> Add camera
                       </button>
                       <button onClick={() => saveUnifi(true, unifiCfg.cameras || [])} disabled={unifiBusy}
-                        style={{ padding: '9px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: unifiBusy ? 'wait' : 'pointer' }}>
+                        style={{ padding: '9px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: unifiBusy ? 'wait' : 'pointer' }}>
                         {unifiBusy ? 'Saving…' : 'Save cameras'}
                       </button>
                     </div>
@@ -701,7 +704,7 @@ export default function Settings() {
       {/* Branding */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Palette size={20} color="#0D7377" /> Branding
+          <Palette size={20} color="var(--brand)" /> Branding
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
@@ -778,7 +781,7 @@ export default function Settings() {
           <div>
             <label style={labelStyle}>Theme palette</label>
             <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 10 }}>
-              One click recolors the whole kiosk (welcome, sign-in, sign-out screens). Fine-tune with the custom pickers below. Kiosks pick up changes within 5 minutes — remember Save Settings.
+              One click recolors the whole platform — this portal and every kiosk screen. Fine-tune with the custom pickers below. When you change anything, a Save button floats at the bottom-right of your screen — changes apply the moment you save; kiosks follow within 5 minutes.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
               {THEME_PALETTES.map(p => {
@@ -788,9 +791,9 @@ export default function Settings() {
                     onClick={() => setSettings({ ...settings, primary_color: p.primary, accent_color: p.accent })}
                     style={{
                       textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
-                      border: active ? '2px solid #0D7377' : '2px solid #E2E8F0',
-                      background: active ? '#F0FDFA' : '#fff',
-                      boxShadow: active ? '0 2px 8px rgba(13,115,119,0.15)' : 'none'
+                      border: active ? '2px solid var(--brand)' : '2px solid #E2E8F0',
+                      background: active ? 'var(--brand-wash)' : '#fff',
+                      boxShadow: active ? '0 2px 8px var(--brand-halo)' : 'none'
                     }}>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                       <span style={{ width: 26, height: 26, borderRadius: 8, background: p.primary, display: 'inline-block' }} />
@@ -798,7 +801,7 @@ export default function Settings() {
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: '#94A3B8' }}>{p.blurb}</div>
-                    {active && <div style={{ fontSize: 11, fontWeight: 800, color: '#0F766E', marginTop: 4 }}>✓ Active</div>}
+                    {active && <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--brand-deep)', marginTop: 4 }}>✓ Active</div>}
                   </button>
                 );
               })}
@@ -830,7 +833,7 @@ export default function Settings() {
       {/* Notifications */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Bell size={20} color="#0D7377" /> Notifications
+          <Bell size={20} color="var(--brand)" /> Notifications
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -868,7 +871,7 @@ export default function Settings() {
               <input type="tel" placeholder="+1…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)}
                 style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
               <button type="button" onClick={sendTestSms} disabled={smsBusy}
-                style={{ padding: '12px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                style={{ padding: '12px 20px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
                 {smsBusy ? 'Sending…' : 'Send Test SMS'}
               </button>
             </div>
@@ -879,7 +882,7 @@ export default function Settings() {
       {/* Front Desk & Integrations — check-in popup, ID scan, Teams */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ScanFace size={20} color="#0D7377" /> Front Desk &amp; Integrations
+          <ScanFace size={20} color="var(--brand)" /> Front Desk &amp; Integrations
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -923,7 +926,7 @@ export default function Settings() {
           {/* Microsoft Teams notifications */}
           <div style={{ marginTop: 8, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
             <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Webhook size={16} color="#0D7377" /> Microsoft Teams Notifications
+              <Webhook size={16} color="var(--brand)" /> Microsoft Teams Notifications
             </div>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
               Post every check-in (visitor, staff, frequent visitor) to a Teams channel. In Teams: channel → ⋯ → Connectors →
@@ -951,7 +954,7 @@ export default function Settings() {
                   toast(err.response?.data?.error || 'Teams test failed', 'error');
                 } finally { setTeamsBusy(false); }
               }}
-              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.teams_webhook_url) ? 0.5 : 1 }}>
+              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.teams_webhook_url) ? 0.5 : 1 }}>
               {teamsBusy ? 'Sending…' : 'Save & Send Test Message'}
             </button>
           </div>
@@ -959,7 +962,7 @@ export default function Settings() {
           {/* Generic outbound webhook (Zapier / Make / custom endpoints) */}
           <div style={{ marginTop: 4, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
             <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Webhook size={16} color="#0D7377" /> Webhook (Zapier, Make, or your own endpoint)
+              <Webhook size={16} color="var(--brand)" /> Webhook (Zapier, Make, or your own endpoint)
             </div>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
               Every check-in also POSTs a JSON payload (<code>visitor.checkin</code>, <code>staff.checkin</code>, <code>frequent_visitor.checkin</code>)
@@ -987,7 +990,7 @@ export default function Settings() {
                   toast(err.response?.data?.error || 'Webhook test failed', 'error');
                 } finally { setHookBusy(false); }
               }}
-              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.generic_webhook_url) ? 0.5 : 1 }}>
+              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (!settings.generic_webhook_url) ? 0.5 : 1 }}>
               {hookBusy ? 'Sending…' : 'Save & Send Test Event'}
             </button>
           </div>
@@ -995,7 +998,7 @@ export default function Settings() {
           {/* API keys for custom integrations */}
           <div style={{ marginTop: 4, padding: 16, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
             <div style={{ fontWeight: 600, color: '#0F172A', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <KeyRound size={16} color="#0D7377" /> API Keys
+              <KeyRound size={16} color="var(--brand)" /> API Keys
             </div>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 10, lineHeight: 1.6 }}>
               Read your data from any system. Endpoints: <code>GET /api/visits</code>, <code>GET /api/visits/active</code>, <code>GET /api/hosts</code>
@@ -1032,7 +1035,7 @@ export default function Settings() {
                     toast(err.response?.data?.error || 'Failed to create key', 'error');
                   } finally { setKeyBusy(false); }
                 }}
-                style={{ padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                style={{ padding: '10px 18px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
                 {keyBusy ? 'Creating…' : 'Generate Key'}
               </button>
             </div>
@@ -1067,7 +1070,7 @@ export default function Settings() {
       {/* Registration Form — custom fields per organization */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <PenLine size={20} color="#0D7377" /> Registration Form
+          <PenLine size={20} color="var(--brand)" /> Registration Form
         </h3>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
           Choose what the kiosk asks during check-in — hide standard fields you don't need and add
@@ -1090,7 +1093,7 @@ export default function Settings() {
           ].map(({ key, label }) => {
             const shown = !(settings.hidden_fields || []).includes(key);
             return (
-              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${shown ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
+              <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${shown ? 'var(--brand-border)' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
                 <input type="checkbox" checked={shown}
                   onChange={(e) => {
                     const cur = settings.hidden_fields || [];
@@ -1108,7 +1111,7 @@ export default function Settings() {
               ? settings.dob_enabled
               : settings.profile_type === 'hospital';
             return (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${shown ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: shown ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${shown ? 'var(--brand-border)' : '#E2E8F0'}`, borderRadius: 10, fontSize: 13, fontWeight: 600, color: shown ? '#0F172A' : '#94A3B8', cursor: 'pointer' }}>
                 <input type="checkbox" checked={shown}
                   onChange={(e) => setSettings({ ...settings, dob_enabled: e.target.checked })} />
                 Date of birth
@@ -1127,7 +1130,7 @@ export default function Settings() {
 
         <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Your own fields</div>
         {(settings.custom_fields || []).map((f, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: editingFieldIdx === i ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${editingFieldIdx === i ? '#99F6E4' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: editingFieldIdx === i ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${editingFieldIdx === i ? 'var(--brand-border)' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{f.label}</span>
               <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>
@@ -1138,7 +1141,7 @@ export default function Settings() {
               setEditingFieldIdx(i);
               setNewField({ label: f.label, type: f.type, required: !!f.required, options: (f.options || []).join(', ') });
             }}
-              style={{ padding: '6px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               Edit
             </button>
             <button type="button" onClick={() => {
@@ -1152,10 +1155,10 @@ export default function Settings() {
         ))}
 
         {editingFieldIdx !== null && (
-          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: '#F0FDFA', border: '1px solid #99F6E4', fontSize: 13, color: '#0F766E', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', fontSize: 13, color: 'var(--brand-deep)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span>Editing: {(settings.custom_fields || [])[editingFieldIdx]?.label}</span>
             <button type="button" onClick={() => { setEditingFieldIdx(null); setNewField({ label: '', type: 'text', required: false, options: '' }); }}
-              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               Cancel edit
             </button>
           </div>
@@ -1194,7 +1197,7 @@ export default function Settings() {
             }
             setNewField({ label: '', type: 'text', required: false, options: '' });
           }}
-            style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            style={{ padding: '10px 20px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
             {editingFieldIdx !== null ? 'Save changes' : '+ Add Field'}
           </button>
         </div>
@@ -1203,7 +1206,7 @@ export default function Settings() {
       {/* Visitor Types — the "I am a..." buttons on the kiosk */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Users size={20} color="#0D7377" /> Visitor Types
+          <Users size={20} color="var(--brand)" /> Visitor Types
         </h3>
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
           The buttons visitors pick on the kiosk's first screen ("I am a…"). Make them fit your
@@ -1215,7 +1218,7 @@ export default function Settings() {
           <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '12px 14px', marginBottom: 14, fontSize: 13, color: '#92400E', lineHeight: 1.5 }}>
             <strong>No types yet</strong> — the kiosk is showing generic suggestions for your industry.
             <button type="button" onClick={seedSuggestedTypes} disabled={vtBusy}
-              style={{ marginLeft: 8, padding: '6px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              style={{ marginLeft: 8, padding: '6px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
               {vtBusy ? 'Adding…' : `Start with suggested ${getTerms(settings.profile_type).label} types`}
             </button>
             <div style={{ marginTop: 6, fontSize: 12 }}>
@@ -1225,7 +1228,7 @@ export default function Settings() {
         )}
 
         {visitorTypes.map(t => (
-          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: vtEditingId === t.id ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${vtEditingId === t.id ? '#99F6E4' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: vtEditingId === t.id ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${vtEditingId === t.id ? 'var(--brand-border)' : 'transparent'}`, borderRadius: 10, marginBottom: 8 }}>
             <span style={{ width: 16, height: 16, borderRadius: '50%', background: t.badge_color, flexShrink: 0, border: '2px solid #fff', boxShadow: '0 0 0 1px #E2E8F0' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#0F172A' }}>{t.name}</span>
@@ -1234,7 +1237,7 @@ export default function Settings() {
               </span>
             </div>
             <button type="button" onClick={() => { setVtEditingId(t.id); setVtForm({ name: t.name, description: t.description || '', badge_color: t.badge_color, requires_nda: !!t.requires_nda }); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               <Pencil size={12} /> Edit
             </button>
             <button type="button" onClick={() => deleteVisitorType(t)} disabled={vtBusy}
@@ -1245,10 +1248,10 @@ export default function Settings() {
         ))}
 
         {vtEditingId && (
-          <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#F0FDFA', border: '1px solid #99F6E4', fontSize: 13, color: '#0F766E', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', fontSize: 13, color: 'var(--brand-deep)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span>Editing: {visitorTypes.find(t => t.id === vtEditingId)?.name}</span>
             <button type="button" onClick={() => { setVtEditingId(null); setVtForm({ name: '', description: '', badge_color: '#0D7377', requires_nda: false }); }}
-              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid #99F6E4', color: '#0F766E', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              style={{ padding: '4px 12px', borderRadius: 8, background: 'transparent', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
               Cancel edit
             </button>
           </div>
@@ -1261,7 +1264,7 @@ export default function Settings() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>Button color:</span>
-          {['#0D7377', '#FF6B35', '#2ECC71', '#9B59B6', '#D97706', '#2563EB', '#DC2626', '#475569'].map(c => (
+          {['var(--brand)', 'var(--accent)', '#2ECC71', '#9B59B6', '#D97706', '#2563EB', '#DC2626', '#475569'].map(c => (
             <button key={c} type="button" onClick={() => setVtForm({ ...vtForm, badge_color: c })}
               style={{ width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', border: vtForm.badge_color === c ? '3px solid #0F172A' : '2px solid #fff', boxShadow: '0 0 0 1px #CBD5E1' }} />
           ))}
@@ -1272,7 +1275,7 @@ export default function Settings() {
             Requires NDA signature
           </label>
           <button type="button" onClick={saveVisitorType} disabled={vtBusy}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
             <Plus size={14} /> {vtBusy ? 'Saving…' : vtEditingId ? 'Save changes' : 'Add Type'}
           </button>
         </div>
@@ -1281,7 +1284,7 @@ export default function Settings() {
       {/* Security */}
       <div style={sectionStyle}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield size={20} color="#0D7377" /> Security
+          <Shield size={20} color="var(--brand)" /> Security
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -1311,7 +1314,7 @@ export default function Settings() {
 
             {!mfaEnabled && !mfaSetup && (
               <button onClick={startMfaSetup} disabled={mfaBusy}
-                style={{ padding: '10px 20px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
+                style={{ padding: '10px 20px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}>
                 {mfaBusy ? 'Preparing...' : 'Set Up MFA'}
               </button>
             )}
@@ -1412,7 +1415,7 @@ export default function Settings() {
           boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
         }}>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <HardDrive size={20} color="#0D7377" /> Backups
+            <HardDrive size={20} color="var(--brand)" /> Backups
           </h3>
           <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16, lineHeight: 1.5 }}>
             A full snapshot of your organization (users, hosts, visits, devices, settings) is taken automatically on the schedule below and kept for 30 days.
@@ -1429,7 +1432,7 @@ export default function Settings() {
               </select>
             </div>
             <button onClick={backupNow} disabled={backupBusy}
-              style={{ padding: '10px 18px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: backupBusy ? 'wait' : 'pointer', opacity: backupBusy ? 0.7 : 1 }}>
+              style={{ padding: '10px 18px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: backupBusy ? 'wait' : 'pointer', opacity: backupBusy ? 0.7 : 1 }}>
               {backupBusy ? 'Working…' : 'Back up now'}
             </button>
           </div>
@@ -1444,12 +1447,12 @@ export default function Settings() {
             backups.slice(0, 10).map(b => (
               <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px', background: '#F8FAFC', borderRadius: 10, marginBottom: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, color: '#0F172A' }}>{new Date(b.created_at).toLocaleString()}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 12, background: b.kind === 'manual' ? '#EFF6FF' : '#F0FDFA', color: b.kind === 'manual' ? '#1D4ED8' : '#0F766E', textTransform: 'uppercase' }}>{b.kind}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 12, background: b.kind === 'manual' ? '#EFF6FF' : 'var(--brand-wash)', color: b.kind === 'manual' ? '#1D4ED8' : 'var(--brand-deep)', textTransform: 'uppercase' }}>{b.kind}</span>
                 <span style={{ fontSize: 12, color: '#64748B' }}>
                   {b.counts ? `${b.counts.users ?? 0} users, ${b.counts.hosts ?? 0} hosts, ${b.counts.visits ?? 0} visits` : ''}
                 </span>
                 <button onClick={() => downloadBackup(b.id)}
-                  style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, background: '#F0FDFA', border: '1px solid #5EEAD4', color: '#0F766E', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', color: 'var(--brand-deep)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   Download
                 </button>
                 <button onClick={() => { setRestoreTarget(b); setRestoreText(''); }}
@@ -1518,12 +1521,31 @@ export default function Settings() {
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '14px 32px', borderRadius: 12,
-          background: saving ? '#94A3B8' : dirty ? '#D97706' : '#0D7377', border: 'none', color: '#fff',
+          background: saving ? '#94A3B8' : dirty ? '#D97706' : 'var(--brand)', border: 'none', color: '#fff',
           fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', fontSize: 16
         }}
       >
         <Save size={18} /> {saving ? 'Saving...' : 'Save Settings'}
       </button>
+
+      {/* Floating save — follows you wherever you scrolled, so a change made
+          at the top of the page never depends on finding this button */}
+      {dirty && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            position: 'fixed', bottom: 24, right: 24, zIndex: 1200,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '15px 28px', borderRadius: 14, border: 'none',
+            background: saving ? '#94A3B8' : '#D97706', color: '#fff',
+            fontWeight: 800, fontSize: 15, cursor: saving ? 'wait' : 'pointer',
+            boxShadow: '0 12px 32px rgba(15,23,42,0.35)', fontFamily: 'inherit'
+          }}
+        >
+          <Save size={18} /> {saving ? 'Saving...' : 'Save changes'}
+        </button>
+      )}
     </div>
   );
 }
