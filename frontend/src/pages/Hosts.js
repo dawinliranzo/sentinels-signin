@@ -400,7 +400,7 @@ export default function Hosts() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 7,
               height: 40, padding: '0 16px', borderRadius: 10,
-              background: '#0D7377', border: '1px solid #0D7377', color: '#fff',
+              background: 'var(--brand)', border: '1px solid var(--brand)', color: '#fff',
               fontWeight: 600, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap'
             }}
           >
@@ -438,7 +438,7 @@ export default function Hosts() {
           boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <Building2 size={18} color="#0D7377" />
+            <Building2 size={18} color="var(--brand)" />
             <span style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>
               {family.role === 'child' ? `Part of ${family.parent?.name}` : 'Your locations'}
             </span>
@@ -461,7 +461,7 @@ export default function Hosts() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {family.sharedHosts.map(sh => (
-                    <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${sh.allowed ? '#99F6E4' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
+                    <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${sh.allowed ? 'var(--brand-border)' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
                       <div>
                         <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{sh.first_name} {sh.last_name}</span>
                         <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>{sh.job_title || sh.department || ''}</span>
@@ -469,7 +469,7 @@ export default function Hosts() {
                       <button onClick={() => toggleSharedAllowed(sh)}
                         style={{
                           padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                          border: 'none', background: sh.allowed ? '#0D7377' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
+                          border: 'none', background: sh.allowed ? 'var(--brand)' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
                         }}>
                         {sh.allowed ? 'Allowed here' : 'Blocked here'}
                       </button>
@@ -484,7 +484,7 @@ export default function Hosts() {
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Shared by your locations</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {family.sharedHosts.map(sh => (
-                  <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${sh.allowed ? '#99F6E4' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
+                  <div key={sh.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', borderRadius: 10, background: sh.allowed ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${sh.allowed ? 'var(--brand-border)' : '#E2E8F0'}`, flexWrap: 'wrap' }}>
                     <div>
                       <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{sh.first_name} {sh.last_name}</span>
                       <span style={{ fontSize: 12, color: '#64748B', marginLeft: 8 }}>from {sh.owner_org_name}</span>
@@ -492,7 +492,7 @@ export default function Hosts() {
                     <button onClick={() => toggleSharedAllowed(sh)}
                       style={{
                         padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                        border: 'none', background: sh.allowed ? '#0D7377' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
+                        border: 'none', background: sh.allowed ? 'var(--brand)' : '#CBD5E1', color: sh.allowed ? '#fff' : '#475569'
                       }}>
                       {sh.allowed ? 'Allowed here' : 'Blocked here'}
                     </button>
@@ -529,7 +529,7 @@ export default function Hosts() {
                     ) : (
                       <div onClick={() => setViewHost(h)} style={{
                         width: 40, height: 40, borderRadius: '50%', cursor: 'pointer',
-                        background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                        background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 700, fontSize: 14, color: '#fff'
                       }}>
@@ -538,7 +538,7 @@ export default function Hosts() {
                     )}
                     <div>
                       <div onClick={() => setViewHost(h)} title="View profile"
-                        style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
+                        style={{ fontWeight: 600, color: 'var(--brand)', fontSize: 14, cursor: 'pointer' }}>
                         {h.first_name} {h.last_name}
                       </div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>{h.job_title || 'No title'}</div>
@@ -571,14 +571,14 @@ export default function Hosts() {
                         title={h.shared_with_children ? 'Shared with your other locations — click to unshare' : 'Share with your other locations'}
                         style={{
                           padding: 8, borderRadius: 8, border: 'none', cursor: 'pointer',
-                          background: h.shared_with_children ? '#0D7377' : '#F1F5F9'
+                          background: h.shared_with_children ? 'var(--brand)' : '#F1F5F9'
                         }}>
                         <Share2 size={16} color={h.shared_with_children ? '#fff' : '#64748B'} />
                       </button>
                     )}
                     <button onClick={() => { setBadgeFields(defaultBadgeFields); setPrintHost(h); }} title="Print ID badge"
                       style={{ padding: 8, borderRadius: 8, background: '#ECFEFF', border: 'none', cursor: 'pointer' }}>
-                      <Printer size={16} color="#0D7377" />
+                      <Printer size={16} color="var(--brand)" />
                     </button>
                     <button onClick={() => { setRfidHost(h); setRfidUid(''); setRfidMsg(null); setRfidConfirmDelete(null); }} title="Manage RFID cards"
                       style={{ padding: 8, borderRadius: 8, background: '#FEF3C7', border: 'none', cursor: 'pointer' }}>
@@ -652,7 +652,7 @@ export default function Hosts() {
                     </label>
                     <button type="button" onClick={openCamera} style={{
                       display: 'inline-flex', alignItems: 'center', gap: 8,
-                      padding: '9px 16px', borderRadius: 10, background: '#0D7377',
+                      padding: '9px 16px', borderRadius: 10, background: 'var(--brand)',
                       border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer'
                     }}>
                       <Camera size={15} /> Take photo
@@ -722,9 +722,9 @@ export default function Hosts() {
                       not, so the opt-in screen always shows the full consent language next
                       to an unchecked-by-default checkbox. Checking the box is the
                       affirmative act of consent; the timestamp is stamped server-side. */}
-                  <div style={{ marginTop: 8, marginLeft: 28, padding: '10px 12px', background: form.notify_sms ? '#F0FDFA' : '#F8FAFC', border: `1px solid ${form.notify_sms ? '#99F6E4' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12, color: form.notify_sms ? '#0F766E' : '#475569', lineHeight: 1.6 }}>
+                  <div style={{ marginTop: 8, marginLeft: 28, padding: '10px 12px', background: form.notify_sms ? 'var(--brand-wash)' : '#F8FAFC', border: `1px solid ${form.notify_sms ? 'var(--brand-border)' : '#E2E8F0'}`, borderRadius: 8, fontSize: 12, color: form.notify_sms ? 'var(--brand-deep)' : '#475569', lineHeight: 1.6 }}>
                     {form.notify_sms && (
-                      <div style={{ marginBottom: 6, fontWeight: 700, color: '#0F766E' }}>
+                      <div style={{ marginBottom: 6, fontWeight: 700, color: 'var(--brand-deep)' }}>
                         ✓ SMS consent will be recorded with a timestamp when you save.
                       </div>
                     )}
@@ -734,8 +734,8 @@ export default function Hosts() {
                     They can reply <strong>STOP</strong> to opt out at any time, or <strong>HELP</strong> for help.
                     Consent is not a condition of employment or service. The checkbox is never pre-selected — it starts
                     unchecked and must be ticked deliberately. See our{' '}
-                    <a href="https://www.sentinelskiosk.com/terms.html" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Terms &amp; Conditions</a> and{' '}
-                    <a href="https://www.sentinelskiosk.com/privacy" target="_blank" rel="noreferrer" style={{ color: '#0D7377', fontWeight: 700 }}>Privacy Policy</a>.
+                    <a href="https://www.sentinelskiosk.com/terms.html" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>Terms &amp; Conditions</a> and{' '}
+                    <a href="https://www.sentinelskiosk.com/privacy" target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>Privacy Policy</a>.
                   </div>
                 </div>
               </div>
@@ -745,7 +745,7 @@ export default function Hosts() {
                   Cancel
                 </button>
                 <button type="submit"
-                  style={{ flex: 1, padding: '14px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ flex: 1, padding: '14px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
                   {editing ? 'Update' : 'Add Host'}
                 </button>
               </div>
@@ -783,7 +783,7 @@ export default function Hosts() {
 
             {/* Badge preview */}
             <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0', marginBottom: 20 }}>
-              <div style={{ background: 'linear-gradient(135deg, #0D7377, #14919B)', padding: '14px', color: '#fff' }}>
+              <div style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-soft))', padding: '14px', color: '#fff' }}>
                 <div style={{ fontSize: 11, letterSpacing: 2, opacity: 0.85 }}>{(org?.name || 'Organization').toUpperCase()}</div>
                 <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{badgeTitle}</div>
               </div>
@@ -793,7 +793,7 @@ export default function Hosts() {
                 ) : (
                   <div style={{
                     width: 56, height: 56, borderRadius: '50%', margin: '0 auto 10px',
-                    background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                    background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     color: '#fff', fontSize: 20, fontWeight: 700
                   }}>
@@ -824,7 +824,7 @@ export default function Hosts() {
                 Close
               </button>
               <button onClick={() => handlePrint(printHost)}
-                style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                style={{ flex: 1, padding: '13px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <Printer size={16} /> Print
               </button>
             </div>
@@ -865,13 +865,13 @@ export default function Hosts() {
                     Retake
                   </button>
                   <button type="button" onClick={acceptShot}
-                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '13px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
                     Use Photo
                   </button>
                 </>
               ) : (
                 <button type="button" onClick={captureShot} disabled={!cameraReady}
-                  style={{ flex: 2, padding: '13px', borderRadius: 10, background: cameraReady ? '#0D7377' : '#94A3B8', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraReady ? 'pointer' : 'not-allowed' }}>
+                  style={{ flex: 2, padding: '13px', borderRadius: 10, background: cameraReady ? 'var(--brand)' : '#94A3B8', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraReady ? 'pointer' : 'not-allowed' }}>
                   {cameraReady ? 'Capture' : 'Starting camera…'}
                 </button>
               )}
@@ -909,7 +909,7 @@ export default function Hosts() {
                 style={{ flex: 1, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 15, fontFamily: 'monospace', fontWeight: 700 }}
               />
               <button onClick={() => enrollCard()} disabled={rfidBusy}
-                style={{ padding: '12px 22px', borderRadius: 10, background: rfidBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                style={{ padding: '12px 22px', borderRadius: 10, background: rfidBusy ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                 {rfidBusy ? 'Saving…' : 'Enroll'}
               </button>
             </div>
@@ -975,7 +975,7 @@ export default function Hosts() {
               {viewHost.photo_data ? (
                 <img src={viewHost.photo_data} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0F2F1' }} />
               ) : (
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
                   {viewHost.first_name[0]}{viewHost.last_name[0]}
                 </div>
               )}
@@ -1014,7 +1014,7 @@ export default function Hosts() {
               ))}
             </div>
             <button onClick={() => { const h = viewHost; setViewHost(null); setEditing(h.id); setForm({ ...defaultForm, ...h }); setShowModal(true); }}
-              style={{ marginTop: 18, width: '100%', padding: '13px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              style={{ marginTop: 18, width: '100%', padding: '13px', borderRadius: 12, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Pencil size={15} /> Edit {terms.hostLower}
             </button>
           </div>
