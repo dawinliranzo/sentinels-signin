@@ -30,6 +30,17 @@ export default function Settings() {
   const updateUser = useStore((s) => s.updateUser);
   const canManage = user?.role === 'admin' || user?.role === 'super_admin' || user?.switched || (user?.permissions || []).includes('settings');
 
+  // Curated kiosk theme palettes — one click recolors every kiosk screen
+  // (welcome, sign-in, sign-out) via settings.primary_color + accent_color.
+  const THEME_PALETTES = [
+    { name: 'Sentinels Teal', primary: '#0D7377', accent: '#FF6B35', blurb: 'The default brand look' },
+    { name: 'Midnight Blue',  primary: '#1D4ED8', accent: '#F59E0B', blurb: 'Corporate & calm' },
+    { name: 'Royal Plum',     primary: '#7C3AED', accent: '#F97316', blurb: 'Modern & playful' },
+    { name: 'Forest Green',   primary: '#15803D', accent: '#EAB308', blurb: 'Schools & campuses' },
+    { name: 'Crimson Red',    primary: '#BE123C', accent: '#0EA5E9', blurb: 'Bold & urgent' },
+    { name: 'Graphite Cyan',  primary: '#334155', accent: '#06B6D4', blurb: 'Sleek & minimal' },
+  ];
+
   // ── Billing (Stripe) — fresh org billing state comes from /auth/me ──
   const BILLING_PLANS = {
     free:       { label: 'Free trial', price: 0,   color: '#64748B', perks: ['5 users', '100 visits/mo', '1 kiosk device', '14 days with every feature'] },
@@ -762,6 +773,35 @@ export default function Settings() {
               style={{ ...inputStyle, maxWidth: 140 }} />
             <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 6 }}>
               The dashboard flags visitors who have been signed in longer than this many hours.
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Theme palette</label>
+            <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 10 }}>
+              One click recolors the whole kiosk (welcome, sign-in, sign-out screens). Fine-tune with the custom pickers below. Kiosks pick up changes within 5 minutes — remember Save Settings.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+              {THEME_PALETTES.map(p => {
+                const active = (settings.primary_color || '').toLowerCase() === p.primary.toLowerCase() && (settings.accent_color || '').toLowerCase() === p.accent.toLowerCase();
+                return (
+                  <button type="button" key={p.name}
+                    onClick={() => setSettings({ ...settings, primary_color: p.primary, accent_color: p.accent })}
+                    style={{
+                      textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
+                      border: active ? '2px solid #0D7377' : '2px solid #E2E8F0',
+                      background: active ? '#F0FDFA' : '#fff',
+                      boxShadow: active ? '0 2px 8px rgba(13,115,119,0.15)' : 'none'
+                    }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      <span style={{ width: 26, height: 26, borderRadius: 8, background: p.primary, display: 'inline-block' }} />
+                      <span style={{ width: 26, height: 26, borderRadius: 8, background: p.accent, display: 'inline-block' }} />
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>{p.blurb}</div>
+                    {active && <div style={{ fontSize: 11, fontWeight: 800, color: '#0F766E', marginTop: 4 }}>✓ Active</div>}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
