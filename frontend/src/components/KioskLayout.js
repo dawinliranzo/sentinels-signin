@@ -1,9 +1,18 @@
 import React from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { getCachedTheme } from '../utils/kioskTheme';
 
 export default function KioskLayout() {
   const navigate = useNavigate();
+
+  // Org theme — cached by the kiosk screens' config fetch; updates live
+  const [T, setT] = React.useState(getCachedTheme);
+  React.useEffect(() => {
+    const onTheme = () => setT(getCachedTheme());
+    window.addEventListener('kiosk-theme', onTheme);
+    return () => window.removeEventListener('kiosk-theme', onTheme);
+  }, []);
 
   // Heartbeat: tell the backend this kiosk is alive (used for offline alerts)
   React.useEffect(() => {
@@ -32,7 +41,7 @@ export default function KioskLayout() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0D7377 0%, #0A5C5F 50%, #0F172A 100%)',
+      background: `linear-gradient(135deg, ${T.primary} 0%, ${T.primaryDark} 50%, #0F172A 100%)`,
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       padding: 24, position: 'relative', overflow: 'hidden'
@@ -41,12 +50,12 @@ export default function KioskLayout() {
       <div style={{
         position: 'absolute', top: -100, right: -100,
         width: 400, height: 400, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(20,255,236,0.1) 0%, transparent 70%)'
+        background: `radial-gradient(circle, ${T.brightDim} 0%, transparent 70%)`
       }} />
       <div style={{
         position: 'absolute', bottom: -150, left: -150,
         width: 500, height: 500, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(255,107,53,0.08) 0%, transparent 70%)'
+        background: `radial-gradient(circle, ${T.accentWash} 0%, transparent 70%)`
       }} />
 
       {/* Exit button (hidden) */}
