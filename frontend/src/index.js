@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import App from './App';
 import './index.css';
+import { applyCachedPortalTheme } from './utils/portalTheme';
+
+// Paint the org's palette before first render (no teal flash for returning users)
+applyCachedPortalTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {
