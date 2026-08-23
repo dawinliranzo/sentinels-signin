@@ -193,8 +193,8 @@ export default function Dashboard() {
   const hasAlerts = flaggedToday.length > 0 || staffAlerts.length > 0 || overstaying.length > 0;
 
   const statCards = [
-    { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: '#0D7377', link: '/visits?status=checked_in' },
-    { title: "Today's Visits", value: stats?.today_visits || 0, icon: LogIn, color: '#FF6B35', link: '/visits?range=today' },
+    { title: 'Active Visitors', value: stats?.active_visitors || 0, icon: Users, color: 'var(--brand)', link: '/visits?status=checked_in' },
+    { title: "Today's Visits", value: stats?.today_visits || 0, icon: LogIn, color: 'var(--accent)', link: '/visits?range=today' },
     { title: 'Weekly Visits', value: stats?.weekly_visits || 0, icon: Calendar, color: '#9B59B6', link: '/visits?range=week' },
     { title: 'Active Hosts', value: stats?.active_hosts || 0, icon: Building2, color: '#2ECC71', link: '/hosts' },
   ];
@@ -233,7 +233,7 @@ export default function Dashboard() {
             onClick={() => navigate('/pre-registered')}
             style={{
               padding: '12px 24px', borderRadius: 12,
-              background: '#0D7377', border: 'none', color: '#fff',
+              background: 'var(--brand)', border: 'none', color: '#fff',
               fontWeight: 600, cursor: 'pointer', fontSize: 14,
               display: 'flex', alignItems: 'center', gap: 8
             }}
@@ -244,7 +244,7 @@ export default function Dashboard() {
             onClick={() => window.open(org?.id ? `/kiosk?org=${org.id}` : '/kiosk', '_blank')}
             style={{
               padding: '12px 24px', borderRadius: 12,
-              background: '#FF6B35', border: 'none', color: '#fff',
+              background: 'var(--accent)', border: 'none', color: '#fff',
               fontWeight: 600, cursor: 'pointer', fontSize: 14,
               display: 'flex', alignItems: 'center', gap: 8
             }}
@@ -340,7 +340,7 @@ export default function Dashboard() {
                     {s.photo ? (
                       <img src={s.photo} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                     ) : (
-                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                         {s.first_name?.[0]}
                       </div>
                     )}
@@ -369,7 +369,7 @@ export default function Dashboard() {
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, marginBottom: 8, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                       <div>
                         <div onClick={() => setDetailVisit(v)} title="View visit details"
-                          style={{ fontWeight: 700, fontSize: 14, color: '#0D7377', cursor: 'pointer' }}>
+                          style={{ fontWeight: 700, fontSize: 14, color: 'var(--brand)', cursor: 'pointer' }}>
                           {v.visitor_first_name} {v.visitor_last_name}
                         </div>
                         <div style={{ fontSize: 12, color: '#94A3B8' }}>
@@ -398,7 +398,7 @@ export default function Dashboard() {
             <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A' }}>Recent Visits</h3>
             <button
               onClick={() => navigate('/visits')}
-              style={{ color: '#0D7377', fontSize: 14, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}
+              style={{ color: 'var(--brand)', fontSize: 14, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}
             >
               View All →
             </button>
@@ -416,7 +416,7 @@ export default function Dashboard() {
                 ) : (
                   <div onClick={() => setDetailVisit(visit)} style={{
                     width: 44, height: 44, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
-                    background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                    background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontWeight: 700, fontSize: 14, color: '#fff'
                   }}>
@@ -426,7 +426,7 @@ export default function Dashboard() {
                 <div style={{ flex: 1 }}>
                   <div onClick={() => setDetailVisit(visit)}
                     title="View visit details"
-                    style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
+                    style={{ fontWeight: 600, color: 'var(--brand)', fontSize: 14, cursor: 'pointer' }}>
                     {visit.visitor_first_name} {visit.visitor_last_name}
                   </div>
                   <div style={{ fontSize: 13, color: '#64748B' }}>
@@ -459,8 +459,8 @@ export default function Dashboard() {
           <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 20 }}>Quick Actions</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              { label: 'Add New Host', icon: Users, action: () => navigate('/hosts'), color: '#0D7377' },
-              { label: 'View Evacuation List', icon: Bell, action: openEvacuation, color: '#FF6B35' },
+              { label: 'Add New Host', icon: Users, action: () => navigate('/hosts'), color: 'var(--brand)' },
+              { label: 'View Evacuation List', icon: Bell, action: openEvacuation, color: 'var(--accent)' },
               { label: 'Export Reports', icon: TrendingUp, action: () => setShowExport(true), color: '#9B59B6' },
               { label: 'Kiosk Settings', icon: Clock, action: () => navigate('/settings'), color: '#2ECC71' },
             ].map((action, i) => (
@@ -513,8 +513,8 @@ export default function Dashboard() {
                 <label key={t.key} style={{
                   display: 'flex', gap: 12, alignItems: 'flex-start', padding: '14px 16px',
                   borderRadius: 12, cursor: 'pointer',
-                  border: exportType === t.key ? '2px solid #0D7377' : '1px solid #E2E8F0',
-                  background: exportType === t.key ? '#F0FDFA' : '#fff'
+                  border: exportType === t.key ? '2px solid var(--brand)' : '1px solid #E2E8F0',
+                  background: exportType === t.key ? 'var(--brand-wash)' : '#fff'
                 }}>
                   <input
                     type="radio" name="exportType" checked={exportType === t.key}
@@ -537,9 +537,9 @@ export default function Dashboard() {
                     onClick={() => setExportRange(r.key)}
                     style={{
                       padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                      border: exportRange === r.key ? '2px solid #0D7377' : '1px solid #E2E8F0',
-                      background: exportRange === r.key ? '#F0FDFA' : '#fff',
-                      color: exportRange === r.key ? '#0D7377' : '#475569'
+                      border: exportRange === r.key ? '2px solid var(--brand)' : '1px solid #E2E8F0',
+                      background: exportRange === r.key ? 'var(--brand-wash)' : '#fff',
+                      color: exportRange === r.key ? 'var(--brand)' : '#475569'
                     }}
                   >
                     {r.label}
@@ -559,7 +559,7 @@ export default function Dashboard() {
                 onClick={runExport}
                 disabled={exporting}
                 style={{
-                  flex: 1, padding: '13px', borderRadius: 10, background: '#0D7377', border: 'none',
+                  flex: 1, padding: '13px', borderRadius: 10, background: 'var(--brand)', border: 'none',
                   color: '#fff', fontWeight: 600, cursor: exporting ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                   opacity: exporting ? 0.7 : 1
@@ -586,7 +586,7 @@ export default function Dashboard() {
               <h2 style={{ fontSize: 22, fontWeight: 700, color: '#0F172A' }}>
                 Evacuation List
               </h2>
-              <span style={{ background: '#FF6B35', color: '#fff', padding: '6px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14 }}>
+              <span style={{ background: 'var(--accent)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14 }}>
                 {evacList.length} on site
               </span>
             </div>
@@ -600,13 +600,13 @@ export default function Dashboard() {
                     {v.photo_data ? (
                       <img src={v.photo_data} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid #E2E8F0' }} />
                     ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0 }}>
                         {v.visitor_first_name?.[0]}{v.visitor_last_name?.[0]}
                       </div>
                     )}
                     <div>
                       <div onClick={() => setDetailVisit(v)} title="View visit details"
-                        style={{ fontWeight: 600, fontSize: 15, color: '#0D7377', cursor: 'pointer' }}>
+                        style={{ fontWeight: 600, fontSize: 15, color: 'var(--brand)', cursor: 'pointer' }}>
                         {v.visitor_first_name} {v.visitor_last_name}
                       </div>
                       <div style={{ fontSize: 12, color: '#64748B' }}>
@@ -616,7 +616,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', fontSize: 12, color: '#64748B' }}>
-                    <div style={{ fontWeight: 600, color: '#0D7377' }}>{v.badge_number}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--brand)' }}>{v.badge_number}</div>
                     <div>{v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString() : ''}</div>
                   </div>
                 </div>
@@ -627,7 +627,7 @@ export default function Dashboard() {
               <button onClick={() => setShowEvac(false)} style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#F1F5F9', border: 'none', fontWeight: 600, cursor: 'pointer' }}>
                 Close
               </button>
-              <button onClick={printEvacuation} style={{ flex: 1, padding: '13px', borderRadius: 10, background: '#FF6B35', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={printEvacuation} style={{ flex: 1, padding: '13px', borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
                 Print List
               </button>
             </div>
@@ -648,7 +648,7 @@ export default function Dashboard() {
               {detailVisit.photo_data ? (
                 <img src={detailVisit.photo_data} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '3px solid #E0F2F1' }} />
               ) : (
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
+                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 24, color: '#fff' }}>
                   {detailVisit.visitor_first_name?.[0]}{detailVisit.visitor_last_name?.[0]}
                 </div>
               )}
@@ -692,13 +692,13 @@ export default function Dashboard() {
       {popupVisit && (
         <div className="responsive-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140, padding: 16 }}>
           <div style={{ background: '#fff', borderRadius: 24, padding: 28, width: '100%', maxWidth: 400, boxShadow: '0 25px 80px rgba(0,0,0,0.4)', textAlign: 'center' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#F0FDFA', color: '#0D7377', fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--brand-wash)', color: 'var(--brand)', fontSize: 12, fontWeight: 800, padding: '6px 14px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16 }}>
               <ScanFace size={14} /> Just checked in
             </div>
             {popupVisit.photo_data ? (
               <img src={popupVisit.photo_data} alt="" style={{ width: 120, height: 120, borderRadius: '50%', objectFit: 'cover', border: '4px solid #E0F2F1', margin: '0 auto 14px', display: 'block' }} />
             ) : (
-              <div style={{ width: 120, height: 120, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 40, color: '#fff', margin: '0 auto 14px' }}>
+              <div style={{ width: 120, height: 120, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 40, color: '#fff', margin: '0 auto 14px' }}>
                 {popupVisit.visitor_first_name?.[0]}{popupVisit.visitor_last_name?.[0]}
               </div>
             )}
@@ -722,7 +722,7 @@ export default function Dashboard() {
               )}
             </div>
             <button onClick={() => setPopupVisit(null)}
-              style={{ marginTop: 18, width: '100%', padding: '14px', borderRadius: 12, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
+              style={{ marginTop: 18, width: '100%', padding: '14px', borderRadius: 12, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
               Got it
             </button>
           </div>
