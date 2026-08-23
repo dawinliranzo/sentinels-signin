@@ -74,12 +74,14 @@ export default function KioskWelcome() {
   }, [orgId]);
 
   // ─── RFID: USB readers "type" the card UID + Enter — treat a burst as a tap ───
+  // This is an ENTRY screen → direction 'in': a tap here can never sign
+  // anyone out; if they're already on site we just confirm their badge.
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, direction: 'in', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       // Notes intentionally NOT passed through — private to the admin dashboard.
       setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
-      setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
+      setMode(r.data.action === 'checked_in' ? 'staff-in' : r.data.action === 'already_in' ? 'already' : 'staff-out');
       setTimeout(() => setMode('welcome'), 8000);
     } catch (err) {
       setResult({ message: err.response?.data?.error || 'Card not recognized for this kiosk' });
@@ -188,12 +190,12 @@ export default function KioskWelcome() {
         token = token.split('/check-in/')[1].split(/[?#/&]/)[0];
       }
 
-      // Frequent-visitor badge QR (permanent FV-XXXXX codes — scan toggles in/out)
+      // Frequent-visitor badge QR (permanent FV-XXXXX codes — ENTRY screen: direction 'in')
       if (token.startsWith('FV:')) {
         try {
-          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          const r = await api.post('/visits/fv-checkin', { org_id: orgId, code: token, direction: 'in', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
           setResult({ name: r.data.name, badge: r.data.badge });
-          setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
+          setMode(r.data.action === 'checked_in' ? 'staff-in' : r.data.action === 'already_in' ? 'already' : 'staff-out');
           setTimeout(() => setMode('welcome'), 8000);
         } catch (err) {
           setResult({ message: err.response?.data?.error || 'Badge not recognized for this kiosk' });
@@ -202,14 +204,14 @@ export default function KioskWelcome() {
         return;
       }
 
-      // Staff badge QR (printed employee ID cards)
+      // Staff badge QR (printed employee ID cards — ENTRY screen: direction 'in')
       if (token.startsWith('STAFF:')) {
         try {
-          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+          const r = await api.post('/visits/staff-checkin', { org_id: orgId, host_id: token.slice(6), direction: 'in', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
           // Notes intentionally NOT passed through — staff notes are private to the
           // admin dashboard (Staff Alerts feed), never shown on this public screen.
           setResult({ name: r.data.name, badge: r.data.badge, photo: r.data.photo });
-          setMode(r.data.action === 'checked_in' ? 'staff-in' : 'staff-out');
+          setMode(r.data.action === 'checked_in' ? 'staff-in' : r.data.action === 'already_in' ? 'already' : 'staff-out');
           setTimeout(() => setMode('welcome'), 8000);
         } catch (err) {
           setResult({ message: err.response?.data?.error || 'Badge not recognized for this kiosk' });
