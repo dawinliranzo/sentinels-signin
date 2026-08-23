@@ -204,7 +204,7 @@ export default function Visits() {
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '10px 20px', borderRadius: 10,
-              background: '#0D7377', border: 'none', color: '#fff',
+              background: 'var(--brand)', border: 'none', color: '#fff',
               fontWeight: 600, cursor: 'pointer', fontSize: 14
             }}>
             <Download size={18} /> Export CSV
@@ -290,13 +290,13 @@ export default function Visits() {
                           style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, cursor: 'pointer', border: '2px solid #E2E8F0' }} />
                       ) : (
                         <div onClick={() => setDetailVisit(v)}
-                          style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
+                          style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0, cursor: 'pointer' }}>
                           {v.visitor_first_name?.[0]}{v.visitor_last_name?.[0]}
                         </div>
                       )}
                       <div>
                         <div onClick={() => setDetailVisit(v)} title="View visit details"
-                          style={{ fontWeight: 600, color: '#0D7377', fontSize: 14, cursor: 'pointer' }}>
+                          style={{ fontWeight: 600, color: 'var(--brand)', fontSize: 14, cursor: 'pointer' }}>
                           {v.visitor_first_name} {v.visitor_last_name}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748B' }}>{v.visitor_company || 'No company'}</div>
@@ -317,7 +317,7 @@ export default function Visits() {
                 <td style={{ padding: '16px 20px' }}>
                   <span style={{
                     fontFamily: 'monospace', fontWeight: 700, fontSize: 14,
-                    color: '#0D7377', background: '#E0F2F1', padding: '4px 10px', borderRadius: 6
+                    color: 'var(--brand)', background: '#E0F2F1', padding: '4px 10px', borderRadius: 6
                   }}>
                     {v.badge_number}
                   </span>
@@ -371,7 +371,7 @@ export default function Visits() {
                         style={{
                           display: 'flex', alignItems: 'center', gap: 6,
                           padding: '8px 12px', borderRadius: 8,
-                          background: '#ECFEFF', border: 'none', color: '#0D7377',
+                          background: '#ECFEFF', border: 'none', color: 'var(--brand)',
                           fontSize: 12, fontWeight: 700, cursor: 'pointer'
                         }}>
                         <FileText size={14} /> NDA
@@ -394,7 +394,7 @@ export default function Visits() {
                           onClick={() => setConfirmOutId(v.id)}
                           style={{
                             padding: '8px 16px', borderRadius: 8,
-                            background: '#FF6B35', border: 'none', color: '#fff',
+                            background: 'var(--accent)', border: 'none', color: '#fff',
                             fontSize: 12, fontWeight: 600, cursor: 'pointer'
                           }}
                         >
@@ -428,7 +428,7 @@ export default function Visits() {
             </p>
             <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>Severity</label>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              {[['info', '#0D7377', '#F0FDFA', '#99F6E4'], ['warning', '#B45309', '#FFFBEB', '#FDE68A'], ['blacklist', '#DC2626', '#FEF2F2', '#FECACA']].map(([sev, col, bg, brd]) => (
+              {[['info', 'var(--brand)', 'var(--brand-wash)', 'var(--brand-border)'], ['warning', '#B45309', '#FFFBEB', '#FDE68A'], ['blacklist', '#DC2626', '#FEF2F2', '#FECACA']].map(([sev, col, bg, brd]) => (
                 <button key={sev} onClick={() => setFlagForm({ ...flagForm, severity: sev })}
                   style={{
                     flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', textTransform: 'capitalize',
@@ -450,7 +450,7 @@ export default function Visits() {
                 Cancel
               </button>
               <button onClick={saveFlag} disabled={flagBusy}
-                style={{ padding: '11px 20px', borderRadius: 10, background: flagBusy ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                style={{ padding: '11px 20px', borderRadius: 10, background: flagBusy ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                 {flagBusy ? 'Saving…' : 'Save flag'}
               </button>
             </div>
@@ -491,7 +491,7 @@ export default function Visits() {
                     <span style={{ fontWeight: 700, fontSize: 14, color: '#0F172A' }}>{f.visitor_name || f.visitor_email}</span>
                     <span style={{
                       fontSize: 10, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', borderRadius: 20, padding: '2px 10px',
-                      background: f.severity === 'blacklist' ? '#DC2626' : f.severity === 'warning' ? '#F59E0B' : '#0D7377', color: '#fff'
+                      background: f.severity === 'blacklist' ? '#DC2626' : f.severity === 'warning' ? '#F59E0B' : 'var(--brand)', color: '#fff'
                     }}>
                       {f.severity}
                     </span>
@@ -527,13 +527,13 @@ export default function Visits() {
               {detailVisit.photo_data ? (
                 <img src={detailVisit.photo_data} alt="" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
               ) : (
-                <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #0D7377, #14FFEC)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700 }}>
+                <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 22, fontWeight: 700 }}>
                   {detailVisit.visitor_first_name?.[0]}{detailVisit.visitor_last_name?.[0]}
                 </div>
               )}
               <div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: '#0F172A' }}>{detailVisit.visitor_first_name} {detailVisit.visitor_last_name}</div>
-                <div style={{ fontSize: 13, color: '#64748B' }}>Badge <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0D7377' }}>{detailVisit.badge_number}</span></div>
+                <div style={{ fontSize: 13, color: '#64748B' }}>Badge <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--brand)' }}>{detailVisit.badge_number}</span></div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -557,8 +557,8 @@ export default function Visits() {
               ))}
               {/* Custom registration fields for this org */}
               {detailVisit.custom_data && Object.entries(detailVisit.custom_data).filter(([, val]) => val !== '' && val != null).map(([key, val]) => (
-                <div key={key} style={{ padding: '10px 12px', background: '#F0FDFA', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, color: '#0D7377', marginBottom: 2 }}>{key}</div>
+                <div key={key} style={{ padding: '10px 12px', background: 'var(--brand-wash)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--brand)', marginBottom: 2 }}>{key}</div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', wordBreak: 'break-word' }}>{typeof val === 'boolean' ? (val ? 'Yes' : 'No') : String(val)}</div>
                 </div>
               ))}
@@ -566,7 +566,7 @@ export default function Visits() {
             <button onClick={() => reprintBadge(detailVisit)}
               style={{
                 width: '100%', marginTop: 16, padding: '13px', borderRadius: 10,
-                background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700,
+                background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700,
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
               }}>
               <Printer size={16} /> Print Badge
