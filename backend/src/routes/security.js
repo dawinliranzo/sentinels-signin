@@ -9,7 +9,9 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 
 // GET /api/security/alerts — open alerts first, then newest. ?status=all
 // includes acknowledged ones (default: last 50 either way).
-router.get('/alerts', authenticate, requirePermission('visits'), async (req, res) => {
+// Gated by the dedicated 'security' permission — admins get it automatically,
+// everyone else only via a custom role (Team → Roles & Permissions).
+router.get('/alerts', authenticate, requirePermission('security'), async (req, res) => {
   try {
     const r = await db.query(
       `SELECT a.id, a.type, a.message, a.metadata, a.acknowledged_at, a.created_at,
@@ -32,7 +34,7 @@ router.get('/alerts', authenticate, requirePermission('visits'), async (req, res
 });
 
 // PATCH /api/security/alerts/:id/acknowledge — mark reviewed (kept in the log)
-router.patch('/alerts/:id/acknowledge', authenticate, requirePermission('visits'), async (req, res) => {
+router.patch('/alerts/:id/acknowledge', authenticate, requirePermission('security'), async (req, res) => {
   try {
     const r = await db.query(
       `UPDATE security_alerts SET acknowledged_at = NOW(), acknowledged_by = $1
