@@ -32,7 +32,7 @@ export default function Register() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #0D7377 0%, #0F172A 100%)', padding: 24
+      background: 'linear-gradient(135deg, var(--brand) 0%, #0F172A 100%)', padding: 24
     }}>
       <div style={{
         width: '100%', maxWidth: 440, background: '#fff', borderRadius: 24,
@@ -41,7 +41,7 @@ export default function Register() {
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div style={{
             width: 64, height: 64, borderRadius: 16,
-            background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+            background: 'linear-gradient(135deg, var(--brand), var(--brand-bright))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 20px', fontSize: 28, fontWeight: 800, color: '#fff'
           }}>
@@ -84,7 +84,7 @@ export default function Register() {
           <button type="submit" disabled={loading}
             style={{
               width: '100%', padding: '16px', borderRadius: 12,
-              background: loading ? '#94A3B8' : '#0D7377', border: 'none',
+              background: loading ? '#94A3B8' : 'var(--brand)', border: 'none',
               color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 8
             }}>
             {loading ? 'Creating...' : 'Create Account'}
@@ -93,7 +93,7 @@ export default function Register() {
 
         <p style={{ textAlign: 'center', marginTop: 24, fontSize: 14, color: '#64748B' }}>
           Already have an account?{' '}
-          <a href="/login" style={{ color: '#0D7377', fontWeight: 600, textDecoration: 'none' }}>
+          <a href="/login" style={{ color: 'var(--brand)', fontWeight: 600, textDecoration: 'none' }}>
             Sign in
           </a>
         </p>
