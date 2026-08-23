@@ -19,6 +19,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const db = require('../utils/db');
 const { authenticate, requirePermission, requireFeature } = require('../middleware/auth');
+const { raiseSecurityAlert, recentAlertExists } = require('../utils/security');
 
 const APP_API = process.env.PUBLIC_API_URL || 'https://api.sentinelskiosk.com/api';
 
@@ -26,6 +27,44 @@ const getSettings = async (orgId) => {
   const r = await db.query('SELECT settings FROM organizations WHERE id = $1', [orgId]);
   return (r.rows[0] && r.rows[0].settings) || {};
 };
+
+// ── Tailgating detector (Settings → UniFi Protect → "Tailgating alerts") ──
+// A camera sees people BEFORE they reach the kiosk, so the comparison must be
+// delayed: when a person event arrives we wait `windowMin` minutes, then count
+// over that trailing window —
+//   seen      = camera person-events that represent ENTRIES (auto check-ins +
+//               unrecognized faces; exits and "already on site" re-sightings
+//               are excluded)
+//   checkedIn = visit rows created in the same window (any method — kiosk,
+//               QR, badge tap, camera auto check-in; companions included)
+// seen > checkedIn means bodies walked in without a matching check-in: alert.
+// One alert per org per 10 minutes (cooldown) so a busy door can't spam.
+function scheduleTailgateCheck(orgId, cameraName, windowMin) {
+  setTimeout(async () => {
+    try {
+      const seen = await db.query(
+        `SELECT COUNT(*)::int AS n FROM unifi_events
+         WHERE org_id = $1 AND action IN ('checked_in', 'unidentified')
+           AND created_at > NOW() - ($2 || ' minutes')::interval`,
+        [orgId, String(windowMin)]
+      );
+      const checkedIn = await db.query(
+        `SELECT COUNT(*)::int AS n FROM visits
+         WHERE org_id = $1 AND checked_in_at > NOW() - ($2 || ' minutes')::interval`,
+        [orgId, String(windowMin)]
+      );
+      const e = seen.rows[0].n, v = checkedIn.rows[0].n;
+      if (e <= v) return;
+      if (await recentAlertExists(orgId, 'tailgating', 'detector', 'unifi', 10)) return;
+      await raiseSecurityAlert(orgId, 'tailgating',
+        `Possible tailgating near ${cameraName || 'a door camera'}: cameras counted ${e} ${e === 1 ? 'person' : 'people'} entering in the last ${windowMin} min, but only ${v} check-in${v === 1 ? '' : 's'} recorded.`,
+        { detector: 'unifi', camera: cameraName, seen: e, checked_in: v, window_minutes: windowMin });
+    } catch (err) {
+      if (err.code !== '42P01') console.error('Tailgate check failed:', err.message);
+    }
+  }, Math.max(1, windowMin) * 60 * 1000).unref?.();
+  // .unref: a pending tailgate check must never keep the process alive
+}
 
 const logEvent = async (orgId, camera, personName, direction, action, detail) => {
   try {
@@ -82,6 +121,13 @@ router.post('/unifi/webhook/:orgId/:secret', async (req, res) => {
     const camCfg = (cfg.cameras || []).find(c =>
       c.name && cameraName && c.name.toLowerCase() === cameraName.toLowerCase());
     const direction = camCfg ? camCfg.direction : 'both';
+
+    // Tailgating detector: an entry-side person event starts a delayed
+    // camera-vs-check-ins comparison (delayed so the person has time to walk
+    // from the door to the kiosk and sign in). Exits never trigger it.
+    if (cfg.tailgate_alerts === true && cameraName && direction !== 'out') {
+      scheduleTailgateCheck(orgId, cameraName, parseInt(cfg.tailgate_window_minutes, 10) || 3);
+    }
 
     if (!personName) {
       await logEvent(orgId, cameraName, null, direction, 'unidentified', payload);
@@ -196,6 +242,8 @@ router.get('/unifi/config', authenticate, requirePermission('settings'), require
       enabled: cfg.enabled === true,
       secret: cfg.secret || null,
       cameras: Array.isArray(cfg.cameras) ? cfg.cameras : [],
+      tailgate_alerts: cfg.tailgate_alerts === true,
+      tailgate_window_minutes: parseInt(cfg.tailgate_window_minutes, 10) || 3,
       webhook_url: cfg.secret ? `${APP_API}/integrations/unifi/webhook/${req.user.org_id}/${cfg.secret}` : null,
     });
   } catch (e) {
@@ -217,10 +265,19 @@ router.put('/unifi/config', authenticate, requirePermission('settings'), require
       : [];
     const settings = await getSettings(req.user.org_id);
     const existing = settings.unifi || {};
+    // Tailgating alerts: absent keys keep their previous values so older
+    // frontends (or partial saves) never silently turn the detector off
+    const tgWindow = parseInt(req.body && req.body.tailgate_window_minutes, 10);
     const merged = {
       enabled,
       cameras,
       secret: existing.secret || crypto.randomBytes(24).toString('hex'),
+      tailgate_alerts: typeof (req.body && req.body.tailgate_alerts) === 'boolean'
+        ? req.body.tailgate_alerts
+        : existing.tailgate_alerts === true,
+      tailgate_window_minutes: Number.isInteger(tgWindow) && tgWindow >= 1 && tgWindow <= 15
+        ? tgWindow
+        : (parseInt(existing.tailgate_window_minutes, 10) || 3),
     };
     await db.query(
       `UPDATE organizations SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('unifi', $1::jsonb) WHERE id = $2`,
