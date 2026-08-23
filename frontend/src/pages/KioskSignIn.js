@@ -283,13 +283,15 @@ export default function KioskSignIn() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passback]);
 
-  // ─── RFID tap on this screen: staff/FV badges sign in (or out) without
-  // touching the visitor form — whatever was typed stays exactly as it was
+  // ─── RFID tap on this screen: staff/FV badges sign in without touching the
+  // visitor form — whatever was typed stays exactly as it was. This is an
+  // ENTRY screen → direction 'in': a tap here can never sign anyone out; if
+  // the badge is already on site we just confirm its active badge number.
   const [rfidResult, setRfidResult] = useState(null); // { name, action } | { error }
   const rfidTimerRef = useRef(null);
   const handleRfidTap = async (uid) => {
     try {
-      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, device_id: localStorage.getItem('kiosk_device_id') || undefined, });
+      const r = await api.post('/visits/rfid-tap', { org_id: orgId, uid, direction: 'in', device_id: localStorage.getItem('kiosk_device_id') || undefined, });
       setRfidResult({ name: r.data.name, action: r.data.action, badge: r.data.badge, photo: r.data.photo });
     } catch (err) {
       setRfidResult({ error: err.response?.data?.error || 'Card not recognized for this kiosk' });
@@ -320,7 +322,7 @@ export default function KioskSignIn() {
             {rfidResult.photo ? (
               <img src={rfidResult.photo} alt="" style={{
                 width: 130, height: 130, borderRadius: '50%', objectFit: 'cover', marginBottom: 20,
-                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : T.primaryBright}`
+                border: `4px solid ${rfidResult.action === 'checked_out' ? T.primaryBright : '#2ECC71'}`
               }} />
             ) : (
               <div style={{
@@ -328,18 +330,24 @@ export default function KioskSignIn() {
                 background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 52, fontWeight: 800, color: '#fff',
-                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : T.primaryBright}`
+                border: `4px solid ${rfidResult.action === 'checked_out' ? T.primaryBright : '#2ECC71'}`
               }}>
                 {rfidResult.name?.[0] || '?'}
               </div>
             )}
             <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-              {rfidResult.action === 'checked_in' ? `Welcome, ${rfidResult.name}!` : `Goodbye, ${rfidResult.name}!`}
+              {rfidResult.action === 'checked_in'
+                ? `Welcome, ${rfidResult.name}!`
+                : rfidResult.action === 'already_in'
+                  ? `You're already signed in, ${rfidResult.name}`
+                  : `Goodbye, ${rfidResult.name}!`}
             </div>
             <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }}>
               {rfidResult.action === 'checked_in'
                 ? (rfidResult.badge ? `Badge: ${rfidResult.badge}` : "You're signed in")
-                : "You're signed out. Have a great day!"}
+                : rfidResult.action === 'already_in'
+                  ? (rfidResult.badge ? `Active badge: ${rfidResult.badge}` : 'Your visit is already active')
+                  : "You're signed out. Have a great day!"}
             </div>
           </>
         )}
