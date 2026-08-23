@@ -56,7 +56,7 @@ export default function Compliance() {
       {/* Records */}
       <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
         <div style={{ padding: '18px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <FileCheck size={20} color="#0D7377" />
+          <FileCheck size={20} color="var(--brand)" />
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>Signed NDAs</h3>
           <span style={{ fontSize: 13, color: '#94A3B8' }}>({records.length})</span>
         </div>
@@ -86,13 +86,13 @@ export default function Compliance() {
                   <td style={{ padding: '14px 20px', fontSize: 14, color: '#334155' }}>{r.signed_name}</td>
                   <td style={{ padding: '14px 20px' }}>
                     {r.badge_number
-                      ? <span style={{ padding: '3px 10px', borderRadius: 20, background: '#ECFEFF', color: '#0D7377', fontSize: 12, fontWeight: 700 }}>{r.badge_number}</span>
+                      ? <span style={{ padding: '3px 10px', borderRadius: 20, background: '#ECFEFF', color: 'var(--brand)', fontSize: 12, fontWeight: 700 }}>{r.badge_number}</span>
                       : <span style={{ color: '#94A3B8' }}>—</span>}
                   </td>
                   <td style={{ padding: '14px 20px', fontSize: 13, color: '#64748B' }}>{new Date(r.signed_at).toLocaleString()}</td>
                   <td style={{ padding: '14px 20px' }}>
                     <button onClick={() => openRecord(r.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#F0FDFA', border: 'none', color: '#0D7377', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: 'var(--brand-wash)', border: 'none', color: 'var(--brand)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                       <Eye size={14} /> View
                     </button>
                   </td>
