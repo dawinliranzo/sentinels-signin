@@ -20,6 +20,7 @@ const DEFAULTS = (orgName) => ({
   nda_text: '',
   badge_label: '',
   overstay_hours: 8,
+  anti_passback_minutes: 0, // Access Security: 0 = badges toggle freely
   logo_data: '',
   custom_fields: [],
   hidden_fields: [],
@@ -138,12 +139,18 @@ export default function Settings() {
       toast(err.response?.data?.error || 'Failed to save schedule', 'error');
     }
   };
-  const saveUnifi = async (enabled, cameras) => {
+  const saveUnifi = async (enabled, cameras, overrides = {}) => {
     setUnifiBusy(true);
     try {
-      const r = await api.put('/integrations/unifi/config', { enabled, cameras });
+      const r = await api.put('/integrations/unifi/config', {
+        enabled,
+        cameras,
+        // Tailgating detector — keep the stored values unless this save changes them
+        tailgate_alerts: overrides.tailgate_alerts ?? (unifiCfg?.tailgate_alerts === true),
+        tailgate_window_minutes: overrides.tailgate_window_minutes ?? (unifiCfg?.tailgate_window_minutes ?? 3),
+      });
       setUnifiCfg(r.data);
-      toast(enabled ? 'UniFi auto check-in is ON — paste the webhook URL into your UniFi console' : 'UniFi auto check-in is OFF');
+      toast(enabled ? 'UniFi settings saved — camera integration is ON' : 'UniFi auto check-in is OFF');
       loadUnifi();
     } catch (err) {
       toast(err.response?.data?.error || 'Failed to save UniFi settings', 'error');
@@ -672,6 +679,40 @@ export default function Settings() {
                       </button>
                     </div>
                   </div>
+
+                  {/* 4 · Tailgating alerts — the camera becomes the person counter:
+                      more bodies past the door than check-ins = silent security alert */}
+                  <div style={{ marginBottom: 14, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#9A3412', marginBottom: 8 }}>
+                      4 · Tailgating alerts <span style={{ fontWeight: 500, color: '#C2410C' }}>(optional — camera vs. check-in counting)</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
+                      <input type="checkbox" checked={unifiCfg.tailgate_alerts === true}
+                        onChange={(e) => setUnifiCfg({ ...unifiCfg, tailgate_alerts: e.target.checked })}
+                        style={{ width: 18, height: 18 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#7C2D12' }}>
+                        Alert when cameras count more people entering than check-ins recorded
+                      </span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12.5, color: '#7C2D12' }}>Comparison window:</span>
+                      <select value={unifiCfg.tailgate_window_minutes ?? 3}
+                        onChange={(e) => setUnifiCfg({ ...unifiCfg, tailgate_window_minutes: Number(e.target.value) })}
+                        style={{ padding: '8px 12px', borderRadius: 8, border: '2px solid #FED7AA', fontSize: 13, background: '#fff' }}>
+                        {[1, 2, 3, 5, 10].map(m => <option key={m} value={m}>{m} min</option>)}
+                      </select>
+                      <button onClick={() => saveUnifi(true, unifiCfg.cameras || [])} disabled={unifiBusy}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: '#EA580C', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: unifiBusy ? 'wait' : 'pointer' }}>
+                        {unifiBusy ? 'Saving…' : 'Save tailgating alerts'}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: '#9A3412', lineHeight: 1.6, margin: '10px 0 0' }}>
+                      After a person is seen at an entry camera, the system waits this long for them to reach the kiosk,
+                      then compares camera sightings against check-ins (companions included). A mismatch raises a silent
+                      alert on <strong>Dashboard → Security Alerts</strong> and emails admins — the visitor sees nothing.
+                      Works best with one entry camera per sign-in point.
+                    </p>
+                  </div>
                 </>
               )}
 
@@ -700,6 +741,40 @@ export default function Settings() {
           )}
         </div>
       )}
+
+      {/* Access Security — the anti-tailgating pack. Layer 1 (group check-in)
+          is always on at the kiosk; layer 2 (anti-passback) is configured here;
+          layer 3 (camera person-counting) lives in the UniFi section above. */}
+      <div style={sectionStyle}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: '#0F172A', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Shield size={20} color="var(--brand)" /> Access Security
+        </h3>
+        <p style={{ fontSize: 13, color: '#64748B', marginTop: 0, marginBottom: 16, lineHeight: 1.6 }}>
+          Three layers stop "one check-in, several people walk in": the kiosk always offers
+          <strong> group check-in</strong> (every companion gets their own badge and a place on the evacuation list),
+          <strong> anti-passback</strong> (below) refuses a badge that flips in/out too quickly,
+          and with UniFi cameras the <strong>tailgating alerts</strong> above compare door counts to check-ins.
+        </p>
+        <label style={labelStyle}>Anti-passback window</label>
+        <select
+          value={settings.anti_passback_minutes ?? 0}
+          onChange={(e) => setSettings({ ...settings, anti_passback_minutes: Number(e.target.value) })}
+          style={{ ...inputStyle, background: '#fff', maxWidth: 320 }}>
+          <option value={0}>Off — badges toggle freely</option>
+          <option value={5}>5 minutes</option>
+          <option value={10}>10 minutes</option>
+          <option value={15}>15 minutes</option>
+          <option value={30}>30 minutes</option>
+          <option value={60}>60 minutes</option>
+        </select>
+        <p style={{ fontSize: 12.5, color: '#64748B', marginTop: 10, lineHeight: 1.65, maxWidth: 640 }}>
+          When on, a badge or identity that <strong>entered or exited within the window</strong> cannot flip back:
+          the tap is refused, the kiosk shows a neutral "please see the front desk" screen, and admins get a silent
+          alert (<strong>Dashboard → Security Alerts</strong> + email). This is the control that stops one card from
+          walking two people in — the second tap never opens a visit. Anyone refused is handled at the desk,
+          where staff can check them in or out manually.
+        </p>
+      </div>
 
       {/* Branding */}
       <div style={sectionStyle}>
