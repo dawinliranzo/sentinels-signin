@@ -153,14 +153,14 @@ export default function Devices() {
           boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0',
           display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap'
         }}>
-          <Monitor size={20} color="#0D7377" />
+          <Monitor size={20} color="var(--brand)" />
           <input
             type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
             placeholder="Name this kiosk — e.g. Front Desk, Warehouse iPad"
             style={{ flex: 1, minWidth: 240, padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none' }}
           />
           <button type="submit" disabled={adding}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: adding ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff', fontWeight: 600, cursor: adding ? 'wait' : 'pointer', fontSize: 14 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: adding ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff', fontWeight: 600, cursor: adding ? 'wait' : 'pointer', fontSize: 14 }}>
             <Plus size={16} /> {adding ? 'Adding…' : 'Add Kiosk'}
           </button>
           {addError && (
@@ -188,7 +188,7 @@ export default function Devices() {
             </div>
             <div style={{
               fontSize: 40, fontWeight: 800, letterSpacing: 10, fontFamily: 'monospace',
-              color: '#14FFEC'
+              color: 'var(--brand-bright)'
             }}>
               {freshDevice.pair_code}
             </div>
@@ -200,7 +200,7 @@ export default function Devices() {
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button onClick={() => copyCode(freshDevice)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, background: 'rgba(20,255,236,0.15)', border: '1px solid rgba(20,255,236,0.4)', color: '#14FFEC', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, background: 'var(--bright-soft)', border: '1px solid var(--bright-mid)', color: 'var(--brand-bright)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
               {copiedId === freshDevice.id ? <Check size={15} /> : <Copy size={15} />} {copiedId === freshDevice.id ? 'Copied' : 'Copy code'}
             </button>
             <button onClick={() => setFreshDevice(null)}
@@ -223,7 +223,7 @@ export default function Devices() {
               {devicesError?.response?.data?.error || 'Check your connection and try again'}
             </div>
             <button onClick={() => refetch()}
-              style={{ padding: '9px 22px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+              style={{ padding: '9px 22px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
               Retry
             </button>
           </div>
@@ -243,10 +243,10 @@ export default function Devices() {
           }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-              background: d.is_online ? 'rgba(13,115,119,0.1)' : '#F1F5F9',
+              background: d.is_online ? 'var(--brand-ghost)' : '#F1F5F9',
               display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-              {d.is_online ? <Wifi size={20} color="#0D7377" /> : <WifiOff size={20} color="#94A3B8" />}
+              {d.is_online ? <Wifi size={20} color="var(--brand)" /> : <WifiOff size={20} color="#94A3B8" />}
             </div>
 
             <div style={{ flex: 1, minWidth: 180 }}>
@@ -254,8 +254,8 @@ export default function Devices() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input autoFocus type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') saveRename(d.id); if (e.key === 'Escape') setRenamingId(null); }}
-                    style={{ padding: '8px 12px', borderRadius: 8, border: '2px solid #0D7377', fontSize: 14, outline: 'none' }} />
-                  <button onClick={() => saveRename(d.id)} style={{ padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+                    style={{ padding: '8px 12px', borderRadius: 8, border: '2px solid var(--brand)', fontSize: 14, outline: 'none' }} />
+                  <button onClick={() => saveRename(d.id)} style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
                   <button onClick={() => setRenamingId(null)} style={{ padding: '8px 14px', borderRadius: 8, background: '#F1F5F9', border: 'none', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                 </div>
               ) : (
@@ -303,7 +303,7 @@ export default function Devices() {
                   style={{
                     position: 'relative', width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0,
                     cursor: 'pointer', padding: 0, transition: 'background 0.2s',
-                    background: d.print_badge ? '#0D7377' : '#CBD5E1'
+                    background: d.print_badge ? 'var(--brand)' : '#CBD5E1'
                   }}>
                   <span style={{
                     position: 'absolute', top: 3, left: d.print_badge ? 23 : 3, width: 18, height: 18,
@@ -312,7 +312,7 @@ export default function Devices() {
                   }} />
                 </button>
                 <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-                  <div style={{ fontWeight: 800, color: d.print_badge ? '#0F766E' : '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontWeight: 800, color: d.print_badge ? 'var(--brand-deep)' : '#64748B', display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Printer size={12} /> Badge printing {d.print_badge ? 'ON' : 'OFF'}
                   </div>
                   <div style={{ color: '#94A3B8' }}>
@@ -330,7 +330,7 @@ export default function Devices() {
             )}
 
             <button onClick={() => setPairDevice(d)} title="Show pairing QR code"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: '#0D7377', border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, background: 'var(--brand)', border: 'none', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}>
               <QrCode size={14} /> Pair
             </button>
 
@@ -414,7 +414,7 @@ export default function Devices() {
                 To pair a replacement, tap <strong>Regenerate</strong> on the device row first (the old code dies instantly), then scan the new QR.
               </div>
             ) : (
-              <div style={{ background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#0F766E', lineHeight: 1.5, textAlign: 'left' }}>
+              <div style={{ background: 'var(--brand-wash)', border: '1px solid var(--brand-border)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: 'var(--brand-deep)', lineHeight: 1.5, textAlign: 'left' }}>
                 <strong>One code pairs one kiosk.</strong> After it's used, pairing another tablet requires a fresh code (Regenerate) — this keeps kiosks from being cloned.
               </div>
             )}
@@ -429,14 +429,14 @@ export default function Devices() {
                 {pairUrl(pairDevice)}
               </span>
               <button onClick={() => copyPairLink(pairDevice)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: linkCopied ? '#DCFCE7' : '#0D7377', border: 'none', color: linkCopied ? '#166534' : '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: linkCopied ? '#DCFCE7' : 'var(--brand)', border: 'none', color: linkCopied ? '#166534' : '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
                 {linkCopied ? <Check size={13} /> : <Copy size={13} />} {linkCopied ? 'Copied' : 'Copy'}
               </button>
             </div>
             <p style={{ fontSize: 12, color: '#94A3B8', marginBottom: 6 }}>
               On the tablet already showing the kiosk? Tap <strong>"Pair this kiosk"</strong> at the bottom of its screen and type:
             </p>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 8, fontFamily: 'monospace', color: '#0D7377', marginBottom: 18 }}>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 8, fontFamily: 'monospace', color: 'var(--brand)', marginBottom: 18 }}>
               {pairDevice.pair_code}
             </div>
             <button onClick={() => setPairDevice(null)}
