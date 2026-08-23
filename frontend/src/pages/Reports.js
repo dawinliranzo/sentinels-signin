@@ -43,7 +43,7 @@ export default function Reports() {
   const td = { padding: '10px 16px', fontSize: 13, color: '#334155', borderTop: '1px solid #F1F5F9' };
   const dlBtn = {
     display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8,
-    background: '#0D7377', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+    background: 'var(--brand)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer'
   };
 
   return (
@@ -55,7 +55,7 @@ export default function Reports() {
 
       {/* Date range shared by the first two reports */}
       <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <CalendarDays size={18} color="#0D7377" />
+        <CalendarDays size={18} color="var(--brand)" />
         <span style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>Range:</span>
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
           style={{ padding: '10px 12px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 13 }} />
@@ -68,7 +68,7 @@ export default function Reports() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BarChart3 size={18} color="#0D7377" /> Visitor frequency — visits per day
+            <BarChart3 size={18} color="var(--brand)" /> Visitor frequency — visits per day
           </h3>
           <button onClick={() => csvDownload(`visitor-frequency-${from}_to_${to}.csv`,
             ['Date', 'Visitors', 'Staff', 'Total'],
@@ -100,7 +100,7 @@ export default function Reports() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Users size={18} color="#0D7377" /> Daily attendance — staff badge sign-ins
+            <Users size={18} color="var(--brand)" /> Daily attendance — staff badge sign-ins
           </h3>
           <button onClick={() => csvDownload(`staff-attendance-${from}_to_${to}.csv`,
             ['Name', 'Email', 'Date', 'Checked In', 'Checked Out', 'Hours On Site'],
@@ -137,7 +137,7 @@ export default function Reports() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <UserX size={18} color="#0D7377" /> Hosts with no sign-in for
+            <UserX size={18} color="var(--brand)" /> Hosts with no sign-in for
             <input type="number" min="1" max="365" value={inactiveDays}
               onChange={(e) => setInactiveDays(Math.min(Math.max(parseInt(e.target.value) || 7, 1), 365))}
               style={{ width: 64, padding: '6px 10px', borderRadius: 8, border: '2px solid #E2E8F0', fontSize: 14, textAlign: 'center' }} />
