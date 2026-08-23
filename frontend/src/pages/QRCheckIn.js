@@ -56,7 +56,7 @@ export default function QRCheckIn() {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>;
   if (!visitor && !already) return <div style={{ textAlign: 'center', padding: 40 }}><h2>Invalid or expired QR code</h2></div>;
   if (checkedIn || already) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0D7377', padding: 24, textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--brand)', padding: 24, textAlign: 'center' }}>
       <h1 style={{ color: '#fff', fontSize: 48 }}>✓ Checked In!</h1>
       <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 20 }}>
         {already && !checkedIn ? 'This link was already used to check in.' : `Welcome${visitor ? `, ${visitor.first_name}` : ''}`}
@@ -96,7 +96,7 @@ export default function QRCheckIn() {
           disabled={submitting}
           style={{
             width: '100%', padding: '18px', borderRadius: 14,
-            background: submitting ? '#94A3B8' : '#0D7377', border: 'none', color: '#fff',
+            background: submitting ? '#94A3B8' : 'var(--brand)', border: 'none', color: '#fff',
             fontSize: 18, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer'
           }}
         >
