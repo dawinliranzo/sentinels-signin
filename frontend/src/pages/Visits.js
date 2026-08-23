@@ -314,13 +314,23 @@ export default function Visits() {
                     </span>
                   ) : '—'}
                 </td>
-                <td style={{ padding: '16px 20px' }}>
+                <td style={{ padding: '16px 20px', whiteSpace: 'nowrap' }}>
                   <span style={{
                     fontFamily: 'monospace', fontWeight: 700, fontSize: 14,
                     color: 'var(--brand)', background: '#E0F2F1', padding: '4px 10px', borderRadius: 6
                   }}>
                     {v.badge_number}
                   </span>
+                  {v.group_size > 1 && (
+                    <span title={`Arrived together — group check-in of ${v.group_size} people`}
+                      style={{
+                        marginLeft: 8, fontSize: 11, fontWeight: 800, cursor: 'default',
+                        background: 'var(--brand-ghost)', color: 'var(--brand-deep)',
+                        padding: '3px 9px', borderRadius: 12, border: '1px solid var(--brand-border)'
+                      }}>
+                      ×{v.group_size}
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: '16px 20px', fontSize: 13, color: '#64748B' }}>
                   {v.checked_in_at ? new Date(v.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
