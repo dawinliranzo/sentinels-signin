@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Building, User, Mail, Phone, Car, FileText, Search, ChevronDown, X, Camera, PenLine , ScanFace, Printer } from 'lucide-react';
 import api from '../utils/api';
 import useRfidTap from '../utils/useRfidTap';
+import { getCachedTheme, buildTheme, cacheTheme } from '../utils/kioskTheme';
 import { getTerms } from '../utils/terms';
 import { printBadge } from '../utils/badge';
 import SignaturePad from '../components/SignaturePad';
@@ -22,6 +23,7 @@ export default function KioskSignIn() {
   const [searchParams] = useSearchParams();
   // Must be declared BEFORE any useEffect that references it (was declared below -> TDZ crash -> white screen)
   const orgId = searchParams.get('org') || localStorage.getItem('kiosk_org_id');
+  const [T, setT] = useState(getCachedTheme); // org theme colors
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hosts, setHosts] = useState([]);
@@ -184,6 +186,18 @@ export default function KioskSignIn() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
+  // Org theme: instant from cache, refreshed from the kiosk config
+  useEffect(() => {
+    if (!orgId) return;
+    api.get(`/kiosk/config/${orgId}`).then(r => {
+      if (r.data.primary_color || r.data.accent_color) {
+        setT(buildTheme(r.data.primary_color, r.data.accent_color));
+        cacheTheme(r.data.primary_color, r.data.accent_color);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
   useEffect(() => {
     if (!orgId) return;
     const loadConfig = () => api.get(`/kiosk/config/${orgId}`).then(r => {
@@ -285,15 +299,15 @@ export default function KioskSignIn() {
             {rfidResult.photo ? (
               <img src={rfidResult.photo} alt="" style={{
                 width: 130, height: 130, borderRadius: '50%', objectFit: 'cover', marginBottom: 20,
-                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : '#14FFEC'}`
+                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : T.primaryBright}`
               }} />
             ) : (
               <div style={{
                 width: 130, height: 130, borderRadius: '50%', margin: '0 auto 20px',
-                background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 52, fontWeight: 800, color: '#fff',
-                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : '#14FFEC'}`
+                border: `4px solid ${rfidResult.action === 'checked_in' ? '#2ECC71' : T.primaryBright}`
               }}>
                 {rfidResult.name?.[0] || '?'}
               </div>
@@ -411,7 +425,7 @@ export default function KioskSignIn() {
         </p>
         <button onClick={() => navigate('/kiosk')}
           style={{
-            padding: '14px 32px', borderRadius: 12, background: '#FF6B35',
+            padding: '14px 32px', borderRadius: 12, background: T.accent,
             border: 'none', color: '#fff', fontSize: 16, fontWeight: 600,
             cursor: 'pointer'
           }}>
@@ -586,7 +600,7 @@ export default function KioskSignIn() {
             Your Badge Number
           </div>
           <div style={{
-            fontSize: 72, fontWeight: 800, color: '#14FFEC',
+            fontSize: 72, fontWeight: 800, color: T.primaryBright,
             letterSpacing: '0.1em', fontFamily: 'monospace'
           }}>
             {visitResult.badge_number}
@@ -650,7 +664,7 @@ export default function KioskSignIn() {
           position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(2,6,23,0.92)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
         }}>
-          <div style={{ background: '#0F172A', borderRadius: 24, padding: 24, width: '100%', maxWidth: 560, border: '1px solid rgba(20,255,236,0.2)' }}>
+          <div style={{ background: '#0F172A', borderRadius: 24, padding: 24, width: '100%', maxWidth: 560, border: `1px solid ${T.brightBorder}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div style={{ color: '#fff', fontSize: 20, fontWeight: 800 }}>Scan your ID</div>
               <button onClick={closeScan} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, padding: 10, cursor: 'pointer' }}>
@@ -670,7 +684,7 @@ export default function KioskSignIn() {
               <button onClick={captureScan} disabled={scanBusy}
                 style={{
                   flex: '1 1 200px', padding: '16px', borderRadius: 14, border: 'none',
-                  background: scanBusy ? '#475569' : 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                  background: scanBusy ? '#475569' : `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
                   color: '#fff', fontSize: 16, fontWeight: 800, cursor: scanBusy ? 'wait' : 'pointer'
                 }}>
                 {scanBusy ? 'Reading ID…' : 'Capture & Read'}
@@ -712,7 +726,7 @@ export default function KioskSignIn() {
         {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
           <div key={s} style={{
             flex: 1, height: 4, borderRadius: 2,
-            background: s <= step ? '#14FFEC' : 'rgba(255,255,255,0.2)',
+            background: s <= step ? T.primaryBright : 'rgba(255,255,255,0.2)',
             transition: 'background 0.3s'
           }} />
         ))}
@@ -747,14 +761,14 @@ export default function KioskSignIn() {
             <div style={{ marginBottom: 18 }}>
               <button type="button" onClick={openScan}
                 style={{
-                  width: '100%', padding: '16px', borderRadius: 14, border: '2px dashed rgba(20,255,236,0.5)',
-                  background: 'rgba(20,255,236,0.08)', color: '#14FFEC', fontSize: 17, fontWeight: 700,
+                  width: '100%', padding: '16px', borderRadius: 14, border: `2px dashed ${T.primaryDim}`,
+                  background: T.brightDim, color: T.primaryBright, fontSize: 17, fontWeight: 700,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
                 }}>
                 <ScanFace size={22} /> Scan your ID to fill this in
               </button>
               {ocrNotice && (
-                <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'rgba(20,255,236,0.12)', color: '#A7F3D0', fontSize: 14, textAlign: 'center' }}>
+                <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: T.brightDim, color: '#A7F3D0', fontSize: 14, textAlign: 'center' }}>
                   {ocrNotice}
                 </div>
               )}
@@ -864,7 +878,7 @@ export default function KioskSignIn() {
                 <div style={{ textAlign: 'center' }}>
                   <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxWidth: 320, borderRadius: 16, background: '#000', border: '2px solid rgba(255,255,255,0.2)' }} />
                   <div>
-                    <button onClick={takePhoto} disabled={!cameraOn} style={{ marginTop: 10, padding: '12px 24px', borderRadius: 12, background: cameraOn ? '#0D7377' : 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraOn ? 'pointer' : 'not-allowed', fontSize: 15 }}>
+                    <button onClick={takePhoto} disabled={!cameraOn} style={{ marginTop: 10, padding: '12px 24px', borderRadius: 12, background: cameraOn ? T.primary : 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', fontWeight: 600, cursor: cameraOn ? 'pointer' : 'not-allowed', fontSize: 15 }}>
                       {cameraOn ? 'Take Photo' : 'Starting camera...'}
                     </button>
                   </div>
@@ -888,7 +902,7 @@ export default function KioskSignIn() {
             disabled={!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 'rgba(255,255,255,0.1)' : `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
               cursor: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 'not-allowed' : 'pointer',
               opacity: (!formData.first_name || !formData.last_name || (fieldShown('visitor_type') && !formData.visitor_type_name) || (photoRequired && fieldShown('photo') && !photo) || industryRequiredMissing) ? 0.5 : 1
@@ -973,7 +987,7 @@ export default function KioskSignIn() {
                       >
                         <div style={{
                           width: 40, height: 40, borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #0D7377, #14FFEC)',
+                          background: `linear-gradient(135deg, ${T.primary}, ${T.primaryBright})`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontWeight: 700, fontSize: 14, color: '#fff', flexShrink: 0
                         }}>
@@ -988,7 +1002,7 @@ export default function KioskSignIn() {
                         {formData.host_id === host.id && (
                           <div style={{
                             width: 20, height: 20, borderRadius: '50%',
-                            background: '#14FFEC', display: 'flex',
+                            background: T.primaryBright, display: 'flex',
                             alignItems: 'center', justifyContent: 'center'
                           }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0F172A" strokeWidth="4">
@@ -1082,7 +1096,7 @@ export default function KioskSignIn() {
             disabled={loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing}
             style={{
               marginTop: 20, padding: '20px', borderRadius: 16,
-              background: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 'rgba(255,255,255,0.1)' : `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
               cursor: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 'not-allowed' : 'pointer',
               opacity: (loading || (fieldShown('host') && !formData.host_id) || customRequiredMissing) ? 0.5 : 1
@@ -1143,7 +1157,7 @@ export default function KioskSignIn() {
             disabled={loading || !ndaSig || !ndaName.trim()}
             style={{
               marginTop: 4, padding: '20px', borderRadius: 16,
-              background: (loading || !ndaSig || !ndaName.trim()) ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #FF6B35, #FF8C5A)',
+              background: (loading || !ndaSig || !ndaName.trim()) ? 'rgba(255,255,255,0.1)' : `linear-gradient(135deg, ${T.accent}, ${T.accentSoft})`,
               border: 'none', color: '#fff', fontSize: 20, fontWeight: 700,
               cursor: (loading || !ndaSig || !ndaName.trim()) ? 'not-allowed' : 'pointer',
               opacity: (loading || !ndaSig || !ndaName.trim()) ? 0.5 : 1
