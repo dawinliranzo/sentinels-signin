@@ -151,7 +151,7 @@ export default function Watchlist() {
         {[
           { label: 'Active flags', value: activeFlags.length, icon: Flag, color: '#DC2626', jump: 'active' },
           { label: 'Flagged on site now', value: onSiteNow.length, icon: UserCheck, color: '#B45309', jump: 'onsite' },
-          { label: 'Encounter records', value: (hits || []).length, icon: Clock, color: '#0D7377', jump: 'records' },
+          { label: 'Encounter records', value: (hits || []).length, icon: Clock, color: 'var(--brand)', jump: 'records' },
         ].map(c => (
           <button key={c.label} onClick={() => jumpTo(c.jump)} title="Show these"
             style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', textAlign: 'left' }}>
@@ -172,9 +172,9 @@ export default function Watchlist() {
           <button key={key} onClick={() => setTab(key)}
             style={{
               padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              border: tab === key ? '2px solid #0D7377' : '2px solid #E2E8F0',
-              background: tab === key ? '#F0FDFA' : '#fff',
-              color: tab === key ? '#0D7377' : '#64748B'
+              border: tab === key ? '2px solid var(--brand)' : '2px solid #E2E8F0',
+              background: tab === key ? 'var(--brand-wash)' : '#fff',
+              color: tab === key ? 'var(--brand)' : '#64748B'
             }}>
             {label}
           </button>
@@ -209,7 +209,7 @@ export default function Watchlist() {
                 </td></tr>
               ) : visibleFlags.length === 0 ? (
                 <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>
-                  No active flags right now — <button onClick={() => setRecordsFilter('all')} style={{ background: 'none', border: 'none', color: '#0D7377', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>show everything</button>
+                  No active flags right now — <button onClick={() => setRecordsFilter('all')} style={{ background: 'none', border: 'none', color: 'var(--brand)', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>show everything</button>
                 </td></tr>
               ) : visibleFlags.map(f => {
                 const sev = SEV[f.severity] || SEV.warning;
@@ -219,7 +219,7 @@ export default function Watchlist() {
                       {/* The person opens their full record — rule + every encounter */}
                       <button onClick={() => openDetail(f)}
                         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer' }}>
-                        <div style={{ fontWeight: 700, color: '#0D7377', textDecoration: 'underline', textUnderlineOffset: 3, fontSize: 14 }}>{flagName(f)}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--brand)', textDecoration: 'underline', textUnderlineOffset: 3, fontSize: 14 }}>{flagName(f)}</div>
                         <div style={{ fontSize: 12, color: '#64748B' }}>
                           {[f.visitor_email, f.visitor_first_name && f.visitor_last_name ? 'name match' : null].filter(Boolean).join(' · ') || 'name match'}
                         </div>
@@ -289,7 +289,7 @@ export default function Watchlist() {
                 </td></tr>
               ) : visibleHits.length === 0 ? (
                 <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>
-                  Nobody flagged is on site right now — <button onClick={() => setLogFilter('all')} style={{ background: 'none', border: 'none', color: '#0D7377', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>show the full log</button>
+                  Nobody flagged is on site right now — <button onClick={() => setLogFilter('all')} style={{ background: 'none', border: 'none', color: 'var(--brand)', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>show the full log</button>
                 </td></tr>
               ) : visibleHits.map((h, i) => {
                 const sev = SEV[h.severity] || SEV.warning;
@@ -318,7 +318,7 @@ export default function Watchlist() {
                       ) : '—'}
                     </td>
                     <td style={tdStyle}>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#0D7377', background: '#E0F2F1', padding: '3px 9px', borderRadius: 6 }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: 'var(--brand)', background: '#E0F2F1', padding: '3px 9px', borderRadius: 6 }}>
                         {h.badge_number || '—'}
                       </span>
                     </td>
@@ -430,7 +430,7 @@ export default function Watchlist() {
 
               {/* Edit in place — no delete-and-recreate for a wording change */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
-                <Pencil size={14} color="#0D7377" /> Edit this record
+                <Pencil size={14} color="var(--brand)" /> Edit this record
               </div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 {[['warning', 'Warning'], ['blacklist', 'Blocked'], ['info', 'Info']].map(([val, label]) => (
@@ -450,7 +450,7 @@ export default function Watchlist() {
                 style={{ width: '100%', padding: '12px 16px', borderRadius: 10, border: '2px solid #E2E8F0', fontSize: 14, outline: 'none', minHeight: 70, resize: 'vertical', boxSizing: 'border-box' }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 20 }}>
                 <button onClick={saveDetail} disabled={detailBusy}
-                  style={{ flex: 1, padding: '11px 16px', borderRadius: 10, background: '#0D7377', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: detailBusy ? 'wait' : 'pointer', opacity: detailBusy ? 0.7 : 1 }}>
+                  style={{ flex: 1, padding: '11px 16px', borderRadius: 10, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 13, cursor: detailBusy ? 'wait' : 'pointer', opacity: detailBusy ? 0.7 : 1 }}>
                   {detailBusy ? 'Saving…' : 'Save changes'}
                 </button>
                 <button onClick={async () => { await toggleFlag(detail); setDetail({ ...detail, is_active: !detail.is_active }); }}
