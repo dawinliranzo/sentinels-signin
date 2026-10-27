@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -172,21 +172,43 @@ export default function Dashboard() {
   // Visit detail modal (click any visitor name/photo anywhere on the dashboard)
   const [detailVisit, setDetailVisit] = useState(null);
 
-  // New check-in popup for the front desk / guard (Settings → Kiosk → check-in alerts)
+  // New check-in popup for the front desk / guard (Settings → Kiosk → check-in alerts).
+  // Each fresh check-in pops for 12 seconds and then dismisses itself; arrivals
+  // inside the same poll queue up and show one after another. "Got it" advances
+  // to the next queued arrival immediately.
   const [popupVisit, setPopupVisit] = useState(null);
-  const knownIds = useRef(null); // null until the first poll seeds it
+  const popupQueue = useRef([]);    // fresh arrivals waiting their turn
+  const popupShowing = useRef(false);
+  const seenIds = useRef(null);     // null until the first poll seeds the baseline
+
+  const showNextPopup = useCallback(() => {
+    const next = popupQueue.current.shift() || null;
+    popupShowing.current = !!next;
+    setPopupVisit(next);
+  }, []);
+
   useEffect(() => {
     if (!activeVisits) return;
     const ids = new Set(activeVisits.map(v => v.id));
-    if (knownIds.current === null) {
-      knownIds.current = ids; // first load = baseline, no popup for existing visits
+    if (seenIds.current === null) {
+      seenIds.current = ids; // first load = baseline, no popup for existing visits
       return;
     }
-    if (stats?.checkin_popup === false) { knownIds.current = ids; return; }
-    const fresh = activeVisits.filter(v => !knownIds.current.has(v.id));
-    knownIds.current = ids;
-    if (fresh.length > 0) setPopupVisit(fresh[0]);
-  }, [activeVisits, stats]);
+    const fresh = activeVisits.filter(v => !seenIds.current.has(v.id));
+    // Union — never un-see an id, so a temporarily empty/failed poll can't
+    // re-pop everyone who is already on site
+    seenIds.current = new Set([...seenIds.current, ...ids]);
+    if (stats?.checkin_popup === false || fresh.length === 0) return;
+    popupQueue.current.push(...fresh);
+    if (!popupShowing.current) showNextPopup();
+  }, [activeVisits, stats, showNextPopup]);
+
+  // Auto-dismiss: each popup shows for 12s, then the next queued one appears
+  useEffect(() => {
+    if (!popupVisit) return;
+    const t = setTimeout(showNextPopup, 12000);
+    return () => clearTimeout(t);
+  }, [popupVisit, showNextPopup]);
   // Watchlist size for the quick-action badge (silently empty if unavailable)
   const { data: watchlistFlags } = useQuery('watchlist-count', () =>
     api.get('/flags').then(r => r.data),
@@ -760,7 +782,7 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-            <button onClick={() => setPopupVisit(null)}
+            <button onClick={showNextPopup}
               style={{ marginTop: 18, width: '100%', padding: '14px', borderRadius: 12, background: 'var(--brand)', border: 'none', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>
               Got it
             </button>
